@@ -1848,8 +1848,12 @@ export class SelectColumnSqlConversionVisitor extends BaseSqlConversionVisitor<I
           }
           columnRef = adjusted;
         }
-        if (fieldInfo.isLookup && isLinkLookupOptions(fieldInfo.lookupOptions)) {
-          if (preferRaw) {
+        if (
+          fieldInfo.type === FieldType.Link &&
+          fieldInfo.isLookup &&
+          isLinkLookupOptions(fieldInfo.lookupOptions)
+        ) {
+          if (preferRaw && selectContext.targetDbFieldType === DbFieldType.Json) {
             return columnRef;
           }
           if (fieldInfo.dbFieldType !== DbFieldType.Json) {
@@ -1950,6 +1954,7 @@ export class SelectColumnSqlConversionVisitor extends BaseSqlConversionVisitor<I
     }
 
     if (
+      fieldInfo.type !== FieldType.Link ||
       !fieldInfo.isLookup ||
       !fieldInfo.lookupOptions ||
       !isLinkLookupOptions(fieldInfo.lookupOptions)
@@ -1958,10 +1963,8 @@ export class SelectColumnSqlConversionVisitor extends BaseSqlConversionVisitor<I
     }
 
     const preferRaw = !!selectContext.preferRawFieldReferences;
-    if (preferRaw) {
-      return expr;
-    }
-    if (preferRaw && selectContext.targetDbFieldType === DbFieldType.Json) {
+    const targetDbType = selectContext.targetDbFieldType;
+    if (preferRaw && targetDbType === DbFieldType.Json) {
       return expr;
     }
 
