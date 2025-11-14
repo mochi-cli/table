@@ -1187,6 +1187,9 @@ export class FieldService implements IReadonlyAdapterService {
     // Persist meta after potential schema modifications that may set it (e.g., formula generated columns)
     if (newField.meta !== undefined) {
       result.meta = JSON.stringify(newField.meta);
+    } else if (oldField.meta !== undefined) {
+      // Explicitly clear meta when schema updates drop generated columns
+      result.meta = null;
     }
 
     await this.prismaService.txClient().field.update({

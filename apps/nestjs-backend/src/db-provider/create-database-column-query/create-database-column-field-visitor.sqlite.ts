@@ -86,6 +86,10 @@ export class CreateSqliteDatabaseColumnFieldVisitor implements IFieldVisitor<voi
   }
 
   private createFormulaColumns(field: FormulaFieldCore): void {
+    const formulaFieldDto = this.context.field as FormulaFieldDto;
+    const clearPersistedGeneratedMeta = () => {
+      formulaFieldDto.meta = undefined;
+    };
     if (this.context.dbProvider) {
       const generatedColumnName = field.getGeneratedColumnName();
       const columnType = this.getSqliteColumnType(field.dbFieldType);
@@ -95,6 +99,7 @@ export class CreateSqliteDatabaseColumnFieldVisitor implements IFieldVisitor<voi
       // Skip if no expression
       if (!expressionToConvert) {
         // Fallback to a standard column if no expression
+        clearPersistedGeneratedMeta();
         this.createStandardColumn(field);
         return;
       }
@@ -131,6 +136,7 @@ export class CreateSqliteDatabaseColumnFieldVisitor implements IFieldVisitor<voi
       }
     }
     // Fallback: create a standard column when not supported as generated
+    clearPersistedGeneratedMeta();
     this.createStandardColumn(field);
   }
 

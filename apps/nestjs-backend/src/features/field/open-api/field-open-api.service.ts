@@ -1303,6 +1303,9 @@ export class FieldOpenApiService {
     } as IFieldInstance;
 
     delete newFieldInstance.isPrimary;
+    if (newFieldInstance.type === FieldType.Formula) {
+      newFieldInstance.meta = undefined;
+    }
 
     if (viewId) {
       const view = await prisma.view.findUniqueOrThrow({
