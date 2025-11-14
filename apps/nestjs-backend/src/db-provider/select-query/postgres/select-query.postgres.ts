@@ -70,6 +70,10 @@ export class SelectQueryPostgres extends SelectQueryAbstract {
 
   private toNumericSafe(expr: string, metadataIndex?: number): string {
     const paramInfo = this.getParamInfo(metadataIndex);
+    if (isBooleanLikeParam(paramInfo)) {
+      const boolScore = this.truthinessScore(expr, metadataIndex);
+      return `(${boolScore})::double precision`;
+    }
     if (isTrustedNumeric(paramInfo)) {
       return `(${expr})::double precision`;
     }

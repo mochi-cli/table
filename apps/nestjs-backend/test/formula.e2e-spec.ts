@@ -4147,6 +4147,84 @@ describe('OpenAPI formula (e2e)', () => {
       }
     );
 
+    it('should treat boolean comparisons on single select fields as numeric inside SUM', async () => {
+      const selectFields = await Promise.all(
+        Array.from({ length: 3 }, (_, index) =>
+          createField(table1Id, {
+            name: `sum-select-${index + 1}`,
+            type: FieldType.SingleSelect,
+            options: {
+              choices: [
+                { id: `select-${index + 1}-nb`, name: 'NB' },
+                { id: `select-${index + 1}-other`, name: 'WB' },
+              ],
+            } as ISelectFieldOptionsRo,
+          })
+        )
+      );
+
+      const equalityExpressions = selectFields.map((field) => `{${field.id}} = "NB"`);
+
+      const formulaField = await createField(table1Id, {
+        name: 'sum-select-boolean-coercion',
+        type: FieldType.Formula,
+        options: {
+          expression: `SUM(${equalityExpressions.join(', ')})`,
+        },
+      });
+
+      const { records } = await createRecords(table1Id, {
+        fieldKeyType: FieldKeyType.Name,
+        records: [
+          {
+            fields: {
+              [selectFields[0].name]: 'NB',
+              [selectFields[1].name]: 'NB',
+              [selectFields[2].name]: 'WB',
+            },
+          },
+        ],
+      });
+      const recordId = records[0].id;
+
+      const readSumValue = async () => {
+        const record = await getRecord(table1Id, recordId);
+        return record.data.fields[formulaField.name] as number;
+      };
+
+      let sumValue = await readSumValue();
+      expect(typeof sumValue).toBe('number');
+      expect(sumValue).toBe(2);
+
+      await updateRecord(table1Id, recordId, {
+        fieldKeyType: FieldKeyType.Name,
+        record: {
+          fields: {
+            [selectFields[0].name]: 'NB',
+            [selectFields[1].name]: 'NB',
+            [selectFields[2].name]: 'NB',
+          },
+        },
+      });
+
+      sumValue = await readSumValue();
+      expect(sumValue).toBe(3);
+
+      await updateRecord(table1Id, recordId, {
+        fieldKeyType: FieldKeyType.Name,
+        record: {
+          fields: {
+            [selectFields[0].name]: 'WB',
+            [selectFields[1].name]: 'WB',
+            [selectFields[2].name]: 'WB',
+          },
+        },
+      });
+
+      sumValue = await readSumValue();
+      expect(sumValue).toBe(0);
+    });
+
     const mixedFunctionCases: Array<{
       label: FunctionName;
       expressionFactory: (ids: {

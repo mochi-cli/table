@@ -63,6 +63,10 @@ export class GeneratedColumnQueryPostgres extends GeneratedColumnQueryAbstract {
 
   private toNumericSafe(expr: string, metadataIndex?: number): string {
     const paramInfo = this.getParamInfo(metadataIndex);
+    if (isBooleanLikeParam(paramInfo)) {
+      const normalizedBoolean = this.normalizeBooleanCondition(expr, metadataIndex ?? 0);
+      return `(CASE WHEN ${normalizedBoolean} THEN 1 ELSE 0 END)::double precision`;
+    }
     if (isTrustedNumeric(paramInfo)) {
       return `(${expr})::double precision`;
     }
