@@ -2,6 +2,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import type { TableDomain } from '@teable/core';
 import { PrismaService } from '@teable/db-main-prisma';
+import { InjectDbProvider } from '../../../../db-provider/db.provider';
+import { IDbProvider } from '../../../../db-provider/db.provider.interface';
 import type { ICellContext } from '../../../calculation/utils/changes';
 import { TableDomainQueryService } from '../../../table-domain/table-domain-query.service';
 import { ComputedDependencyCollectorService } from './computed-dependency-collector.service';
@@ -18,7 +20,8 @@ export class ComputedOrchestratorService {
     private readonly collector: ComputedDependencyCollectorService,
     private readonly evaluator: ComputedEvaluatorService,
     private readonly prismaService: PrismaService,
-    private readonly tableDomainQueryService: TableDomainQueryService
+    private readonly tableDomainQueryService: TableDomainQueryService,
+    @InjectDbProvider() private readonly dbProvider: IDbProvider
   ) {}
 
   /**
@@ -115,6 +118,8 @@ export class ComputedOrchestratorService {
     }
 
     const tableDomains = await this.resolveTableDomains(impactMerged, tableDomainSeeds);
+
+    await this.lockImpactedRecords(filtered, impactMerged, tableDomains);
 
     // 2) Perform the actual base update(s) if provided
     await update();
@@ -304,6 +309,93 @@ export class ComputedOrchestratorService {
     });
 
     return { publishedOps: total, impact: buildResultImpact(impact) };
+  }
+
+  private async lockImpactedRecords(
+    sources: Array<{ tableId: string; cellContexts: ICellContext[] }>,
+    impact: IComputedImpactByTable,
+    tableDomains: Map<string, TableDomain>
+  ) {
+    if (typeof this.dbProvider.lockRecordsSql !== 'function') {
+      return;
+    }
+    const targetMap = new Map<string, Set<string>>();
+
+    for (const source of sources) {
+      if (!source.cellContexts?.length) continue;
+      let recordSet = targetMap.get(source.tableId);
+      if (!recordSet) {
+        recordSet = new Set<string>();
+        targetMap.set(source.tableId, recordSet);
+      }
+      for (const ctx of source.cellContexts) {
+        if (ctx.recordId) {
+          recordSet.add(ctx.recordId);
+        }
+      }
+    }
+
+    for (const [tableId, group] of Object.entries(impact)) {
+      if (!group.recordIds?.size) continue;
+      let recordSet = targetMap.get(tableId);
+      if (!recordSet) {
+        recordSet = new Set<string>();
+        targetMap.set(tableId, recordSet);
+      }
+      for (const id of group.recordIds) {
+        recordSet.add(id);
+      }
+    }
+
+    if (!targetMap.size) {
+      return;
+    }
+
+    const tableIds = Array.from(targetMap.keys());
+    const tableNameMap = new Map<string, string>();
+    for (const [tableId, domain] of tableDomains) {
+      if (domain?.dbTableName) {
+        tableNameMap.set(tableId, domain.dbTableName);
+      }
+    }
+
+    const missingTableIds = tableIds.filter((tableId) => !tableNameMap.has(tableId));
+    if (missingTableIds.length) {
+      const fetched = await this.tableDomainQueryService.getTableDomainsByIds(missingTableIds);
+      for (const [tableId, domain] of fetched) {
+        if (domain?.dbTableName) {
+          tableNameMap.set(tableId, domain.dbTableName);
+        }
+        if (!tableDomains.has(tableId)) {
+          tableDomains.set(tableId, domain);
+        }
+      }
+    }
+
+    const lockTargets = tableIds
+      .map((tableId) => {
+        const dbTableName = tableNameMap.get(tableId);
+        if (!dbTableName) return null;
+        const recordIds = Array.from(targetMap.get(tableId) ?? []);
+        if (!recordIds.length) return null;
+        return { tableId, dbTableName, recordIds };
+      })
+      .filter(
+        (target): target is { tableId: string; dbTableName: string; recordIds: string[] } =>
+          target !== null
+      )
+      .sort((a, b) => (a.dbTableName > b.dbTableName ? 1 : a.dbTableName < b.dbTableName ? -1 : 0));
+
+    for (const target of lockTargets) {
+      const sql = this.dbProvider.lockRecordsSql?.({
+        dbTableName: target.dbTableName,
+        idFieldName: '__id',
+        recordIds: target.recordIds,
+      });
+      if (sql) {
+        await this.prismaService.txClient().$queryRawUnsafe(sql);
+      }
+    }
   }
 
   private async resolveTableDomains(
