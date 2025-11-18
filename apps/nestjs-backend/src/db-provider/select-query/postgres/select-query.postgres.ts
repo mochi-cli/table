@@ -296,7 +296,7 @@ export class SelectQueryPostgres extends SelectQueryAbstract {
 
   private normalizeDiffUnit(
     unitLiteral: string
-  ): 'millisecond' | 'second' | 'minute' | 'hour' | 'day' | 'week' {
+  ): 'millisecond' | 'second' | 'minute' | 'hour' | 'day' | 'week' | 'month' | 'quarter' | 'year' {
     const normalized = unitLiteral.trim().toLowerCase();
     switch (normalized) {
       case 'millisecond':
@@ -321,6 +321,15 @@ export class SelectQueryPostgres extends SelectQueryAbstract {
       case 'week':
       case 'weeks':
         return 'week';
+      case 'month':
+      case 'months':
+        return 'month';
+      case 'quarter':
+      case 'quarters':
+        return 'quarter';
+      case 'year':
+      case 'years':
+        return 'year';
       default:
         return 'day';
     }
@@ -644,6 +653,25 @@ export class SelectQueryPostgres extends SelectQueryAbstract {
     return `(${this.tzWrap(date)})::date::text`;
   }
 
+  private buildMonthDiff(startDate: string, endDate: string): string {
+    const startExpr = this.tzWrap(startDate);
+    const endExpr = this.tzWrap(endDate);
+    const startYear = `EXTRACT(YEAR FROM ${startExpr})`;
+    const endYear = `EXTRACT(YEAR FROM ${endExpr})`;
+    const startMonth = `EXTRACT(MONTH FROM ${startExpr})`;
+    const endMonth = `EXTRACT(MONTH FROM ${endExpr})`;
+    const startDay = `EXTRACT(DAY FROM ${startExpr})`;
+    const endDay = `EXTRACT(DAY FROM ${endExpr})`;
+    const startLastDay = `EXTRACT(DAY FROM (DATE_TRUNC('month', ${startExpr}) + INTERVAL '1 month - 1 day'))`;
+    const endLastDay = `EXTRACT(DAY FROM (DATE_TRUNC('month', ${endExpr}) + INTERVAL '1 month - 1 day'))`;
+
+    const baseMonths = `((${startYear} - ${endYear}) * 12 + (${startMonth} - ${endMonth}))`;
+    const adjustDown = `(CASE WHEN ${baseMonths} > 0 AND ${startDay} < ${endDay} AND ${startDay} < ${startLastDay} THEN 1 ELSE 0 END)`;
+    const adjustUp = `(CASE WHEN ${baseMonths} < 0 AND ${startDay} > ${endDay} AND ${endDay} < ${endLastDay} THEN 1 ELSE 0 END)`;
+
+    return `(${baseMonths} - ${adjustDown} + ${adjustUp})`;
+  }
+
   datetimeDiff(startDate: string, endDate: string, unit: string): string {
     const diffUnit = this.normalizeDiffUnit(unit.replace(/^'|'$/g, ''));
     const diffSeconds = `EXTRACT(EPOCH FROM (${this.tzWrap(startDate)} - ${this.tzWrap(endDate)}))`;
@@ -658,6 +686,14 @@ export class SelectQueryPostgres extends SelectQueryAbstract {
         return `(${diffSeconds}) / 3600`;
       case 'week':
         return `(${diffSeconds}) / (86400 * 7)`;
+      case 'month':
+        return this.buildMonthDiff(startDate, endDate);
+      case 'quarter':
+        return `${this.buildMonthDiff(startDate, endDate)} / 3.0`;
+      case 'year': {
+        const monthDiff = this.buildMonthDiff(startDate, endDate);
+        return `CAST((${monthDiff}) / 12.0 AS INTEGER)`;
+      }
       case 'day':
       default:
         return `(${diffSeconds}) / 86400`;

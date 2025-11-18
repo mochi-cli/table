@@ -2512,6 +2512,7 @@ export type I18nTranslations = {
                 };
                 "personalView": {
                     "personal": string;
+                    "tip": string;
                     "collaborative": string;
                     "dialog": {
                         "title": string;

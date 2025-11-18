@@ -3816,6 +3816,78 @@ describe('OpenAPI formula (e2e)', () => {
       }
     });
 
+    it.each([
+      {
+        unit: 'month',
+        start: '2024-01-31T00:00:00.000Z',
+        end: '2024-02-29T00:00:00.000Z',
+        expected: 1,
+      },
+      {
+        unit: 'months',
+        start: '2024-01-31T00:00:00.000Z',
+        end: '2024-02-29T00:00:00.000Z',
+        expected: 1,
+      },
+      {
+        unit: 'quarter',
+        start: '2025-01-01T00:00:00.000Z',
+        end: '2025-04-01T00:00:00.000Z',
+        expected: 1,
+      },
+      {
+        unit: 'quarters',
+        start: '2025-01-01T00:00:00.000Z',
+        end: '2025-04-01T00:00:00.000Z',
+        expected: 1,
+      },
+      {
+        unit: 'year',
+        start: '2024-01-01T00:00:00.000Z',
+        end: '2025-01-01T00:00:00.000Z',
+        expected: 1,
+      },
+      {
+        unit: 'years',
+        start: '2024-01-01T00:00:00.000Z',
+        end: '2025-01-01T00:00:00.000Z',
+        expected: 1,
+      },
+    ])(
+      'should evaluate DATETIME_DIFF for month/quarter/year spans using unit "%s"',
+      async ({ unit, start, end, expected }) => {
+        const { records } = await createRecords(table1Id, {
+          fieldKeyType: FieldKeyType.Name,
+          records: [
+            {
+              fields: {
+                [numberFieldRo.name]: 1,
+              },
+            },
+          ],
+        });
+        const recordId = records[0].id;
+
+        const diffField = await createField(table1Id, {
+          name: `datetime-diff-${unit}-span`,
+          type: FieldType.Formula,
+          options: {
+            expression: `DATETIME_DIFF(DATETIME_PARSE("${end}"), DATETIME_PARSE("${start}"), '${unit}')`,
+          },
+        });
+
+        const recordAfterFormula = await getRecord(table1Id, recordId);
+        const rawValue = recordAfterFormula.data.fields[diffField.name];
+        if (typeof rawValue === 'number') {
+          expect(rawValue).toBeCloseTo(expected, 6);
+        } else {
+          const numericValue = Number(rawValue);
+          expect(Number.isFinite(numericValue)).toBe(true);
+          expect(numericValue).toBeCloseTo(expected, 6);
+        }
+      }
+    );
+
     it('should not persist chained DATETIME_DIFF formula as generated column', async () => {
       const startDateField = await createField(table1Id, {
         name: 'shift-start',
