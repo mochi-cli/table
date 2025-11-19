@@ -1885,8 +1885,12 @@ export class SelectColumnSqlConversionVisitor extends BaseSqlConversionVisitor<I
 
     // Handle different field types that use CTEs
     if (isLinkField(fieldInfo)) {
-      // Prefer direct column when raw references are requested; otherwise fallback to CTE mapping
-      if (!preferRaw && cteMap?.has(fieldId)) {
+      // Prefer direct column when raw references are requested; otherwise fallback to CTE mapping.
+      // However, when the field is not already part of the current selection (common when resolving
+      // display fields for nested link CTEs), we still need to reference the CTE to access the link
+      // value even in raw contexts; otherwise formulas that reference link fields end up reading
+      // NULL placeholders instead of the computed JSON payload.
+      if (cteMap?.has(fieldId) && (!preferRaw || !selectionSql)) {
         const cteName = cteMap.get(fieldId)!;
         selectionSql = `"${cteName}"."link_value"`;
       }
