@@ -200,6 +200,10 @@ export interface ISelectFormulaConversionContext extends IFormulaConversionConte
   tableAlias?: string;
   /** CTE map: linkFieldId -> cteName */
   fieldCteMap?: ReadonlyMap<string, string>;
+  /** Link field IDs whose CTEs have already been emitted (safe for reference) */
+  readyLinkFieldIds?: ReadonlySet<string>;
+  /** Current link field id whose CTE is being generated (used to avoid self references) */
+  currentLinkFieldId?: string;
   /** When true, prefer raw field references (no title formatting) to preserve native types */
   preferRawFieldReferences?: boolean;
   /** Target DB field type for the enclosing formula selection (used for type-sensitive raw projection) */
@@ -1880,14 +1884,26 @@ export class SelectColumnSqlConversionVisitor extends BaseSqlConversionVisitor<I
     const selection = selectionMap?.get(fieldId);
     let selectionSql = typeof selection === 'string' ? selection : selection?.toSQL().sql;
     const cteMap = selectContext.fieldCteMap;
+    const readyLinkFieldIds =
+      selectContext.readyLinkFieldIds &&
+      typeof (selectContext.readyLinkFieldIds as { has?: unknown }).has === 'function'
+        ? (selectContext.readyLinkFieldIds as ReadonlySet<string>)
+        : undefined;
+    const isSelfReference = selectContext.currentLinkFieldId === fieldId;
     // For link fields with CTE mapping, use the CTE directly
     // No need for complex cross-CTE reference handling in most cases
 
     // Handle different field types that use CTEs
     if (isLinkField(fieldInfo)) {
-      // Prefer direct column when raw references are requested; otherwise fallback to CTE mapping
-      if (!preferRaw && cteMap?.has(fieldId)) {
-        const cteName = cteMap.get(fieldId)!;
+      // Prefer direct column when raw references are requested; otherwise fallback to CTE mapping.
+      // However, when the field is not already part of the current selection (common when resolving
+      // display fields for nested link CTEs), we still need to reference the CTE to access the link
+      // value even in raw contexts; otherwise formulas that reference link fields end up reading
+      // NULL placeholders instead of the computed JSON payload.
+      const canReferenceCte =
+        !preferRaw && !isSelfReference && readyLinkFieldIds?.has(fieldId) && cteMap?.has(fieldId);
+      if (canReferenceCte) {
+        const cteName = cteMap!.get(fieldId)!;
         selectionSql = `"${cteName}"."link_value"`;
       }
       // Provide a safe fallback if selection map has no entry
