@@ -804,7 +804,8 @@ export class SelectQueryPostgres extends SelectQueryAbstract {
   }
 
   len(text: string): string {
-    return `LENGTH(${text})`;
+    const operand = this.coerceToTextComparable(text, 0);
+    return `LENGTH(${operand})`;
   }
 
   t(value: string): string {

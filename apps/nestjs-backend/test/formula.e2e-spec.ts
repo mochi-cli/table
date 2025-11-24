@@ -1640,6 +1640,50 @@ describe('OpenAPI formula (e2e)', () => {
       }
     );
 
+    it('should evaluate LEN on auto number fields using metadata', async () => {
+      const autoNumberField = await createField(table1Id, {
+        name: 'auto-len',
+        type: FieldType.AutoNumber,
+      });
+
+      const lenField = await createField(table1Id, {
+        name: 'auto-len-value',
+        type: FieldType.Formula,
+        options: {
+          expression: `LEN({${autoNumberField.id}})`,
+        },
+      });
+
+      const paddedField = await createField(table1Id, {
+        name: 'auto-len-title',
+        type: FieldType.Formula,
+        options: {
+          expression: `IF(LEN({${autoNumberField.id}}) < 2, '0' & {${autoNumberField.id}}, '' & {${autoNumberField.id}})`,
+        },
+      });
+
+      const { records } = await createRecords(table1Id, {
+        fieldKeyType: FieldKeyType.Name,
+        records: [
+          {
+            fields: {
+              [numberFieldRo.name]: numericInput,
+              [textFieldRo.name]: textInput,
+            },
+          },
+        ],
+      });
+
+      const createdRecord = records[0];
+      expect(createdRecord.fields[autoNumberField.name]).toBeDefined();
+
+      const record = await getRecord(table1Id, createdRecord.id, {
+        fieldKeyType: FieldKeyType.Name,
+        projection: [autoNumberField.name, lenField.name, paddedField.name],
+      });
+      expect(record.status).toBe(200);
+    });
+
     it('should keep date field time formatting when concatenated with text', async () => {
       const dateFormatting = {
         date: DateFormattingPreset.ISO,
