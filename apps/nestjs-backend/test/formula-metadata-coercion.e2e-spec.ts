@@ -1,7 +1,7 @@
 /* eslint-disable regexp/no-super-linear-backtracking */
 /* eslint-disable @typescript-eslint/naming-convention */
 import type { INestApplication } from '@nestjs/common';
-import { FieldType, FieldKeyType, TableDomain } from '@teable/core';
+import { FieldType, FieldKeyType, TableDomain, TimeFormatting } from '@teable/core';
 import type { IFieldRo, IFieldVo } from '@teable/core';
 import { PrismaService } from '@teable/db-main-prisma';
 import type { ITableFullVo } from '@teable/openapi';
@@ -238,6 +238,94 @@ describe('Formula metadata-aware coercion (e2e)', () => {
         await permanentDeleteTable(baseId, table.id);
       }
     });
+
+    it('treats BLANK() as NULL for select queries with mixed branch types', async () => {
+      const seedFields: IFieldRo[] = [
+        { name: 'Title', type: FieldType.SingleLineText },
+        { name: 'Amount', type: FieldType.Number },
+        {
+          name: 'Due Date',
+          type: FieldType.Date,
+          options: {
+            formatting: {
+              date: 'YYYY-MM-DD',
+              time: TimeFormatting.Hour24,
+              timeZone: 'UTC',
+            },
+          },
+        },
+      ];
+
+      const table: ITableFullVo = await createTable(baseId, {
+        name: 'formula_metadata_blank_select',
+        fields: seedFields,
+      });
+
+      try {
+        const fieldMap = new Map<string, IFieldVo>(
+          table.fields.map((field) => [field.name, field as IFieldVo])
+        );
+        const titleField = fieldMap.get('Title')!;
+        const amountField = fieldMap.get('Amount')!;
+        const dueField = fieldMap.get('Due Date')!;
+
+        const tableMeta = await prisma.tableMeta.findUniqueOrThrow({
+          where: { id: table.id },
+          select: { dbTableName: true },
+        });
+
+        const tableDomain = new TableDomain({
+          id: table.id,
+          name: table.name,
+          dbTableName: tableMeta.dbTableName,
+          lastModifiedTime: table.lastModifiedTime ?? new Date().toISOString(),
+          fields: [titleField, amountField, dueField].map((field) =>
+            createFieldInstanceByVo(field)
+          ),
+        });
+
+        const tableAlias = 'main';
+        const selectionEntries = [titleField, amountField, dueField].map((field) => [
+          field.id,
+          `"${tableAlias}"."${field.dbFieldName}"`,
+        ]) as [string, string][];
+
+        const context: ISelectFormulaConversionContext = {
+          table: tableDomain,
+          selectionMap: new Map(selectionEntries),
+          tableAlias,
+          timeZone: 'UTC',
+          preferRawFieldReferences: true,
+        };
+
+        const blankSql = dbProvider.convertFormulaToSelectQuery('BLANK()', context) as string;
+        expect(blankSql.trim()).toBe('NULL');
+
+        const branchAssertions: Array<{ expression: string; expectedBranch: string }> = [
+          {
+            expression: `IF(TRUE, BLANK(), {${titleField.id}})`,
+            expectedBranch: `"${tableAlias}"."${titleField.dbFieldName}"`,
+          },
+          {
+            expression: `IF(TRUE, BLANK(), {${amountField.id}})`,
+            expectedBranch: `"${tableAlias}"."${amountField.dbFieldName}"`,
+          },
+          {
+            expression: `IF(TRUE, BLANK(), {${dueField.id}})`,
+            expectedBranch: `"${tableAlias}"."${dueField.dbFieldName}"`,
+          },
+        ];
+
+        for (const { expression, expectedBranch } of branchAssertions) {
+          const sql = dbProvider.convertFormulaToSelectQuery(expression, context);
+          expect(sql).toMatch(/THEN\s+NULL/i);
+          expect(sql).not.toMatch(/THEN\s+''/i);
+          expect(sql).toContain(expectedBranch);
+        }
+      } finally {
+        await permanentDeleteTable(baseId, table.id);
+      }
+    });
   });
 
   describe('runtime formulas', () => {
@@ -340,6 +428,92 @@ describe('Formula metadata-aware coercion (e2e)', () => {
 
         await updateRecordByApi(table.id, recordId, enabledField.id, false);
         expect(await readValue()).toBe(0);
+      } finally {
+        await permanentDeleteTable(baseId, table.id);
+      }
+    });
+
+    it('keeps BLANK as null in standalone formulas and IF branches across types', async () => {
+      const dueDateValue = '2025-02-02T00:00:00.000Z';
+      const table = await createTable(baseId, {
+        name: 'formula_blank_runtime',
+        fields: [
+          { name: 'Title', type: FieldType.SingleLineText } as IFieldRo,
+          { name: 'Amount', type: FieldType.Number } as IFieldRo,
+          {
+            name: 'Due',
+            type: FieldType.Date,
+            options: {
+              formatting: {
+                date: 'YYYY-MM-DD',
+                time: TimeFormatting.Hour24,
+                timeZone: 'UTC',
+              },
+            },
+          } as IFieldRo,
+        ],
+      });
+
+      try {
+        const titleField = table.fields.find((field) => field.name === 'Title')!;
+        const amountField = table.fields.find((field) => field.name === 'Amount')!;
+        const dueField = table.fields.find((field) => field.name === 'Due')!;
+
+        const blankField = (await createField(table.id, {
+          name: 'Standalone Blank',
+          type: FieldType.Formula,
+          options: { expression: 'BLANK()' },
+        })) as IFieldVo;
+
+        const dateWhenTrue = (await createField(table.id, {
+          name: 'Date When True',
+          type: FieldType.Formula,
+          options: { expression: `IF(TRUE, {${dueField.id}}, BLANK())` },
+        })) as IFieldVo;
+
+        const dateWhenFalse = (await createField(table.id, {
+          name: 'Blank When False',
+          type: FieldType.Formula,
+          options: { expression: `IF(FALSE, {${dueField.id}}, BLANK())` },
+        })) as IFieldVo;
+
+        const numberWhenTrue = (await createField(table.id, {
+          name: 'Number When True',
+          type: FieldType.Formula,
+          options: { expression: `IF(TRUE, {${amountField.id}}, BLANK())` },
+        })) as IFieldVo;
+
+        const numberWhenFalse = (await createField(table.id, {
+          name: 'Blank When False Number',
+          type: FieldType.Formula,
+          options: { expression: `IF(FALSE, {${amountField.id}}, BLANK())` },
+        })) as IFieldVo;
+
+        const { records } = await createRecords(table.id, {
+          fieldKeyType: FieldKeyType.Name,
+          records: [
+            {
+              fields: {
+                [titleField.name]: 'Row 1',
+                [amountField.name]: 12,
+                [dueField.name]: dueDateValue,
+              },
+            },
+          ],
+        });
+
+        const recordId = records[0].id;
+
+        const readValue = async (fieldId: string) => {
+          const record = await getRecord(table.id, recordId);
+          return record.fields?.[fieldId] ?? null;
+        };
+
+        expect(await readValue(blankField.id)).toBeNull();
+        expect(await readValue(dateWhenTrue.id)).toBe(dueDateValue);
+        expect(await readValue(dateWhenFalse.id)).toBeNull();
+        expect(await readValue(numberWhenTrue.id)).toBe(12);
+        expect(await readValue(numberWhenFalse.id)).toBeNull();
       } finally {
         await permanentDeleteTable(baseId, table.id);
       }
