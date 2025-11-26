@@ -1,3 +1,4 @@
+/* eslint-disable regexp/no-unused-capturing-group */
 /* eslint-disable sonarjs/cognitive-complexity */
 /* eslint-disable regexp/no-dupe-characters-character-class */
 /* eslint-disable sonarjs/no-duplicated-branches */
@@ -1402,6 +1403,13 @@ abstract class BaseSqlConversionVisitor<
       return '1';
     }
 
+    const trimmedLiteral = valueSql.trim();
+    if (/^[-+]?\d+(\.\d+)?$/.test(trimmedLiteral)) {
+      const literalNumber = Math.floor(Number(trimmedLiteral));
+      const clamped = Number.isFinite(literalNumber) ? Math.max(literalNumber, 0) : 0;
+      return clamped.toString();
+    }
+
     const type = this.inferExpressionType(exprCtx);
     const driver = this.context.driverClient ?? DriverClient.Pg;
 
@@ -1413,15 +1421,12 @@ abstract class BaseSqlConversionVisitor<
     }
 
     const numericExpr = this.safeCastToNumeric(valueSql);
-    const flooredExpr =
-      driver === DriverClient.Sqlite ? `CAST(${numericExpr} AS INTEGER)` : `FLOOR(${numericExpr})`;
-    const flooredWrapped = `(${flooredExpr})`;
-
-    return `(CASE
-      WHEN ${flooredWrapped} IS NULL THEN 0
-      WHEN ${flooredWrapped} < 0 THEN 0
-      ELSE ${flooredWrapped}
-    END)`;
+    if (driver === DriverClient.Sqlite) {
+      const flooredExpr = `CAST(${numericExpr} AS INTEGER)`;
+      return `COALESCE(CASE WHEN ${flooredExpr} < 0 THEN 0 ELSE ${flooredExpr} END, 0)`;
+    }
+    const flooredExpr = `FLOOR(${numericExpr})`;
+    return `COALESCE(GREATEST(${flooredExpr}, 0), 0)`;
   }
   private normalizeBooleanExpression(valueSql: string, exprCtx: ExprContext): string {
     const type = this.inferExpressionType(exprCtx);
@@ -1623,6 +1628,7 @@ abstract class BaseSqlConversionVisitor<
         cellValueType: fieldInfo?.cellValueType,
         isMultiple: Boolean(fieldInfo?.isMultipleCellValue),
         isLookup: Boolean(fieldInfo?.isLookup),
+        dbFieldName: fieldInfo?.dbFieldName,
         dbFieldType: fieldInfo?.dbFieldType,
       };
       return {

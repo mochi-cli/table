@@ -64,6 +64,9 @@ export class GeneratedColumnQueryPostgres extends GeneratedColumnQueryAbstract {
   }
 
   private toNumericSafe(expr: string, metadataIndex?: number): string {
+    if (this.isNumericLiteral(expr)) {
+      return `(${expr})::double precision`;
+    }
     const paramInfo = this.getParamInfo(metadataIndex);
     if (isBooleanLikeParam(paramInfo)) {
       const normalizedBoolean = this.normalizeBooleanCondition(expr, metadataIndex ?? 0);
@@ -728,7 +731,8 @@ export class GeneratedColumnQueryPostgres extends GeneratedColumnQueryAbstract {
 
   dateAdd(date: string, count: string, unit: string): string {
     const { unit: cleanUnit, factor } = this.normalizeIntervalUnit(unit.replace(/^'|'$/g, ''));
-    const scaledCount = factor === 1 ? `(${count})` : `(${count}) * ${factor}`;
+    const numericCount = this.toNumericSafe(count, 1);
+    const scaledCount = factor === 1 ? `(${numericCount})` : `(${numericCount}) * ${factor}`;
     const timestampExpr = this.castToTimestamp(date);
     if (cleanUnit === 'quarter') {
       return `${timestampExpr} + (${scaledCount}) * INTERVAL '1 month'`;
@@ -918,7 +922,12 @@ export class GeneratedColumnQueryPostgres extends GeneratedColumnQueryAbstract {
   // Logical Functions
   if(condition: string, valueIfTrue: string, valueIfFalse: string): string {
     const booleanCondition = this.normalizeBooleanCondition(condition, 0);
-    return `CASE WHEN (${booleanCondition}) THEN ${valueIfTrue} ELSE ${valueIfFalse} END`;
+    const trueIsText = this.isTextLikeExpression(valueIfTrue, 1);
+    const falseIsText = this.isTextLikeExpression(valueIfFalse, 2);
+    const normalizeText = trueIsText || falseIsText;
+    const trueBranch = normalizeText ? this.coerceToTextComparable(valueIfTrue, 1) : valueIfTrue;
+    const falseBranch = normalizeText ? this.coerceToTextComparable(valueIfFalse, 2) : valueIfFalse;
+    return `CASE WHEN (${booleanCondition}) THEN ${trueBranch} ELSE ${falseBranch} END`;
   }
 
   and(params: string[]): string {
@@ -967,14 +976,28 @@ export class GeneratedColumnQueryPostgres extends GeneratedColumnQueryAbstract {
     cases: Array<{ case: string; result: string }>,
     defaultResult?: string
   ): string {
-    let caseStatement = 'CASE';
+    const hasTextResult =
+      cases.some((c) => this.isTextLikeExpression(c.result)) ||
+      (defaultResult ? this.isTextLikeExpression(defaultResult) : false);
+
+    const normalizeResult = (value: string) =>
+      hasTextResult ? this.coerceToTextComparable(value) : value;
+
+    const normalizeCaseValue = (value: string) =>
+      hasTextResult ? this.coerceToTextComparable(value) : value;
+
+    const baseExpr = hasTextResult ? this.coerceToTextComparable(expression, 0) : expression;
+
+    let caseStatement = `CASE ${baseExpr}`;
 
     for (const caseItem of cases) {
-      caseStatement += ` WHEN ${expression} = ${caseItem.case} THEN ${caseItem.result}`;
+      caseStatement += ` WHEN ${normalizeCaseValue(caseItem.case)} THEN ${normalizeResult(
+        caseItem.result
+      )}`;
     }
 
     if (defaultResult) {
-      caseStatement += ` ELSE ${defaultResult}`;
+      caseStatement += ` ELSE ${normalizeResult(defaultResult)}`;
     }
 
     caseStatement += ' END';

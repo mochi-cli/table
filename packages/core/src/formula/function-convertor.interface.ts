@@ -10,6 +10,7 @@ export interface IFormulaParamFieldMetadata {
   cellValueType?: string;
   isMultiple?: boolean;
   isLookup?: boolean;
+  dbFieldName?: string;
   dbFieldType?: DbFieldType;
 }
 

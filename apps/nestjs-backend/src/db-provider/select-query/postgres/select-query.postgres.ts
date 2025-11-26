@@ -1,3 +1,4 @@
+/* eslint-disable regexp/no-unused-capturing-group */
 /* eslint-disable sonarjs/cognitive-complexity */
 import { DateFormattingPreset, DbFieldType, TimeFormatting } from '@teable/core';
 import type { IDatetimeFormatting } from '@teable/core';
@@ -73,6 +74,9 @@ export class SelectQueryPostgres extends SelectQueryAbstract {
   }
 
   private toNumericSafe(expr: string, metadataIndex?: number): string {
+    if (this.isNumericLiteral(expr)) {
+      return `(${expr})::double precision`;
+    }
     const paramInfo = this.getParamInfo(metadataIndex);
     if (isBooleanLikeParam(paramInfo)) {
       const boolScore = this.truthinessScore(expr, metadataIndex);
@@ -486,18 +490,45 @@ export class SelectQueryPostgres extends SelectQueryAbstract {
     return `CASE WHEN ${trimmed} IS NULL THEN NULL WHEN LOWER(${trimmed}) IN ('null', 'undefined') THEN NULL ELSE ${trimmed} END`;
   }
 
-  private tzWrap(date: string): string {
+  private isTrustedDatetime(expr: string, metadataIndex?: number): boolean {
+    const paramInfo = metadataIndex != null ? this.getParamInfo(metadataIndex) : undefined;
+    if (paramInfo?.hasMetadata) {
+      const looksDatetime =
+        isDatetimeLikeParam(paramInfo) ||
+        paramInfo.fieldDbType === DbFieldType.DateTime ||
+        paramInfo.fieldCellValueType === 'datetime';
+      if (looksDatetime && !paramInfo.isJsonField && !paramInfo.isMultiValueField) {
+        return true;
+      }
+      return false;
+    }
+    return false;
+  }
+
+  private isTimestampish(expr: string): boolean {
+    const trimmed = this.stripOuterParentheses(expr);
+    return (
+      /::timestamp(tz)?\b/i.test(trimmed) ||
+      /\bAT\s+TIME\s+ZONE\b/i.test(trimmed) ||
+      /^NOW\(\)/i.test(trimmed) ||
+      /^CURRENT_TIMESTAMP/i.test(trimmed)
+    );
+  }
+
+  private tzWrap(date: string, metadataIndex?: number): string {
     const tz = this.context?.timeZone as string | undefined;
-    const sanitized = this.sanitizeTimestampInput(date);
+    const trusted = this.isTrustedDatetime(date, metadataIndex);
+    const alreadyTimestamp = this.isTimestampish(date);
+    const needsSanitize = !(trusted || alreadyTimestamp);
+    const baseExpr = needsSanitize ? this.sanitizeTimestampInput(date) : `(${date})`;
+    const wrappedBase = needsSanitize ? `(${baseExpr})` : baseExpr;
+
     if (!tz) {
-      // Default behavior: interpret as timestamp without timezone
-      return `(${sanitized})::timestamp`;
+      return `${wrappedBase}::timestamp`;
     }
     // Sanitize single quotes to prevent SQL issues
     const safeTz = tz.replace(/'/g, "''");
-    // Interpret input as timestamptz if it has offset and convert to target timezone
-    // AT TIME ZONE returns timestamp without time zone in that zone
-    return `(${sanitized})::timestamptz AT TIME ZONE '${safeTz}'`;
+    return `${wrappedBase}::timestamptz AT TIME ZONE '${safeTz}'`;
   }
 
   private getDatePattern(date: DateFormattingPreset | string): string {
@@ -849,20 +880,22 @@ export class SelectQueryPostgres extends SelectQueryAbstract {
 
   dateAdd(date: string, count: string, unit: string): string {
     const { unit: cleanUnit, factor } = this.normalizeIntervalUnit(unit.replace(/^'|'$/g, ''));
-    const scaledCount = factor === 1 ? `(${count})` : `(${count}) * ${factor}`;
+    const numericCount = this.toNumericSafe(count, 1);
+    const scaledCount = factor === 1 ? `(${numericCount})` : `(${numericCount}) * ${factor}`;
+    const tsExpr = this.tzWrap(date, 0);
     if (cleanUnit === 'quarter') {
-      return `${this.tzWrap(date)} + (${scaledCount}) * INTERVAL '1 month'`;
+      return `${tsExpr} + (${scaledCount}) * INTERVAL '1 month'`;
     }
-    return `${this.tzWrap(date)} + (${scaledCount}) * INTERVAL '1 ${cleanUnit}'`;
+    return `${tsExpr} + (${scaledCount}) * INTERVAL '1 ${cleanUnit}'`;
   }
 
   datestr(date: string): string {
-    return `(${this.tzWrap(date)})::date::text`;
+    return `(${this.tzWrap(date, 0)})::date::text`;
   }
 
   private buildMonthDiff(startDate: string, endDate: string): string {
-    const startExpr = this.tzWrap(startDate);
-    const endExpr = this.tzWrap(endDate);
+    const startExpr = this.tzWrap(startDate, 0);
+    const endExpr = this.tzWrap(endDate, 1);
     const startYear = `EXTRACT(YEAR FROM ${startExpr})`;
     const endYear = `EXTRACT(YEAR FROM ${endExpr})`;
     const startMonth = `EXTRACT(MONTH FROM ${startExpr})`;
@@ -881,7 +914,10 @@ export class SelectQueryPostgres extends SelectQueryAbstract {
 
   datetimeDiff(startDate: string, endDate: string, unit: string): string {
     const diffUnit = this.normalizeDiffUnit(unit.replace(/^'|'$/g, ''));
-    const diffSeconds = `EXTRACT(EPOCH FROM (${this.tzWrap(startDate)} - ${this.tzWrap(endDate)}))`;
+    const diffSeconds = `EXTRACT(EPOCH FROM (${this.tzWrap(startDate, 0)} - ${this.tzWrap(
+      endDate,
+      1
+    )}))`;
     switch (diffUnit) {
       case 'millisecond':
         return `(${diffSeconds}) * 1000`;
@@ -909,7 +945,7 @@ export class SelectQueryPostgres extends SelectQueryAbstract {
 
   datetimeFormat(date: string, format: string): string {
     const normalizedFormat = normalizeAirtableDatetimeFormatExpression(format);
-    return `TO_CHAR(${this.tzWrap(date)}, ${normalizedFormat})`;
+    return `TO_CHAR(${this.tzWrap(date, 0)}, ${normalizedFormat})`;
   }
 
   datetimeParse(dateString: string, format?: string): string {
@@ -938,27 +974,27 @@ export class SelectQueryPostgres extends SelectQueryAbstract {
   }
 
   day(date: string): string {
-    return `EXTRACT(DAY FROM ${this.tzWrap(date)})::int`;
+    return `EXTRACT(DAY FROM ${this.tzWrap(date, 0)})::int`;
   }
 
   fromNow(date: string): string {
     const tz = this.context?.timeZone?.replace(/'/g, "''");
     if (tz) {
-      return `EXTRACT(EPOCH FROM ((NOW() AT TIME ZONE '${tz}') - ${this.tzWrap(date)}))`;
+      return `EXTRACT(EPOCH FROM ((NOW() AT TIME ZONE '${tz}') - ${this.tzWrap(date, 0)}))`;
     }
     return `EXTRACT(EPOCH FROM (NOW() - ${date}::timestamp))`;
   }
 
   hour(date: string): string {
-    return `EXTRACT(HOUR FROM ${this.tzWrap(date)})::int`;
+    return `EXTRACT(HOUR FROM ${this.tzWrap(date, 0)})::int`;
   }
 
   isAfter(date1: string, date2: string): string {
-    return `${this.tzWrap(date1)} > ${this.tzWrap(date2)}`;
+    return `${this.tzWrap(date1, 0)} > ${this.tzWrap(date2, 1)}`;
   }
 
   isBefore(date1: string, date2: string): string {
-    return `${this.tzWrap(date1)} < ${this.tzWrap(date2)}`;
+    return `${this.tzWrap(date1, 0)} < ${this.tzWrap(date2, 1)}`;
   }
 
   isSame(date1: string, date2: string, unit?: string): string {
@@ -968,11 +1004,14 @@ export class SelectQueryPostgres extends SelectQueryAbstract {
         const literal = trimmed.slice(1, -1);
         const normalizedUnit = this.normalizeTruncateUnit(literal);
         const safeUnit = normalizedUnit.replace(/'/g, "''");
-        return `DATE_TRUNC('${safeUnit}', ${this.tzWrap(date1)}) = DATE_TRUNC('${safeUnit}', ${this.tzWrap(date2)})`;
+        return `DATE_TRUNC('${safeUnit}', ${this.tzWrap(date1, 0)}) = DATE_TRUNC('${safeUnit}', ${this.tzWrap(date2, 1)})`;
       }
-      return `DATE_TRUNC(${unit}, ${this.tzWrap(date1)}) = DATE_TRUNC(${unit}, ${this.tzWrap(date2)})`;
+      return `DATE_TRUNC(${unit}, ${this.tzWrap(date1, 0)}) = DATE_TRUNC(${unit}, ${this.tzWrap(
+        date2,
+        1
+      )})`;
     }
-    return `${this.tzWrap(date1)} = ${this.tzWrap(date2)}`;
+    return `${this.tzWrap(date1, 0)} = ${this.tzWrap(date2, 1)}`;
   }
 
   lastModifiedTime(): string {
@@ -981,40 +1020,40 @@ export class SelectQueryPostgres extends SelectQueryAbstract {
   }
 
   minute(date: string): string {
-    return `EXTRACT(MINUTE FROM ${this.tzWrap(date)})::int`;
+    return `EXTRACT(MINUTE FROM ${this.tzWrap(date, 0)})::int`;
   }
 
   month(date: string): string {
-    return `EXTRACT(MONTH FROM ${this.tzWrap(date)})::int`;
+    return `EXTRACT(MONTH FROM ${this.tzWrap(date, 0)})::int`;
   }
 
   second(date: string): string {
-    return `EXTRACT(SECOND FROM ${this.tzWrap(date)})::int`;
+    return `EXTRACT(SECOND FROM ${this.tzWrap(date, 0)})::int`;
   }
 
   timestr(date: string): string {
-    return `(${this.tzWrap(date)})::time::text`;
+    return `(${this.tzWrap(date, 0)})::time::text`;
   }
 
   toNow(date: string): string {
     const tz = this.context?.timeZone?.replace(/'/g, "''");
     if (tz) {
-      return `EXTRACT(EPOCH FROM (${this.tzWrap(date)} - (NOW() AT TIME ZONE '${tz}')))`;
+      return `EXTRACT(EPOCH FROM (${this.tzWrap(date, 0)} - (NOW() AT TIME ZONE '${tz}')))`;
     }
     return `EXTRACT(EPOCH FROM (${date}::timestamp - NOW()))`;
   }
 
   weekNum(date: string): string {
-    return `EXTRACT(WEEK FROM ${this.tzWrap(date)})::int`;
+    return `EXTRACT(WEEK FROM ${this.tzWrap(date, 0)})::int`;
   }
 
   weekday(date: string): string {
-    return `EXTRACT(DOW FROM ${this.tzWrap(date)})::int`;
+    return `EXTRACT(DOW FROM ${this.tzWrap(date, 0)})::int`;
   }
 
   workday(startDate: string, days: string): string {
     // Simplified implementation in the target timezone
-    return `(${this.tzWrap(startDate)})::date + INTERVAL '${days} days'`;
+    return `(${this.tzWrap(startDate, 0)})::date + INTERVAL '${days} days'`;
   }
 
   workdayDiff(startDate: string, endDate: string): string {
@@ -1023,7 +1062,7 @@ export class SelectQueryPostgres extends SelectQueryAbstract {
   }
 
   year(date: string): string {
-    return `EXTRACT(YEAR FROM ${this.tzWrap(date)})::int`;
+    return `EXTRACT(YEAR FROM ${this.tzWrap(date, 0)})::int`;
   }
 
   createdTime(): string {
@@ -1066,7 +1105,12 @@ export class SelectQueryPostgres extends SelectQueryAbstract {
 
   if(condition: string, valueIfTrue: string, valueIfFalse: string): string {
     const truthinessScore = this.truthinessScore(condition, 0);
-    return `CASE WHEN (${truthinessScore}) = 1 THEN ${valueIfTrue} ELSE ${valueIfFalse} END`;
+    const trueIsText = this.isTextLikeExpression(valueIfTrue, 1);
+    const falseIsText = this.isTextLikeExpression(valueIfFalse, 2);
+    const normalizeText = trueIsText || falseIsText;
+    const trueBranch = normalizeText ? this.coerceToTextComparable(valueIfTrue, 1) : valueIfTrue;
+    const falseBranch = normalizeText ? this.coerceToTextComparable(valueIfFalse, 2) : valueIfFalse;
+    return `CASE WHEN (${truthinessScore}) = 1 THEN ${trueBranch} ELSE ${falseBranch} END`;
   }
 
   and(params: string[]): string {
@@ -1109,12 +1153,23 @@ export class SelectQueryPostgres extends SelectQueryAbstract {
     cases: Array<{ case: string; result: string }>,
     defaultResult?: string
   ): string {
-    let sql = `CASE ${expression}`;
+    const hasTextResult =
+      cases.some((c) => this.isTextLikeExpression(c.result)) ||
+      (defaultResult ? this.isTextLikeExpression(defaultResult) : false);
+
+    const normalizeResult = (value: string) =>
+      hasTextResult ? this.coerceToTextComparable(value) : value;
+
+    const normalizeCaseValue = (value: string) =>
+      hasTextResult ? this.coerceToTextComparable(value) : value;
+
+    const baseExpr = hasTextResult ? this.coerceToTextComparable(expression, 0) : expression;
+    let sql = `CASE ${baseExpr}`;
     for (const caseItem of cases) {
-      sql += ` WHEN ${caseItem.case} THEN ${caseItem.result}`;
+      sql += ` WHEN ${normalizeCaseValue(caseItem.case)} THEN ${normalizeResult(caseItem.result)}`;
     }
     if (defaultResult) {
-      sql += ` ELSE ${defaultResult}`;
+      sql += ` ELSE ${normalizeResult(defaultResult)}`;
     }
     sql += ` END`;
     return sql;
