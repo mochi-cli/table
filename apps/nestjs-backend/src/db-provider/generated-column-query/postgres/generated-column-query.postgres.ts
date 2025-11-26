@@ -672,7 +672,8 @@ export class GeneratedColumnQueryPostgres extends GeneratedColumnQueryAbstract {
   }
 
   len(text: string): string {
-    const operand = this.coerceToTextComparable(text, 0);
+    // Force text to prevent LENGTH() from receiving numeric/JSON operands (e.g., auto-number)
+    const operand = this.ensureTextCollation(this.coerceToTextComparable(text, 0));
     return `LENGTH(${operand})`;
   }
 
@@ -1046,7 +1047,9 @@ export class GeneratedColumnQueryPostgres extends GeneratedColumnQueryAbstract {
     const falseIsText = this.isTextLikeExpression(valueIfFalse, 2);
     const trueIsHardText = this.isHardTextExpression(valueIfTrue);
     const falseIsHardText = this.isHardTextExpression(valueIfFalse);
-    const numericWithBlank = (trueIsBlank && !falseIsHardText) || (falseIsBlank && !trueIsHardText);
+    const numericWithBlank =
+      (trueIsBlank && !falseIsHardText && !falseIsText) ||
+      (falseIsBlank && !trueIsHardText && !trueIsText);
     if (numericWithBlank) {
       const trueBranchNumeric = trueIsBlank ? 'NULL' : this.toNumericSafe(valueIfTrue, 1);
       const falseBranchNumeric = falseIsBlank ? 'NULL' : this.toNumericSafe(valueIfFalse, 2);

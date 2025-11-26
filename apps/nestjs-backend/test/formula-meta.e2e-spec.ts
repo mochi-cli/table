@@ -140,6 +140,60 @@ describe('Formula meta persistedAsGeneratedColumn (e2e)', () => {
     });
   });
 
+  describe('datetime concatenation should not use generated column', () => {
+    let table: ITableFullVo;
+
+    beforeEach(async () => {
+      table = await createTable(baseId, {
+        name: 'formula-meta-datetime-concat',
+        fields: [
+          { name: 'Title', type: FieldType.SingleLineText },
+          {
+            name: 'Planned Time',
+            type: FieldType.Date,
+            options: {
+              formatting: { date: 'YYYY-MM-DD', time: 'HH:mm', timeZone: 'Asia/Shanghai' },
+            },
+          },
+        ],
+        records: [{ fields: { Title: 'Task', 'Planned Time': '2024-02-01 08:00' } }],
+      });
+    });
+
+    afterEach(async () => {
+      if (table?.id) {
+        await deleteTable(baseId, table.id);
+      }
+    });
+
+    it('marks CONCATENATE with datetime args as non-generated and duplicates safely', async () => {
+      const titleId = table.fields.find((f) => f.name === 'Title')!.id;
+      const plannedId = table.fields.find((f) => f.name === 'Planned Time')!.id;
+
+      const created = await createField(table.id, {
+        name: 'Concat Formula',
+        type: FieldType.Formula,
+        options: {
+          expression: `CONCATENATE({${titleId}}, {${plannedId}})`,
+          timeZone: 'Asia/Shanghai',
+        },
+      });
+
+      const createdRaw = await prisma.field.findUniqueOrThrow({
+        where: { id: created.id },
+        select: { meta: true },
+      });
+      expect(parsePersistedMeta(createdRaw.meta)?.persistedAsGeneratedColumn).not.toBe(true);
+
+      const duplicated = await duplicateField(table.id, created.id, { name: 'Concat Copy' });
+      const duplicatedRaw = await prisma.field.findUniqueOrThrow({
+        where: { id: duplicated.data.id },
+        select: { meta: true },
+      });
+      expect(parsePersistedMeta(duplicatedRaw.meta)?.persistedAsGeneratedColumn).not.toBe(true);
+    });
+  });
+
   describe('convert to formula should persist meta', () => {
     let table: ITableFullVo;
 

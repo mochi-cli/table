@@ -611,6 +611,21 @@ export class FormulaSupportGeneratedColumnValidator {
         }
         return this.visitChildren(ctx);
       }
+
+      visitFunctionCall(ctx: FunctionCallContext): boolean {
+        const rawName = ctx.func_name().text.toUpperCase();
+        const fnName = normalizeFunctionNameAlias(rawName) as FunctionName;
+        if (fnName === FunctionName.Concatenate) {
+          const hasDatetimeArg = ctx.expr().some((exprCtx) => {
+            return self.inferBasicType(exprCtx) === 'datetime';
+          });
+          if (hasDatetimeArg) {
+            return true;
+          }
+        }
+
+        return this.visitChildren(ctx);
+      }
     }
 
     return tree.accept(new DatetimeConcatDetector()) ?? false;
