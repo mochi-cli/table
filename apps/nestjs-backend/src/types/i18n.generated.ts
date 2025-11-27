@@ -1253,10 +1253,10 @@ export type I18nTranslations = {
         "editor": {
             "attachment": {
                 "uploadDragOver": string;
-                "uploadDragDefault": string;
-                "upload": string;
                 "uploadBaseTextPrefix": string;
                 "uploadBaseText": string;
+                "uploadDragDefault": string;
+                "upload": string;
             };
             "date": {
                 "placeholder": string;
@@ -1389,6 +1389,10 @@ export type I18nTranslations = {
                     "isLessEqual": string;
                 };
             };
+            "conditionalRollup": {
+                "switchToField": string;
+                "switchToValue": string;
+            };
             "component": {
                 "date": {
                     "today": string;
@@ -1420,10 +1424,6 @@ export type I18nTranslations = {
                     "pastNumberOfDays": string;
                     "nextNumberOfDays": string;
                 };
-            };
-            "conditionalRollup": {
-                "switchToField": string;
-                "switchToValue": string;
             };
         };
         "color": {
@@ -1473,7 +1473,6 @@ export type I18nTranslations = {
             };
             "showHiddenFields": string;
             "hideHiddenFields": string;
-            "\u041A\u043E\u043F\u0456\u044E\u0432\u0430\u0442\u0438": string;
         };
         "sort": {
             "label": string;
@@ -1588,6 +1587,7 @@ export type I18nTranslations = {
                 "recordDelete": string;
                 "recordRead": string;
                 "recordUpdate": string;
+                "recordCopy": string;
                 "automationCreate": string;
                 "automationDelete": string;
                 "automationRead": string;
@@ -1600,7 +1600,6 @@ export type I18nTranslations = {
                 "instanceUpdate": string;
                 "enterpriseRead": string;
                 "enterpriseUpdate": string;
-                "recordCopy": string;
             };
         };
         "noun": {
@@ -1970,7 +1969,6 @@ export type I18nTranslations = {
             "dateRangeOfDays": string;
             "dateRangeOfMonths": string;
             "totalAttachmentSize": string;
-            "%percentChecked": string;
         };
         "baseQuery": {
             "add": string;
@@ -2087,23 +2085,84 @@ export type I18nTranslations = {
                 "dependencyNodeRequire": string;
                 "invalidOperation": string;
             };
-            "email": {
-                "testEmailError": string;
-            };
             "comment": {
                 "listCountExceeded": string;
                 "invalidContentType": string;
+            };
+            "attachment": {
+                "tokenExpireInTooLong": string;
+                "s3RegionRequired": string;
+                "s3EndpointRequired": string;
+                "s3AccessKeyRequired": string;
+                "s3SecretKeyRequired": string;
+                "s3UploadMethodMustBePut": string;
+                "presignedError": string;
+                "invalidObjectMeta": string;
+                "invalidImageStream": string;
+                "calculateImageSizeFailed": string;
+                "uploadFailed": string;
+                "invalidImage": string;
+                "cantGetImageStream": string;
+                "invalidProvider": string;
+                "failedToDeleteDirectory": string;
+                "invalidToken": string;
+                "tokenExpired": string;
+                "sizeMismatch": string;
+                "notAllowUploadFileType": string;
+                "notFound": string;
+                "invalidPath": string;
+                "fileSizeExceedsMaximumLimit": string;
+                "invalidUploadType": string;
+                "urlReject": string;
+            };
+            "email": {
+                "testEmailError": string;
+            };
+            "auth": {
+                "invalidConfirm": string;
+                "emailNotRegistered": string;
+                "passwordNotSet": string;
+                "systemUser": string;
+                "alreadyRegistered": string;
+                "passwordIncorrect": string;
+                "tokenInvalid": string;
+                "passwordAlreadyExists": string;
+                "verificationCodeInvalid": string;
+                "newEmailSameAsCurrentEmail": string;
+                "emailAlreadyRegistered": string;
+                "waitlistNotEnabled": string;
+                "emailOrPasswordIncorrect": string;
+                "accountDeactivated": string;
+                "accountLockedOut": string;
             };
             "automation": {
                 "buttonClickTriggerDuplicated": string;
                 "triggerNotFound": string;
                 "nodeNotFound": string;
-                "workflowNotFound": string;
                 "triggerTestFailed": string;
-                "workflowTestFailed": string;
+                "testFailed": string;
                 "nodeParseError": string;
                 "nodeNeedTest": string;
                 "nodeTestOutdated": string;
+                "notFound": string;
+                "currentSnapshotEmpty": string;
+                "runNotFound": string;
+                "anchorNotFound": string;
+                "validationError": string;
+                "tableNotInBase": string;
+                "alreadyActiveAndNotDraft": string;
+                "noActiveSnapshot": string;
+                "triggerNodeAlreadyExists": string;
+                "generateLogicError": string;
+                "logicNotFound": string;
+                "actionNotFound": string;
+                "unSupportDuplicateWorkflowNodeType": string;
+                "unSupportLogicType": string;
+                "groupEndNotFound": string;
+                "insertNodeError": string;
+                "controlNodeNotBeTested": string;
+                "invalidNodeType": string;
+                "unsupportedCategory": string;
             };
             "space": {
                 "notFound": string;
@@ -2111,6 +2170,10 @@ export type I18nTranslations = {
                 "disallowSpaceCreation": string;
                 "cannotChangeOnlyOwnerRole": string;
                 "cannotDeleteOnlyOwner": string;
+                "deleted": string;
+                "cannotOperate": string;
+                "notBelongToOrg": string;
+                "invalidSpaceIds": string;
             };
             "base": {
                 "notFound": string;
@@ -2135,6 +2198,29 @@ export type I18nTranslations = {
             };
             "pluginInstall": {
                 "notFound": string;
+            };
+            "share": {
+                "incorrectPassword": string;
+                "notAllowedToSubmit": string;
+                "viewRequired": string;
+                "hiddenFieldsSubmissionNotAllowed": string;
+                "submitRecordsError": string;
+                "notAllowedToCopy": string;
+                "fieldHiddenNotAllowed": string;
+                "fieldTypeNotLinkField": string;
+                "fieldIdRequired": string;
+                "fieldNotUserRelatedField": string;
+                "viewTypeNotAllowed": string;
+            };
+            "shareAuth": {
+                "passwordRestrictionNotEnabled": string;
+                "shareViewNotFound": string;
+                "linkFieldNotFound": string;
+            };
+            "shareSocket": {
+                "viewPermissionNotAllowed": string;
+                "fieldPermissionNotAllowed": string;
+                "recordPermissionNotAllowed": string;
             };
             "pluginContextMenu": {
                 "notFound": string;
@@ -2165,6 +2251,32 @@ export type I18nTranslations = {
                 "deleteRecords": string;
                 "readRecordWithDeniedFields": string;
                 "updateRecordWithDeniedFields": string;
+                "checkIdNotExist": string;
+                "userNotAdmin": string;
+                "accessTokenNoPermission": string;
+                "invalidResource": string;
+                "notAllowedSpace": string;
+                "notAllowedBase": string;
+                "notAllowedTables": string;
+                "notAllowedOperationTable": string;
+                "notAllowedOperationRecord": string;
+                "notAllowedRecordUpdate": string;
+                "notAllowedOperationView": string;
+                "deniedByEnabledAuthorityMatrix": string;
+                "invalidRequestPath": string;
+                "notAllowedOperation": string;
+                "notAllowedDepartment": string;
+            };
+            "authorityMatrix": {
+                "defaultRoleNotFound": string;
+                "alreadyDisabled": string;
+                "alreadyEnabled": string;
+                "notFound": string;
+                "primaryFieldCannotBeDisabledForRead": string;
+                "fieldDuplicated": string;
+                "cannotSetRecordPermissionGroup": string;
+                "notFoundBaseAndTable": string;
+                "roleTablesShouldNotBeEmpty": string;
             };
             "selection": {
                 "invalidReturnType": string;
@@ -2185,7 +2297,8 @@ export type I18nTranslations = {
                 "dbFieldNameAlreadyExists": string;
                 "fieldValidationError": string;
                 "fieldNameAlreadyExists": string;
-                "fieldNotFound": string;
+                "notFound": string;
+                "fieldKeyTypeNotFound": string;
                 "notFoundInTable": string;
                 "deleteFieldsNotFound": string;
                 "lookupValuesShouldBeArray": string;
@@ -2209,12 +2322,21 @@ export type I18nTranslations = {
                 "lookupFieldTypeNotEqual": string;
                 "recordNotFound": string;
                 "linkCellRecordIdAlreadyExists": string;
-                "linkConsistencyError": string;
                 "oneOneLinkCellValueCannotBeArray": string;
                 "manyOneLinkCellValueCannotBeArray": string;
+                "foreignKeyDuplicate": string;
+                "linkConsistencyError": string;
                 "oneManyLinkCellValueShouldBeArray": string;
                 "manyManyLinkCellValueShouldBeArray": string;
-                "foreignKeyDuplicate": string;
+                "onlyLinkFieldCanBeFiltered": string;
+                "notLinkedToCurrentTable": string;
+                "notAttachment": string;
+                "isComputed": string;
+                "notFoundAICofig": string;
+                "button": {
+                    "clickCountReachedMaxCount": string;
+                    "notSupportReset": string;
+                };
             };
             "view": {
                 "notFound": string;
@@ -2232,6 +2354,7 @@ export type I18nTranslations = {
             };
             "billing": {
                 "insufficientCredit": string;
+                "exceedMaxRowLimit": string;
             };
             "aggregation": {
                 "searchQueryRequired": string;
@@ -2241,6 +2364,8 @@ export type I18nTranslations = {
                 "indexNotFound": string;
                 "invalidStartDateFieldId": string;
                 "invalidEndDateFieldId": string;
+                "fieldMapRequired": string;
+                "filterLinkCellQueryConflict": string;
             };
             "ai": {
                 "chatModelLgNotSet": string;
@@ -2251,6 +2376,15 @@ export type I18nTranslations = {
                 "unsupportedProvider": string;
                 "providerConfigurationNotSet": string;
                 "testLLMFailed": string;
+                "audioNotSupported": string;
+                "imageNotSupported": string;
+                "modelNotSet": string;
+                "unsupportedFileType": string;
+                "unsupportedModelType": string;
+                "embeddingModelNotSet": string;
+                "validateActionFailed": string;
+                "generateFailed": string;
+                "unsupportedActionType": string;
             };
             "role": {
                 "notFound": string;
@@ -2266,6 +2400,7 @@ export type I18nTranslations = {
                 "userNotFound": string;
                 "baseNotFound": string;
                 "noPermissionToAddRole": string;
+                "departmentNotFound": string;
             };
             "table": {
                 "notFound": string;
@@ -2275,6 +2410,7 @@ export type I18nTranslations = {
                 "notSupportTableIndex": string;
                 "createTableIndexError": string;
                 "dropTableIndexError": string;
+                "notFoundPrimaryField": string;
             };
             "export": {
                 "notSupportViewType": string;
@@ -2303,12 +2439,58 @@ export type I18nTranslations = {
                 "parentBaseOrSpaceTrashed": string;
                 "tableNotFound": string;
             };
+            "license": {
+                "invalid": string;
+                "instanceIdMismatch": string;
+                "expired": string;
+                "userLimitExceeded": string;
+            };
+            "domainVerification": {
+                "notFound": string;
+                "invalidCode": string;
+                "resendCooldown": string;
+            };
+            "organization": {
+                "notFound": string;
+                "authenticationNotFound": string;
+                "spaceShouldExist": string;
+                "emailsNotInOrgDomain": string;
+                "emailNotSpaceUser": string;
+            };
+            "mail": {
+                "failedToSendEmail": string;
+            };
             "user": {
                 "disallowSignUp": string;
                 "waitlistInviteCodeRequired": string;
                 "waitlistInviteCodeInvalid": string;
                 "systemUser": string;
                 "collaboratorsInSpaces": string;
+                "notFound": string;
+                "cannotDeleteAdmin": string;
+                "cannotDeactivateAdmin": string;
+                "cannotRemoveLastAdmin": string;
+                "permanentDeleted": string;
+                "cannotDeleteSelf": string;
+                "alreadyInDepartment": string;
+                "emailsNotFound": string;
+                "deleted": string;
+                "alreadyInOrg": string;
+                "notInOrg": string;
+            };
+            "record": {
+                "notFound": string;
+                "deletedIdsNotFound": string;
+                "updateFailed": string;
+                "noFileOrUrlProvided": string;
+                "createRecordsEmpty": string;
+                "duplicateFailed": string;
+            };
+            "typecast": {
+                "cellValueValidationFailed": string;
+            };
+            "workflow": {
+                "notActive": string;
             };
             "lastVisit": {
                 "invalidResourceType": string;
@@ -2318,21 +2500,11 @@ export type I18nTranslations = {
                 "sourceTemplateNotFound": string;
                 "noMinOrderFound": string;
             };
-        };
-        "spaceRole": {
-            "role": {
-                "owner": string;
-                "creator": string;
-                "editor": string;
-                "commenter": string;
-                "viewer": string;
-            };
-            "description": {
-                "owner": string;
-                "creator": string;
-                "editor": string;
-                "commenter": string;
-                "viewer": string;
+            "department": {
+                "parentNotFound": string;
+                "notFound": string;
+                "cannotMoveToItself": string;
+                "cannotMoveToSub": string;
             };
         };
     };

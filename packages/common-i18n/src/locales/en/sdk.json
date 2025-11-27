@@ -891,26 +891,91 @@
       "listCountExceeded": "The number of comments requested exceeds the maximum limit of 1000",
       "invalidContentType": "Invalid comment content type"
     },
+    "attachment": {
+      "tokenExpireInTooLong": "Token expiration must be less than 7 days",
+      "s3RegionRequired": "S3 region is required",
+      "s3EndpointRequired": "S3 endpoint is required",
+      "s3AccessKeyRequired": "S3 access key is required",
+      "s3SecretKeyRequired": "S3 secret key is required",
+      "s3UploadMethodMustBePut": "S3 upload method must be PUT",
+      "presignedError": "Failed to generate presigned URL",
+      "invalidObjectMeta": "Invalid object metadata",
+      "invalidImageStream": "Invalid image stream",
+      "calculateImageSizeFailed": "Failed to calculate image size",
+      "uploadFailed": "Upload failed",
+      "invalidImage": "Invalid image",
+      "cantGetImageStream": "Cannot get image stream",
+      "invalidProvider": "Invalid storage provider",
+      "failedToDeleteDirectory": "Failed to delete directory",
+      "invalidToken": "Invalid token",
+      "tokenExpired": "Token has expired",
+      "sizeMismatch": "File size mismatch",
+      "notAllowUploadFileType": "File type {{mimetype}} not allowed for upload",
+      "notFound": "Attachment not found",
+      "invalidPath": "Invalid attachment path",
+      "fileSizeExceedsMaximumLimit": "File size exceeds the maximum limit of {{maxSize}}",
+      "invalidUploadType": "Invalid upload type",
+      "urlReject": "URL rejected or inaccessible"
+    },
     "email": {
       "testEmailError": "Mail config error {{message}}"
     },
+    "auth": {
+      "invalidConfirm": "Invalid confirmation input",
+      "emailNotRegistered": "This email is not registered",
+      "passwordNotSet": "Password has not been set for this account",
+      "systemUser": "This is a system user account",
+      "alreadyRegistered": "This email is already registered",
+      "passwordIncorrect": "The password is incorrect",
+      "tokenInvalid": "The token is invalid or has expired",
+      "passwordAlreadyExists": "Password has already been set for this account",
+      "verificationCodeInvalid": "The verification code is invalid or has expired",
+      "newEmailSameAsCurrentEmail": "The new email address is the same as the current one",
+      "emailAlreadyRegistered": "This email address is already registered",
+      "waitlistNotEnabled": "The waitlist feature is not enabled",
+      "emailOrPasswordIncorrect": "Email or password is incorrect",
+      "accountDeactivated": "This account has been deactivated by the administrator",
+      "accountLockedOut": "Your account has been locked due to too many failed login attempts. Please try again later."
+    },
     "automation": {
       "buttonClickTriggerDuplicated": "This button field is already bound to {{name}}[{{id}}] this automation process, please select another button field",
-      "triggerNotFound": "trigger not found",
+      "triggerNotFound": "Automation must have a trigger node",
       "nodeNotFound": "{{nodeId}} node not found",
-      "workflowNotFound": "{{workflowId}} workflow not found",
       "triggerTestFailed": "Trigger test failed, please check the trigger configuration",
-      "workflowTestFailed": "Workflow test failed, please check the workflow configuration",
+      "testFailed": "Automation test failed, please check the automation configuration",
       "nodeParseError": "{{name}} node configuration is incomplete or has errors, please check the node configuration",
       "nodeNeedTest": "{{name}} node needs to be tested",
-      "nodeTestOutdated": "{{name}} node test outdated"
+      "nodeTestOutdated": "{{name}} node test outdated",
+      "notFound": "Automation not found",
+      "currentSnapshotEmpty": "Automation current snapshot is empty",
+      "runNotFound": "Automation run not found",
+      "anchorNotFound": "Anchor automation not found",
+      "validationError": "Automation configuration validation error",
+      "tableNotInBase": "You can only subscribe to a table within your base",
+      "alreadyActiveAndNotDraft": "Automation already active and not draft",
+      "noActiveSnapshot": "Automation has no active snapshot",
+      "triggerNodeAlreadyExists": "This automation already has a trigger node",
+      "unSupportLogicType": "Unsupported logic type",
+      "generateLogicError": "Generate logic node error",
+      "logicNotFound": "Automation logic node not found",
+      "groupEndNotFound": "GroupEnd not found for logic",
+      "insertNodeError": "Insert node error",
+      "actionNotFound": "Automation action node not found",
+      "unSupportDuplicateWorkflowNodeType": "UnSupport duplicate automation node type",
+      "controlNodeNotBeTested": "Control node should not be tested",
+      "invalidNodeType": "Invalid node type",
+      "unsupportedCategory": "Unsupported category"
     },
     "space": {
       "notFound": "Space not found",
       "noPermission": "You have no permission to access this space",
       "disallowSpaceCreation": "Space creation has been disabled by the administrator",
       "cannotChangeOnlyOwnerRole": "Cannot change the role of the only owner of the space",
-      "cannotDeleteOnlyOwner": "Cannot delete the only owner of the space"
+      "cannotDeleteOnlyOwner": "Cannot delete the only owner of the space",
+      "deleted": "Space has been deleted",
+      "cannotOperate": "Can't operate on a space, please verify that there are organization members in the space and they are owners",
+      "notBelongToOrg": "This space not belong to the organization",
+      "invalidSpaceIds": "Space ids is invalid: {{spaceIds}}"
     },
     "base": {
       "notFound": "Base not found",
@@ -935,6 +1000,29 @@
     },
     "pluginInstall": {
       "notFound": "Plugin not installed"
+    },
+    "share": {
+      "incorrectPassword": "Incorrect password",
+      "notAllowedToSubmit": "Form submission is not allowed",
+      "viewRequired": "View is required for this operation",
+      "hiddenFieldsSubmissionNotAllowed": "Form submission is not allowed when hidden fields are included",
+      "submitRecordsError": "Record submission failed",
+      "notAllowedToCopy": "Copy operation is not allowed",
+      "fieldHiddenNotAllowed": "Field is hidden and cannot be accessed",
+      "fieldTypeNotLinkField": "Field is not a link field",
+      "fieldIdRequired": "Field ID is required",
+      "fieldNotUserRelatedField": "Field is not a user-related field",
+      "viewTypeNotAllowed": "This view type is not allowed for this operation"
+    },
+    "shareAuth": {
+      "passwordRestrictionNotEnabled": "Password restriction is not enabled for this shared view",
+      "shareViewNotFound": "Shared view not found or sharing is disabled",
+      "linkFieldNotFound": "Link field not found"
+    },
+    "shareSocket": {
+      "viewPermissionNotAllowed": "You do not have permission to access this view",
+      "fieldPermissionNotAllowed": "You do not have permission to access these fields",
+      "recordPermissionNotAllowed": "You do not have permission to access these records"
     },
     "pluginContextMenu": {
       "notFound": "Plugin context menu not found",
@@ -964,7 +1052,33 @@
       "createRecordWithDeniedFields": "You don't have permission to create record with fields({{fields}})",
       "deleteRecords": "You don't have permission to delete records({{recordIds}})",
       "readRecordWithDeniedFields": "You don't have permission to read fields({{fields}}) in record({{recordId}})",
-      "updateRecordWithDeniedFields": "You don't have permission to update fields({{fields}}) in record({{recordId}})"
+      "updateRecordWithDeniedFields": "You don't have permission to update fields({{fields}}) in record({{recordId}})",
+      "checkIdNotExist": "Permission check ID does not exist",
+      "userNotAdmin": "User is not an admin",
+      "accessTokenNoPermission": "Access token does not have the required permission",
+      "invalidResource": "Resource is not valid",
+      "notAllowedSpace": "You don't have permission to access this space",
+      "notAllowedBase": "You don't have permission to access this base",
+      "notAllowedTables": "You don't have permission to access tables({{tableIds}})",
+      "notAllowedOperationTable": "You don't have permission to operate on this table",
+      "notAllowedOperationRecord": "You don't have permission to operate on this record",
+      "notAllowedRecordUpdate": "You don't have permission to update this record",
+      "notAllowedOperationView": "You don't have permission to operate on this view",
+      "deniedByEnabledAuthorityMatrix": "Permission denied by enabled authority matrix",
+      "invalidRequestPath": "Request path is not valid",
+      "notAllowedOperation": "You don't have permission to perform this operation",
+      "notAllowedDepartment": "You are not allowed to access this department"
+    },
+    "authorityMatrix": {
+      "defaultRoleNotFound": "Default role not found",
+      "alreadyDisabled": "Authority matrix is already disabled",
+      "alreadyEnabled": "Authority matrix is already enabled",
+      "notFound": "Authority matrix not found",
+      "primaryFieldCannotBeDisabledForRead": "Primary field cannot be disabled for read access",
+      "fieldDuplicated": "Field is duplicated in permission configuration",
+      "cannotSetRecordPermissionGroup": "Cannot set this combination of record permissions({{actions}})",
+      "notFoundBaseAndTable": "Base ID and Table ID not found",
+      "roleTablesShouldNotBeEmpty": "Authority matrix role tables should not be empty"
     },
     "selection": {
       "invalidReturnType": "Invalid return type",
@@ -985,7 +1099,8 @@
       "dbFieldNameAlreadyExists": "Database field name {{dbFieldName}} already exists",
       "fieldValidationError": "Field {{name}}[{{fieldId}}] field validation error",
       "fieldNameAlreadyExists": "Field name {{name}} already exists",
-      "fieldNotFound": "field {{fieldId}} not found",
+      "notFound": "field not found",
+      "fieldKeyTypeNotFound": "Field \"{{fieldKeyType}}: {{missedFields}}\" not found",
       "notFoundInTable": "field {{fieldId}} not found in table {{tableId}}",
       "deleteFieldsNotFound": "Delete fields {{fieldIds}} not found in table {{tableId}}",
       "lookupValuesShouldBeArray": "lookupValues should be array when link field is multiple cell value",
@@ -1009,9 +1124,21 @@
       "lookupFieldTypeNotEqual": "Current field type {{fieldType}} is not equal to lookup field {{lookupFieldType}}",
       "recordNotFound": "Record {{recordId}} not found in {{tableId}}",
       "linkCellRecordIdAlreadyExists": "Cannot set duplicate recordId: {{recordId}} in the same cell",
+      "linkConsistencyError": "Consistency error, record ID {{recordId}} does not exist",
       "oneOneLinkCellValueCannotBeArray": "One-to-one link field values cannot be an array",
       "manyOneLinkCellValueCannotBeArray": "Many-to-one link field values cannot be an array",
-      "foreignKeyDuplicate": "Foreign key duplicate"
+      "oneManyLinkCellValueShouldBeArray": "One-to-many link field values should be an array",
+      "manyManyLinkCellValueShouldBeArray": "Many-to-many link field values should be an array",
+      "foreignKeyDuplicate": "Foreign key duplicate",
+      "onlyLinkFieldCanBeFiltered": "Only link fields can be used for filtering",
+      "notLinkedToCurrentTable": "Field is not linked to current table",
+      "notAttachment": "Field is not an attachment field",
+      "isComputed": "Field is computed and cannot be modified",
+      "notFoundAICofig": "Field does not have AI configuration",
+      "button": {
+        "clickCountReachedMaxCount": "Button click count has reached the maximum limit",
+        "notSupportReset": "Button field does not support reset"
+      }
     },
     "view": {
       "notFound": "View not found",
@@ -1028,7 +1155,8 @@
       "shareAlreadyDisabled": "View sharing is already disabled"
     },
     "billing": {
-      "insufficientCredit": "Insufficient credit"
+      "insufficientCredit": "Insufficient credit",
+      "exceedMaxRowLimit": "Maximum row limit {{maxRowCount}} exceeded"
     },
     "aggregation": {
       "searchQueryRequired": "Search query is required",
@@ -1037,7 +1165,9 @@
       "searchTimeOut": "Search timeout, please decrease the search scope and try again",
       "indexNotFound": "Index not found",
       "invalidStartDateFieldId": "Invalid start date field id",
-      "invalidEndDateFieldId": "Invalid end date field id"
+      "invalidEndDateFieldId": "Invalid end date field id",
+      "fieldMapRequired": "Field map is required when search is set",
+      "filterLinkCellQueryConflict": "filterLinkCellSelected and filterLinkCellCandidate cannot be set at the same time"
     },
     "ai": {
       "chatModelLgNotSet": "AI chat model lg is not set",
@@ -1047,7 +1177,16 @@
       "configurationNotSet": "AI configuration is not set",
       "unsupportedProvider": "Unsupported AI provider {{type}}",
       "providerConfigurationNotSet": "AI provider configuration is not set",
-      "testLLMFailed": "LLM connection test failed"
+      "testLLMFailed": "LLM connection test failed",
+      "audioNotSupported": "Audio input not supported by this model {{model}}",
+      "imageNotSupported": "Image input not supported by this model {{model}}",
+      "modelNotSet": "AI Model is not set",
+      "unsupportedFileType": "Unsupported file type {{mimetype}}",
+      "unsupportedModelType": "Unsupported model type",
+      "embeddingModelNotSet": "Embedding Model is not set",
+      "validateActionFailed": "Validate field AI action failed",
+      "generateFailed": "AI generation failed",
+      "unsupportedActionType": "Unsupported AI action type"
     },
     "role": {
       "notFound": "Role not found"
@@ -1062,7 +1201,8 @@
       "alreadyExistedInBase": "Collaborator has already existed in base",
       "userNotFound": "User not found: {{userIds}}",
       "baseNotFound": "Base not found",
-      "noPermissionToAddRole": "You do not have permission to add this role collaborator"
+      "noPermissionToAddRole": "You do not have permission to add this role collaborator",
+      "departmentNotFound": "Department not found"
     },
     "table": {
       "notFound": "Table not found",
@@ -1071,7 +1211,8 @@
       "notInTrash": "Table is not in trash",
       "notSupportTableIndex": "Table index type is not supported",
       "createTableIndexError": "Failed to create table index",
-      "dropTableIndexError": "Failed to drop table index"
+      "dropTableIndexError": "Failed to drop table index",
+      "notFoundPrimaryField": "Primary field not found in table"
     },
     "export": {
       "notSupportViewType": "{{viewType}} view type is not supported for export"
@@ -1100,12 +1241,58 @@
       "parentBaseOrSpaceTrashed": "Unable to restore this table because its parent base or space is also in trash",
       "tableNotFound": "Table trash item not found"
     },
+    "license": {
+      "invalid": "The license is invalid",
+      "instanceIdMismatch": "The incoming instanceId does not match the current instance's instanceId",
+      "expired": "The license is expired",
+      "userLimitExceeded": "The number of users in the current instance exceeds the seat limit of the license. Please deactivate some users or upgrade the license"
+    },
+    "domainVerification": {
+      "notFound": "No domain verification code found",
+      "invalidCode": "Invalid verification code",
+      "resendCooldown": "Please wait for 1 minute before requesting a new code"
+    },
+    "organization": {
+      "notFound": "Organization not found",
+      "authenticationNotFound": "Authentication not found",
+      "spaceShouldExist": "Organization space should exist",
+      "emailsNotInOrgDomain": "These emails {{emails}} are not in the organization domain",
+      "emailNotSpaceUser": "Email is not a space user"
+    },
+    "mail": {
+      "failedToSendEmail": "Failed to send email"
+    },
     "user": {
       "disallowSignUp": "The current instance disallows sign up by the administrator",
       "waitlistInviteCodeRequired": "Waitlist is enabled, invite code is required",
       "waitlistInviteCodeInvalid": "Waitlist is enabled, invite code is invalid",
       "systemUser": "User is a system user",
-      "collaboratorsInSpaces": "User has collaborators in spaces (or deleted spaces in trash)"
+      "collaboratorsInSpaces": "User has collaborators in spaces (or deleted spaces in trash)",
+      "notFound": "User not found",
+      "cannotDeleteAdmin": "Cannot delete admin user",
+      "cannotDeactivateAdmin": "Cannot deactivate admin user",
+      "cannotRemoveLastAdmin": "Cannot remove admin privilege from the last active admin user",
+      "permanentDeleted": "User is permanently deleted",
+      "cannotDeleteSelf": "Cannot delete yourself",
+      "alreadyInDepartment": "User {{userId}} already in target department",
+      "emailsNotFound": "Emails {{emails}} are not found",
+      "deleted": "User{{userId}} is deleted",
+      "alreadyInOrg": "User {{userId}} is already in the organization",
+      "notInOrg": "User {{userId}} is not in the organization"
+    },
+    "record": {
+      "notFound": "Record not found",
+      "deletedIdsNotFound": "Some records to be deleted cannot be found",
+      "updateFailed": "Failed to update record",
+      "noFileOrUrlProvided": "No file or URL provided",
+      "createRecordsEmpty": "Create records cannot be empty",
+      "duplicateFailed": "Failed to duplicate record"
+    },
+    "typecast": {
+      "cellValueValidationFailed": "Cell value validation failed"
+    },
+    "workflow": {
+      "notActive": "Workflow is not active"
     },
     "lastVisit": {
       "invalidResourceType": "Invalid resource type"
@@ -1114,6 +1301,12 @@
       "snapshotRequired": "This template could not be published due to missing snapshot",
       "sourceTemplateNotFound": "Source template not found",
       "noMinOrderFound": "No minimum order found"
+    },
+    "department": {
+      "parentNotFound": "Parent department not found",
+      "notFound": "Department not found",
+      "cannotMoveToItself": "Cannot move department to itself",
+      "cannotMoveToSub": "Cannot move department to its sub-department"
     }
   }
 }
