@@ -98,4 +98,104 @@ describe('Formula lookup SUM numeric coercion (regression)', () => {
     await permanentDeleteTable(baseId, planTable.id);
     await permanentDeleteTable(baseId, invoiceTable.id);
   });
+
+  it('aggregates numeric multi-value lookups with SUM and AVERAGE', async () => {
+    const scores = [95, 88, 92];
+    const sourceTable = await createTable(baseId, {
+      name: 'sum_reg_scores',
+      fields: [
+        { name: 'Assignment', type: FieldType.SingleLineText },
+        { name: 'Score', type: FieldType.Number },
+      ],
+      records: scores.map((score, index) => ({
+        fields: { Assignment: `HW ${index + 1}`, Score: score },
+      })),
+    });
+    const scoreFieldId = sourceTable.fields.find((field) => field.name === 'Score')!.id;
+
+    const targetTable = await createTable(baseId, {
+      name: 'sum_reg_student',
+      fields: [{ name: 'Student', type: FieldType.SingleLineText }],
+      records: [{ fields: { Student: 'Alice' } }],
+    });
+
+    try {
+      const linkField = await createField(targetTable.id, {
+        name: 'Assignments',
+        type: FieldType.Link,
+        options: {
+          relationship: Relationship.ManyMany,
+          foreignTableId: sourceTable.id,
+        },
+      });
+
+      const lookupField = await createField(targetTable.id, {
+        name: 'Scores Lookup',
+        type: FieldType.Number,
+        isLookup: true,
+        lookupOptions: {
+          foreignTableId: sourceTable.id,
+          linkFieldId: linkField.id,
+          lookupFieldId: scoreFieldId,
+        },
+      });
+
+      const sumField = await createField(targetTable.id, {
+        name: 'Score Sum',
+        type: FieldType.Formula,
+        options: {
+          expression: `SUM({${lookupField.id}})`,
+        },
+      });
+
+      const avgField = await createField(targetTable.id, {
+        name: 'Score Avg',
+        type: FieldType.Formula,
+        options: {
+          expression: `AVERAGE({${lookupField.id}})`,
+        },
+      });
+
+      const maxField = await createField(targetTable.id, {
+        name: 'Score Max',
+        type: FieldType.Formula,
+        options: {
+          expression: `MAX({${lookupField.id}})`,
+        },
+      });
+
+      const minField = await createField(targetTable.id, {
+        name: 'Score Min',
+        type: FieldType.Formula,
+        options: {
+          expression: `MIN({${lookupField.id}})`,
+        },
+      });
+
+      const targetRecordId = targetTable.records[0].id;
+
+      await updateRecordByApi(
+        targetTable.id,
+        targetRecordId,
+        linkField.id,
+        sourceTable.records.map((record) => ({ id: record.id }))
+      );
+
+      const updated = await getRecord(targetTable.id, targetRecordId);
+      const fields = updated.fields ?? {};
+
+      const expectedSum = scores.reduce((acc, value) => acc + value, 0);
+      const expectedAvg = expectedSum / scores.length;
+      const expectedMax = Math.max(...scores);
+      const expectedMin = Math.min(...scores);
+
+      expect(fields[sumField.id]).toBeCloseTo(expectedSum, 6);
+      expect(fields[avgField.id]).toBeCloseTo(expectedAvg, 6);
+      expect(fields[maxField.id]).toBeCloseTo(expectedMax, 6);
+      expect(fields[minField.id]).toBeCloseTo(expectedMin, 6);
+    } finally {
+      await permanentDeleteTable(baseId, targetTable.id);
+      await permanentDeleteTable(baseId, sourceTable.id);
+    }
+  });
 });

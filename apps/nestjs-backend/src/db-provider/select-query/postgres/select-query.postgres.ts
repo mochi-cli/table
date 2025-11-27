@@ -180,15 +180,25 @@ export class SelectQueryPostgres extends SelectQueryAbstract {
     END)`;
   }
 
-  private numericFromText(expr: string): string {
-    const textExpr = `((${expr})::text) COLLATE "C"`;
+  private buildNumericArrayAggregation(expr: string): { sum: string; count: string } {
+    const arrayExpr = this.normalizeAnyToJsonArray(expr);
     const numericPattern = `'^[+-]{0,1}(\\d+(\\.\\d+){0,1}|\\.\\d+)$'`;
     const collatedPattern = `${numericPattern} COLLATE "C"`;
-    return `(CASE
-      WHEN ${expr} IS NULL THEN NULL
-      WHEN ${textExpr} ~ ${collatedPattern} THEN ${textExpr}::double precision
-      ELSE NULL
-    END)`;
+    const numericValue = `(CASE WHEN (elem.value COLLATE "C") ~ ${collatedPattern} THEN elem.value::double precision ELSE NULL END)`;
+    const numericCount = `(CASE WHEN (elem.value COLLATE "C") ~ ${collatedPattern} THEN 1 ELSE 0 END)`;
+
+    const sumExpr = `(SELECT SUM(${numericValue}) FROM jsonb_array_elements_text(${arrayExpr}) WITH ORDINALITY AS elem(value, ord))`;
+    const countExpr = `(SELECT SUM(${numericCount}) FROM jsonb_array_elements_text(${arrayExpr}) WITH ORDINALITY AS elem(value, ord))`;
+    return { sum: sumExpr, count: countExpr };
+  }
+
+  private buildNumericArrayExtremum(expr: string, op: 'max' | 'min'): string {
+    const arrayExpr = this.normalizeAnyToJsonArray(expr);
+    const numericPattern = `'^[+-]{0,1}(\\d+(\\.\\d+){0,1}|\\.\\d+)$'`;
+    const collatedPattern = `${numericPattern} COLLATE "C"`;
+    const numericValue = `(CASE WHEN (elem.value COLLATE "C") ~ ${collatedPattern} THEN elem.value::double precision ELSE NULL END)`;
+    const agg = op === 'max' ? 'MAX' : 'MIN';
+    return `(SELECT ${agg}(${numericValue}) FROM jsonb_array_elements_text(${arrayExpr}) WITH ORDINALITY AS elem(value, ord))`;
   }
 
   private collapseNumeric(expr: string, metadataIndex?: number): string {
@@ -826,7 +836,14 @@ export class SelectQueryPostgres extends SelectQueryAbstract {
       return '0';
     }
 
-    const terms = params.map((param, index) => this.collapseNumeric(param, index));
+    const terms = params.map((param, index) => {
+      const paramInfo = this.getParamInfo(index);
+      if (paramInfo.isJsonField || paramInfo.isMultiValueField) {
+        const { sum } = this.buildNumericArrayAggregation(param);
+        return `COALESCE(${sum}, 0)`;
+      }
+      return this.collapseNumeric(param, index);
+    });
     if (terms.length === 1) {
       return terms[0];
     }
@@ -837,16 +854,47 @@ export class SelectQueryPostgres extends SelectQueryAbstract {
     if (params.length === 0) {
       return '0';
     }
-    const numerator = this.sum(params);
-    return `(${numerator}) / ${params.length}`;
+    const sumTerms: string[] = [];
+    const countTerms: string[] = [];
+
+    params.forEach((param, index) => {
+      const paramInfo = this.getParamInfo(index);
+      if (paramInfo.isJsonField || paramInfo.isMultiValueField) {
+        const { sum, count } = this.buildNumericArrayAggregation(param);
+        sumTerms.push(`COALESCE(${sum}, 0)`);
+        countTerms.push(`COALESCE(${count}, 0)`);
+      } else {
+        const numericValue = this.toNumericSafe(param, index);
+        sumTerms.push(`COALESCE(${numericValue}, 0)`);
+        countTerms.push('1');
+      }
+    });
+
+    const numerator = sumTerms.length === 1 ? sumTerms[0] : `(${sumTerms.join(' + ')})`;
+    const denominator = countTerms.length === 1 ? countTerms[0] : `(${countTerms.join(' + ')})`;
+    return `(CASE WHEN ${denominator} = 0 THEN NULL ELSE (${numerator}) / ${denominator} END)`;
   }
 
   max(params: string[]): string {
-    return `GREATEST(${this.joinParams(params)})`;
+    const mapped = params.map((param, index) => {
+      const paramInfo = this.getParamInfo(index);
+      if (paramInfo.isJsonField || paramInfo.isMultiValueField) {
+        return this.buildNumericArrayExtremum(param, 'max');
+      }
+      return this.toNumericSafe(param, index);
+    });
+    return `GREATEST(${this.joinParams(mapped)})`;
   }
 
   min(params: string[]): string {
-    return `LEAST(${this.joinParams(params)})`;
+    const mapped = params.map((param, index) => {
+      const paramInfo = this.getParamInfo(index);
+      if (paramInfo.isJsonField || paramInfo.isMultiValueField) {
+        return this.buildNumericArrayExtremum(param, 'min');
+      }
+      return this.toNumericSafe(param, index);
+    });
+    return `LEAST(${this.joinParams(mapped)})`;
   }
 
   round(value: string, precision?: string): string {
