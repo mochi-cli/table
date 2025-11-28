@@ -108,6 +108,7 @@ describe('OpenAPI formula (e2e)', () => {
     { literal: 'mins', expected: diffMinutes },
     { literal: 'hour', expected: diffHours },
     { literal: 'hours', expected: diffHours },
+    { literal: 'h', expected: diffHours },
     { literal: 'hr', expected: diffHours },
     { literal: 'hrs', expected: diffHours },
     { literal: 'day', expected: diffDays },

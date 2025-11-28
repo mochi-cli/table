@@ -202,6 +202,10 @@ describe('GeneratedColumnQueryPostgres unit-aware helpers', () => {
       expected: `${diffSeconds} / 3600`,
     },
     {
+      literal: 'h',
+      expected: `${diffSeconds} / 3600`,
+    },
+    {
       literal: 'hr',
       expected: `${diffSeconds} / 3600`,
     },

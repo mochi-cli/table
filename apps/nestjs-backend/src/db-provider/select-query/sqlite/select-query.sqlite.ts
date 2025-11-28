@@ -277,6 +277,7 @@ export class SelectQuerySqlite extends SelectQueryAbstract {
         return { unit: 'minutes', factor: 1 };
       case 'hour':
       case 'hours':
+      case 'h':
       case 'hr':
       case 'hrs':
         return { unit: 'hours', factor: 1 };
@@ -321,6 +322,7 @@ export class SelectQuerySqlite extends SelectQueryAbstract {
         return 'minute';
       case 'hour':
       case 'hours':
+      case 'h':
       case 'hr':
       case 'hrs':
         return 'hour';
@@ -360,6 +362,7 @@ export class SelectQuerySqlite extends SelectQueryAbstract {
         return '%Y-%m-%d %H:%M';
       case 'hour':
       case 'hours':
+      case 'h':
       case 'hr':
       case 'hrs':
         return '%Y-%m-%d %H';

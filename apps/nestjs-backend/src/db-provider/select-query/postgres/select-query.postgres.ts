@@ -489,6 +489,7 @@ export class SelectQueryPostgres extends SelectQueryAbstract {
         return { unit: 'minute', factor: 1 };
       case 'hour':
       case 'hours':
+      case 'h':
       case 'hr':
       case 'hrs':
         return { unit: 'hour', factor: 1 };
@@ -536,6 +537,7 @@ export class SelectQueryPostgres extends SelectQueryAbstract {
         return 'minute';
       case 'hour':
       case 'hours':
+      case 'h':
       case 'hr':
       case 'hrs':
         return 'hour';
@@ -578,6 +580,7 @@ export class SelectQueryPostgres extends SelectQueryAbstract {
         return 'minute';
       case 'hour':
       case 'hours':
+      case 'h':
       case 'hr':
       case 'hrs':
         return 'hour';

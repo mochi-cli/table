@@ -811,6 +811,7 @@ export class GeneratedColumnQueryPostgres extends GeneratedColumnQueryAbstract {
         return { unit: 'minute', factor: 1 };
       case 'hour':
       case 'hours':
+      case 'h':
       case 'hr':
       case 'hrs':
         return { unit: 'hour', factor: 1 };
@@ -858,6 +859,7 @@ export class GeneratedColumnQueryPostgres extends GeneratedColumnQueryAbstract {
         return 'minute';
       case 'hour':
       case 'hours':
+      case 'h':
       case 'hr':
       case 'hrs':
         return 'hour';
@@ -900,6 +902,7 @@ export class GeneratedColumnQueryPostgres extends GeneratedColumnQueryAbstract {
         return 'minute';
       case 'hour':
       case 'hours':
+      case 'h':
       case 'hr':
       case 'hrs':
         return 'hour';
