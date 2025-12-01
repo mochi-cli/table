@@ -1178,6 +1178,24 @@ export class FieldCteVisitor implements IFieldVisitor<ICteResult> {
     builder.whereIn(`${alias}.${ID_FIELD_NAME}`, subquery);
   }
 
+  private withCte(
+    name: string,
+    builder: (qb: Knex.QueryBuilder) => void,
+    opts?: { materialized?: boolean }
+  ): void {
+    const qbWithMaterialized = this.qb as Knex.QueryBuilder & {
+      withMaterialized?: (
+        alias: string,
+        expression: Knex.QueryBuilder | ((qb: Knex.QueryBuilder) => void)
+      ) => Knex.QueryBuilder;
+    };
+    if (opts?.materialized && typeof qbWithMaterialized.withMaterialized === 'function') {
+      qbWithMaterialized.withMaterialized(name, builder);
+      return;
+    }
+    this.qb.with(name, builder);
+  }
+
   private fromTableWithRestriction(
     builder: Knex.QueryBuilder,
     table: TableDomain,
@@ -1572,6 +1590,7 @@ export class FieldCteVisitor implements IFieldVisitor<ICteResult> {
             foreignAliasUsed
           )
         : null;
+      const preferMaterializedCte = this.dbProvider.driver === DriverClient.Pg;
 
       if (equalityPlan?.joinKeys.length) {
         const countsAlias = `__cr_counts_${field.id}`;
@@ -1618,27 +1637,33 @@ export class FieldCteVisitor implements IFieldVisitor<ICteResult> {
         }
 
         const equalityFallback = this.getConditionalEqualityFallback(aggregationFn, field);
-        this.qb.with(cteName, (cqb) => {
-          cqb.select(`${mainAlias}.${ID_FIELD_NAME} as main_record_id`);
-          const refValueSql =
-            equalityFallback != null
-              ? `COALESCE(${countsAlias}."reference_value", ${equalityFallback})`
-              : `${countsAlias}."reference_value"`;
-          cqb.select(cqb.client.raw(`${refValueSql} as "conditional_rollup_${field.id}"`));
-          this.fromTableWithRestriction(cqb, table, mainAlias);
-          cqb.leftJoin(
-            this.qb.client.raw(`(${countsQuery.toQuery()}) as ${countsAlias}`),
-            (join) => {
-              for (const cond of equalityPlan.joinKeys) {
-                join.on(
-                  this.qb.client.raw(cond.hostExpr),
-                  '=',
-                  this.qb.client.raw(`${countsAlias}."${cond.alias}"`)
-                );
+        // Materialize to stop Postgres from re-running the aggregate for every outer row
+        // when the host table is re-joined during UPDATE ... LIMIT pagination.
+        this.withCte(
+          cteName,
+          (cqb) => {
+            cqb.select(`${mainAlias}.${ID_FIELD_NAME} as main_record_id`);
+            const refValueSql =
+              equalityFallback != null
+                ? `COALESCE(${countsAlias}."reference_value", ${equalityFallback})`
+                : `${countsAlias}."reference_value"`;
+            cqb.select(cqb.client.raw(`${refValueSql} as "conditional_rollup_${field.id}"`));
+            this.fromTableWithRestriction(cqb, table, mainAlias);
+            cqb.leftJoin(
+              this.qb.client.raw(`(${countsQuery.toQuery()}) as ${countsAlias}`),
+              (join) => {
+                for (const cond of equalityPlan.joinKeys) {
+                  join.on(
+                    this.qb.client.raw(cond.hostExpr),
+                    '=',
+                    this.qb.client.raw(`${countsAlias}."${cond.alias}"`)
+                  );
+                }
               }
-            }
-          );
-        });
+            );
+          },
+          { materialized: preferMaterializedCte }
+        );
 
         if (joinToMain && !this.state.isCteJoined(cteName)) {
           this.qb.leftJoin(cteName, `${mainAlias}.${ID_FIELD_NAME}`, `${cteName}.main_record_id`);
@@ -1700,12 +1725,16 @@ export class FieldCteVisitor implements IFieldVisitor<ICteResult> {
       aggregateQuery.select(this.qb.client.raw(`${castedAggregateExpression} as reference_value`));
       const aggregateSql = aggregateQuery.toQuery();
 
-      this.qb.with(cteName, (cqb) => {
-        cqb
-          .select(`${mainAlias}.${ID_FIELD_NAME} as main_record_id`)
-          .select(cqb.client.raw(`(${aggregateSql}) as "conditional_rollup_${field.id}"`))
-          .modify((builder) => this.fromTableWithRestriction(builder, table, mainAlias));
-      });
+      this.withCte(
+        cteName,
+        (cqb) => {
+          cqb
+            .select(`${mainAlias}.${ID_FIELD_NAME} as main_record_id`)
+            .select(cqb.client.raw(`(${aggregateSql}) as "conditional_rollup_${field.id}"`))
+            .modify((builder) => this.fromTableWithRestriction(builder, table, mainAlias));
+        },
+        { materialized: preferMaterializedCte }
+      );
 
       if (joinToMain && !this.state.isCteJoined(cteName)) {
         this.qb.leftJoin(cteName, `${mainAlias}.${ID_FIELD_NAME}`, `${cteName}.main_record_id`);
@@ -1747,6 +1776,7 @@ export class FieldCteVisitor implements IFieldVisitor<ICteResult> {
       if (!targetField) {
         return;
       }
+      const preferMaterializedCte = this.dbProvider.driver === DriverClient.Pg;
 
       const joinToMain = table === this.table;
 
@@ -1879,14 +1909,18 @@ export class FieldCteVisitor implements IFieldVisitor<ICteResult> {
       const lookupAlias = `conditional_lookup_${field.id}`;
       const rollupAlias = `conditional_rollup_${field.id}`;
 
-      this.qb.with(cteName, (cqb) => {
-        cqb.select(`${mainAlias}.${ID_FIELD_NAME} as main_record_id`);
-        cqb.select(cqb.client.raw(`(${aggregateSql}) as "${lookupAlias}"`));
-        if (field.type === FieldType.ConditionalRollup) {
-          cqb.select(cqb.client.raw(`(${aggregateSql}) as "${rollupAlias}"`));
-        }
-        this.fromTableWithRestriction(cqb, table, mainAlias);
-      });
+      this.withCte(
+        cteName,
+        (cqb) => {
+          cqb.select(`${mainAlias}.${ID_FIELD_NAME} as main_record_id`);
+          cqb.select(cqb.client.raw(`(${aggregateSql}) as "${lookupAlias}"`));
+          if (field.type === FieldType.ConditionalRollup) {
+            cqb.select(cqb.client.raw(`(${aggregateSql}) as "${rollupAlias}"`));
+          }
+          this.fromTableWithRestriction(cqb, table, mainAlias);
+        },
+        { materialized: preferMaterializedCte }
+      );
 
       if (joinToMain && !this.state.isCteJoined(cteName)) {
         this.qb.leftJoin(cteName, `${mainAlias}.${ID_FIELD_NAME}`, `${cteName}.main_record_id`);
