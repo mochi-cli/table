@@ -1411,6 +1411,32 @@ export class FieldCteVisitor implements IFieldVisitor<ICteResult> {
     return { joinKeys, residualFilter: residual };
   }
 
+  /**
+   * When the conditional lookup targets the same table and the filter references fields,
+   * we should avoid the equality-plan optimization to ensure per-row evaluation rather
+   * than partition reuse.
+   */
+  private filterHasFieldReferences(filter: IFilter | null | undefined): boolean {
+    if (!filter?.filterSet?.length) return false;
+    const stack: Array<IFilter | IFilterItem> = [...filter.filterSet];
+    while (stack.length) {
+      const current = stack.pop();
+      if (!current) continue;
+      if ('fieldId' in current) {
+        const item = current as IFilterItem;
+        if (isFieldReferenceValue(item.value)) {
+          return true;
+        }
+      } else if ('filterSet' in current) {
+        const nested = current as IFilter;
+        if (nested?.filterSet?.length) {
+          stack.push(...nested.filterSet);
+        }
+      }
+    }
+    return false;
+  }
+
   private getConditionalEqualityFallback(aggregationFn: string, field: FieldCore): string | null {
     switch (aggregationFn) {
       case 'countall':
@@ -1729,8 +1755,14 @@ export class FieldCteVisitor implements IFieldVisitor<ICteResult> {
 
         const fieldReferenceSelectionMap = new Map<string, string>();
         const fieldReferenceFieldMap = new Map<string, FieldCore>();
+        // For self-table conditional lookups, resolve field references against the foreign alias
+        // so comparisons like "Status is {Title}" are evaluated on the foreign row.
+        const referenceAlias = foreignTable.id === table.id ? foreignAliasUsed : mainAlias;
         for (const mainField of table.fields.ordered) {
-          fieldReferenceSelectionMap.set(mainField.id, `"${mainAlias}"."${mainField.dbFieldName}"`);
+          fieldReferenceSelectionMap.set(
+            mainField.id,
+            `"${referenceAlias}"."${mainField.dbFieldName}"`
+          );
           fieldReferenceFieldMap.set(mainField.id, mainField as FieldCore);
         }
 
@@ -1888,13 +1920,16 @@ export class FieldCteVisitor implements IFieldVisitor<ICteResult> {
       );
 
       const resolvedLimit = normalizeConditionalLimit(limit);
-      const equalityPlan = this.extractConditionalEqualityJoinPlan(
-        filter,
-        table,
-        foreignTable,
-        mainAlias,
-        foreignAliasUsed
-      );
+      const equalityPlan =
+        foreignTable.id === table.id && this.filterHasFieldReferences(filter)
+          ? null
+          : this.extractConditionalEqualityJoinPlan(
+              filter,
+              table,
+              foreignTable,
+              mainAlias,
+              foreignAliasUsed
+            );
       const lookupAlias = `conditional_lookup_${field.id}`;
       const rollupAlias = `conditional_rollup_${field.id}`;
 
@@ -1919,8 +1954,14 @@ export class FieldCteVisitor implements IFieldVisitor<ICteResult> {
 
         const fieldReferenceSelectionMap = new Map<string, string>();
         const fieldReferenceFieldMap = new Map<string, FieldCore>();
+        // For self-table conditional lookups, resolve field references against the foreign alias
+        // so comparisons like "Status is {Title}" are evaluated on the foreign row.
+        const referenceAlias = foreignTable.id === table.id ? foreignAliasUsed : mainAlias;
         for (const mainField of table.fields.ordered) {
-          fieldReferenceSelectionMap.set(mainField.id, `"${mainAlias}"."${mainField.dbFieldName}"`);
+          fieldReferenceSelectionMap.set(
+            mainField.id,
+            `"${referenceAlias}"."${mainField.dbFieldName}"`
+          );
           fieldReferenceFieldMap.set(mainField.id, mainField as FieldCore);
         }
 

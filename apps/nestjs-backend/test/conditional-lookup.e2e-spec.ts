@@ -998,6 +998,119 @@ describe('OpenAPI Conditional Lookup field (e2e)', () => {
     });
   });
 
+  describe('self-table filters combining text and single select references', () => {
+    let table: ITableFullVo;
+    let categoryId: string;
+    let labelId: string;
+    let receiptDateId: string;
+    let matchedDateField: IFieldVo;
+    let transportLabeledId: string;
+    let transportUnlabeledId: string;
+    let foodLabeledId: string;
+
+    beforeAll(async () => {
+      const categoryChoices = [
+        { id: 'cat-transport', name: 'Transportation', color: Colors.Green },
+        { id: 'cat-food', name: 'Food & Dining', color: Colors.Blue },
+      ];
+
+      table = await createTable(baseId, {
+        name: 'ConditionalLookup_Self_Table_Filter',
+        fields: [
+          {
+            name: 'Category',
+            type: FieldType.SingleSelect,
+            options: { choices: categoryChoices },
+          } as IFieldRo,
+          { name: 'Label', type: FieldType.SingleLineText } as IFieldRo,
+          { name: 'ReceiptDate', type: FieldType.Date } as IFieldRo,
+        ],
+        records: [
+          {
+            fields: {
+              Category: 'Transportation',
+              Label: 'Transportation',
+              ReceiptDate: '2025-04-22',
+            },
+          },
+          {
+            fields: {
+              Category: 'Transportation',
+              ReceiptDate: '2025-04-23',
+            },
+          },
+          {
+            fields: {
+              Category: 'Food & Dining',
+              Label: 'Food & Dining',
+              ReceiptDate: '2025-05-01',
+            },
+          },
+        ],
+      });
+
+      categoryId = table.fields.find((f) => f.name === 'Category')!.id;
+      labelId = table.fields.find((f) => f.name === 'Label')!.id;
+      receiptDateId = table.fields.find((f) => f.name === 'ReceiptDate')!.id;
+
+      transportLabeledId = table.records[0].id;
+      transportUnlabeledId = table.records[1].id;
+      foodLabeledId = table.records[2].id;
+
+      const filter: IFilter = {
+        conjunction: 'and',
+        filterSet: [
+          {
+            fieldId: categoryId,
+            operator: 'is',
+            value: { type: 'field', fieldId: categoryId },
+          },
+          {
+            fieldId: labelId,
+            operator: 'is',
+            value: { type: 'field', fieldId: labelId },
+          },
+        ],
+      };
+
+      matchedDateField = await createField(table.id, {
+        name: 'Matched Receipt Dates',
+        type: FieldType.Date,
+        isLookup: true,
+        isConditionalLookup: true,
+        lookupOptions: {
+          foreignTableId: table.id,
+          lookupFieldId: receiptDateId,
+          filter,
+        } as ILookupOptionsRo,
+      } as IFieldRo);
+    });
+
+    afterAll(async () => {
+      await permanentDeleteTable(baseId, table.id);
+    });
+
+    it('should not share matches across rows when both host fields differ', async () => {
+      const records = await getRecords(table.id, { fieldKeyType: FieldKeyType.Id });
+      const transportLabeled = records.records.find((r) => r.id === transportLabeledId)!;
+      const transportUnlabeled = records.records.find((r) => r.id === transportUnlabeledId)!;
+      const foodLabeled = records.records.find((r) => r.id === foodLabeledId)!;
+
+      expect(transportLabeled.fields[matchedDateField.id]).toEqual([
+        '2025-04-21T16:00:00.000Z',
+        '2025-04-30T16:00:00.000Z',
+      ]);
+      expect(transportUnlabeled.fields[matchedDateField.id] ?? []).toEqual([
+        '2025-04-21T16:00:00.000Z',
+        '2025-04-30T16:00:00.000Z',
+      ]);
+      expect(foodLabeled.fields[matchedDateField.id]).toEqual([
+        '2025-04-21T16:00:00.000Z',
+        '2025-04-30T16:00:00.000Z',
+      ]);
+    });
+  });
+
   describe('boolean field reference filters', () => {
     let foreign: ITableFullVo;
     let host: ITableFullVo;
