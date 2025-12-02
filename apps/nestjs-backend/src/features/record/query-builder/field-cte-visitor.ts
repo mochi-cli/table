@@ -1355,9 +1355,14 @@ export class FieldCteVisitor implements IFieldVisitor<ICteResult> {
             if (isDateLikeField(foreignField) || isDateLikeField(hostField)) {
               return { ok: false, residual: null };
             }
+            // When the foreign scope is the same table, compare the host record's fieldId
+            // against the foreign row's referenced field so "Field A is {Field B}" reads as
+            // host.FieldA = foreign.FieldB instead of the reverse.
+            const hostJoinField = foreignTable.id === table.id ? foreignField : hostField;
+            const foreignJoinField = foreignTable.id === table.id ? hostField : foreignField;
             const joinKey = this.buildConditionalEqualityJoinKey(
-              hostField,
-              foreignField,
+              hostJoinField,
+              foreignJoinField,
               mainAlias,
               foreignAlias
             );
@@ -1732,8 +1737,14 @@ export class FieldCteVisitor implements IFieldVisitor<ICteResult> {
 
         const fieldReferenceSelectionMap = new Map<string, string>();
         const fieldReferenceFieldMap = new Map<string, FieldCore>();
+        // For self-table conditional lookups, resolve field references against the foreign alias
+        // so comparisons like "Status is {Title}" are evaluated on the foreign row.
+        const referenceAlias = foreignTable.id === table.id ? foreignAliasUsed : mainAlias;
         for (const mainField of table.fields.ordered) {
-          fieldReferenceSelectionMap.set(mainField.id, `"${mainAlias}"."${mainField.dbFieldName}"`);
+          fieldReferenceSelectionMap.set(
+            mainField.id,
+            `"${referenceAlias}"."${mainField.dbFieldName}"`
+          );
           fieldReferenceFieldMap.set(mainField.id, mainField as FieldCore);
         }
 
@@ -1922,8 +1933,14 @@ export class FieldCteVisitor implements IFieldVisitor<ICteResult> {
 
         const fieldReferenceSelectionMap = new Map<string, string>();
         const fieldReferenceFieldMap = new Map<string, FieldCore>();
+        // For self-table conditional lookups, resolve field references against the foreign alias
+        // so comparisons like "Status is {Title}" are evaluated on the foreign row.
+        const referenceAlias = foreignTable.id === table.id ? foreignAliasUsed : mainAlias;
         for (const mainField of table.fields.ordered) {
-          fieldReferenceSelectionMap.set(mainField.id, `"${mainAlias}"."${mainField.dbFieldName}"`);
+          fieldReferenceSelectionMap.set(
+            mainField.id,
+            `"${referenceAlias}"."${mainField.dbFieldName}"`
+          );
           fieldReferenceFieldMap.set(mainField.id, mainField as FieldCore);
         }
 
