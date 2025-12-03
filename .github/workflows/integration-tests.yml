@@ -20,6 +20,7 @@ jobs:
       matrix:
         node-version: [20.9.0]
         database-type: [postgres]
+        shard: [1/2, 2/2]
     env:
       CI: 1
 
@@ -39,6 +40,8 @@ jobs:
           CI: 1
           VITEST_MAX_THREADS: 2
           VITEST_MIN_THREADS: 1
+          VITEST_SHARD: ${{ matrix.shard }}
+          VITEST_REPORTER: blob
         run: |
           make ${{ matrix.database-type }}.integration.test
           pnpm -F "@teable/backend" test-unit-cover
