@@ -101,11 +101,14 @@ export class SystemFieldService {
             const lmtField = field as LastModifiedTimeFieldCore;
             const trackedIds = lmtField.getTrackedFieldIds();
             const validTrackedIds = trackedIds.filter((id) => table.hasField(id));
-            const trackAll = lmtField.isTrackAll() || validTrackedIds.length === 0;
-            const shouldUpdate = trackAll || validTrackedIds.some((id) => changedFieldIds.has(id));
+            const configTrackAll = lmtField.isTrackAll();
+            const effectiveTrackAll = configTrackAll || validTrackedIds.length === 0;
+            const shouldUpdate =
+              effectiveTrackAll || validTrackedIds.some((id) => changedFieldIds.has(id));
             if (shouldUpdate) {
               pre[field[fieldKeyType]] = timeStr;
-              if (!trackAll) {
+              // Persist column when not using generated/system value
+              if (!configTrackAll) {
                 const ids = trackedLastModifiedColumnUpdates[field.dbFieldName] || [];
                 ids.push(record.id);
                 trackedLastModifiedColumnUpdates[field.dbFieldName] = ids;
@@ -117,12 +120,15 @@ export class SystemFieldService {
             const lmbField = field as LastModifiedByFieldCore;
             const trackedIds = lmbField.getTrackedFieldIds();
             const validTrackedIds = trackedIds.filter((id) => table.hasField(id));
-            const trackAll = lmbField.isTrackAll() || validTrackedIds.length === 0;
-            const shouldUpdate = trackAll || validTrackedIds.some((id) => changedFieldIds.has(id));
+            const configTrackAll = lmbField.isTrackAll();
+            const effectiveTrackAll = configTrackAll || validTrackedIds.length === 0;
+            const shouldUpdate =
+              effectiveTrackAll || validTrackedIds.some((id) => changedFieldIds.has(id));
             if (shouldUpdate) {
               const value = sanitizeAuditUserValue();
               pre[field[fieldKeyType]] = value;
-              if (!trackAll) {
+              // Persist column when not using system column
+              if (!configTrackAll) {
                 const ids = trackedLastModifiedByColumnUpdates[field.dbFieldName] || [];
                 ids.push(record.id);
                 trackedLastModifiedByColumnUpdates[field.dbFieldName] = ids;
