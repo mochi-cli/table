@@ -234,6 +234,53 @@ describe('Computed user field (e2e)', () => {
       );
     });
 
+    it('should allow configuring Last Modified By field to track specific fields only', async () => {
+      const textField = await createField(table1.id, {
+        name: 'text-field',
+        type: FieldType.SingleLineText,
+      });
+      const numberField = await createField(table1.id, {
+        name: 'number-field',
+        type: FieldType.Number,
+      });
+
+      const lastModifiedByField = await createField(table1.id, {
+        type: FieldType.LastModifiedBy,
+        options: {
+          trackedFieldIds: [textField.id],
+        },
+      });
+
+      const recordId = table1.records[0].id;
+
+      await updateRecord(table1.id, recordId, {
+        record: {
+          fields: {
+            [numberField.id]: 1,
+          },
+        },
+        fieldKeyType: FieldKeyType.Id,
+      });
+
+      let record = await getRecord(table1.id, recordId, { fieldKeyType: FieldKeyType.Id });
+      expect(record.data.fields[lastModifiedByField.id]).toBeUndefined();
+
+      await updateRecord(table1.id, recordId, {
+        record: {
+          fields: {
+            [textField.id]: 'tracked change',
+          },
+        },
+        fieldKeyType: FieldKeyType.Id,
+      });
+
+      record = await getRecord(table1.id, recordId, { fieldKeyType: FieldKeyType.Id });
+      expect(record.data.fields[lastModifiedByField.id]).toMatchObject({
+        id: globalThis.testConfig.userId,
+        title: globalThis.testConfig.userName,
+      });
+    });
+
     it('should persist multi-user formula values via computed updates', async () => {
       const userField = await createField(table1.id, {
         type: FieldType.User,

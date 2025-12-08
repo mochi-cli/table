@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/naming-convention */
 import { Injectable } from '@nestjs/common';
-import type { LastModifiedTimeFieldCore } from '@teable/core';
+import type { LastModifiedByFieldCore, LastModifiedTimeFieldCore } from '@teable/core';
 import { FieldKeyType, TableDomain, FieldType } from '@teable/core';
 import { PrismaService } from '@teable/db-main-prisma';
 import { Knex } from 'knex';
@@ -53,9 +53,25 @@ export class SystemFieldService {
   > {
     const user = this.cls.get('user');
     const timeStr = this.cls.get('tx.timeStr') ?? new Date().toISOString();
+    const auditUserValue =
+      user &&
+      UserFieldDto.fullAvatarUrl({
+        id: user.id,
+        title: user.name,
+        email: user.email,
+      });
+    const cloneAuditUserValue = () => (auditUserValue ? { ...auditUserValue } : null);
+    const sanitizeAuditUserValue = () => {
+      const cloned = cloneAuditUserValue();
+      if (cloned && typeof cloned === 'object' && 'avatarUrl' in cloned) {
+        delete (cloned as { avatarUrl?: string }).avatarUrl;
+      }
+      return cloned;
+    };
 
     const dbTableName = table.dbTableName;
     const trackedLastModifiedColumnUpdates: Record<string, string[]> = {};
+    const trackedLastModifiedByColumnUpdates: Record<string, string[]> = {};
 
     await this.updateSystemField(
       dbTableName,
@@ -95,11 +111,18 @@ export class SystemFieldService {
           }
 
           if (type === FieldType.LastModifiedBy) {
-            pre[field[fieldKeyType]] = UserFieldDto.fullAvatarUrl({
-              id: user.id,
-              title: user.name,
-              email: user.email,
-            });
+            const lmbField = field as LastModifiedByFieldCore;
+            const trackAll = lmbField.isTrackAll();
+            const shouldUpdate = lmbField.shouldUpdate(changedFieldIds);
+            if (shouldUpdate) {
+              const value = sanitizeAuditUserValue();
+              pre[field[fieldKeyType]] = value;
+              if (!trackAll) {
+                const ids = trackedLastModifiedByColumnUpdates[field.dbFieldName] || [];
+                ids.push(record.id);
+                trackedLastModifiedByColumnUpdates[field.dbFieldName] = ids;
+              }
+            }
           }
           return pre;
         },
@@ -124,6 +147,21 @@ export class SystemFieldService {
         .whereIn('__id', recordIds)
         .toQuery();
       await this.prismaService.txClient().$executeRawUnsafe(nativeQuery);
+    }
+
+    // Persist tracked Last Modified By columns that are not generated from the system column
+    if (Object.keys(trackedLastModifiedByColumnUpdates).length) {
+      const persistedUserValue = sanitizeAuditUserValue();
+      const serializedUserValue = persistedUserValue ? JSON.stringify(persistedUserValue) : null;
+      for (const [columnName, recordIds] of Object.entries(trackedLastModifiedByColumnUpdates)) {
+        const nativeQuery = this.knex(dbTableName)
+          .update({
+            [columnName]: serializedUserValue,
+          })
+          .whereIn('__id', recordIds)
+          .toQuery();
+        await this.prismaService.txClient().$executeRawUnsafe(nativeQuery);
+      }
     }
 
     return updatedRecords;
