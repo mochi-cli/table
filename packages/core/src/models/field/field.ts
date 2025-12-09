@@ -1,4 +1,4 @@
-import type { SafeParseReturnType } from 'zod';
+import type { ZodSafeParseResult } from 'zod';
 import { ZodError } from 'zod';
 import type { TableDomain } from '../table';
 import type { IFilter } from '../view/filter';
@@ -92,14 +92,14 @@ export abstract class FieldCore implements IFieldVo {
    */
   abstract repair(value: unknown): unknown;
 
-  abstract validateOptions(): SafeParseReturnType<unknown, unknown> | undefined;
+  abstract validateOptions(): ZodSafeParseResult<unknown> | undefined;
 
-  abstract validateCellValue(value: unknown): SafeParseReturnType<unknown, unknown> | undefined;
+  abstract validateCellValue(value: unknown): ZodSafeParseResult<unknown> | undefined;
 
   /**
    * Wrapper to enforce notNull when calling validateCellValue.
    */
-  validateCellValueWithNotNull(value: unknown): SafeParseReturnType<unknown, unknown> | undefined {
+  validateCellValueWithNotNull(value: unknown): ZodSafeParseResult<unknown> | undefined {
     if (this.isComputed) {
       return this.validateCellValue(value);
     }

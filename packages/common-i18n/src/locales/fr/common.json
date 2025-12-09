@@ -362,6 +362,14 @@
       },
       "webSearch": {
         "description": "Configurez la clé API Firecrawl pour activer la fonction de recherche web, accédez aux <a>paramètres Firecrawl</a> pour obtenir la clé API"
+      },
+      "app": {
+        "domain": "Domaine",
+        "v0ApiKey": "Clé API V0",
+        "customDomain": "Domaine Personnalisé (Optionnel)",
+        "customDomainDescription": "Définissez votre domaine personnalisé pour le déploiement de l'application, accédez au <a>domaine Vercel</a> pour obtenir un domaine personnalisé",
+        "vercelToken": "Token API Vercel",
+        "vercelTokenDescription": "Accédez aux <a>paramètres Vercel</a> pour obtenir le token API"
       }
     },
     "action": {
@@ -397,9 +405,9 @@
           "errorTips": "Vous n'avez pas encore configuré l'API LLM AI, AI Chat/automatisation AI ne pourra pas être utilisé"
         },
         "app": {
-          "title": "Génération d'application",
-          "description": "Vous n'avez pas encore configuré l'API v0, la fonction de génération d'application ne sera pas disponible, <anchor>aller aux paramètres</anchor>",
-          "errorTips": "Vous n'avez pas encore configuré l'API v0, la fonction de génération d'application ne sera pas disponible"
+          "title": "Générateur d'application",
+          "description": "Vous n'avez pas encore configuré l'API v0, la fonction Générateur d'application ne sera pas disponible, <anchor>aller aux paramètres</anchor>",
+          "errorTips": "Vous n'avez pas encore configuré l'API v0, la fonction Générateur d'application ne sera pas disponible"
         },
         "webSearch": {
           "title": "Recherche web",

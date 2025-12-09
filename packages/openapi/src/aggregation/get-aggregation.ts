@@ -9,21 +9,22 @@ export { StatisticsFunc } from '@teable/core';
 
 export const aggregationFieldSchema = z.object({
   fieldId: z.string(),
-  statisticFunc: z.nativeEnum(StatisticsFunc),
+  statisticFunc: z.enum(StatisticsFunc),
   alias: z.string().optional(),
 });
 
 export type IAggregationField = z.infer<typeof aggregationFieldSchema>;
 
 export const aggregationRoSchema = queryBaseSchema
-  .merge(contentQueryBaseSchema.pick({ groupBy: true }))
   .extend({
-    field: z.record(z.nativeEnum(StatisticsFunc), z.string().array()).optional(),
-  });
+    ...contentQueryBaseSchema.pick({ groupBy: true }).partial().shape,
+    field: z.partialRecord(z.enum(StatisticsFunc), z.string().array()),
+  })
+  .partial();
 
 export type IAggregationRo = z.infer<typeof aggregationRoSchema>;
 
-export const aggFuncSchema = z.nativeEnum(StatisticsFunc);
+export const aggFuncSchema = z.enum(StatisticsFunc);
 
 export const rawAggregationsValueSchema = z.object({
   value: z.union([z.string(), z.number()]).nullable(),
@@ -34,13 +35,13 @@ export type IRawAggregationsValue = z.infer<typeof rawAggregationsValueSchema>;
 
 export const rawAggregationsSchema = z
   .object({
-    fieldId: z.string().startsWith(IdPrefix.Field).openapi({
+    fieldId: z.string().startsWith(IdPrefix.Field).meta({
       description: 'The id of the field.',
     }),
-    total: rawAggregationsValueSchema.nullable().openapi({
+    total: rawAggregationsValueSchema.nullable().meta({
       description: 'Aggregations by all data in field',
     }),
-    group: z.record(z.string(), rawAggregationsValueSchema).optional().nullable().openapi({
+    group: z.record(z.string(), rawAggregationsValueSchema).optional().nullable().meta({
       description: 'Aggregations by grouped data in field',
     }),
   })

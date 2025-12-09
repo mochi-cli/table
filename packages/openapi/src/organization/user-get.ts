@@ -10,11 +10,12 @@ export const getDepartmentUserRoSchema = z.object({
   includeChildrenDepartment: z
     .string()
     .transform((value) => value === 'true')
-    .optional(),
-  skip: z.string().or(z.number()).transform(Number).pipe(z.number().min(0)).optional().openapi({
+    .optional()
+    .meta({ type: 'string' }),
+  skip: z.string().or(z.number()).transform(Number).pipe(z.number().min(0)).optional().meta({
     example: 0,
   }),
-  take: z.string().or(z.number()).transform(Number).pipe(z.number().min(1)).optional().openapi({
+  take: z.string().or(z.number()).transform(Number).pipe(z.number().min(1)).optional().meta({
     example: 50,
   }),
   search: z.string().optional(),

@@ -15,18 +15,18 @@ export const getPluginCenterListRoSchema = z.object({
       if (value == null) {
         return value;
       }
-      const parsingResult = z
-        .array(z.nativeEnum(PluginPosition))
-        .min(1)
-        .safeParse(JSON.parse(value));
+      const parsingResult = z.array(z.enum(PluginPosition)).min(1).safeParse(JSON.parse(value));
       if (!parsingResult.success) {
         parsingResult.error.issues.forEach((issue) => {
-          ctx.addIssue(issue);
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const { path, ...issueWithoutPath } = issue;
+          ctx.addIssue(issueWithoutPath);
         });
         return z.NEVER;
       }
       return Array.from(new Set(parsingResult.data));
-    }),
+    })
+    .meta({ type: 'string' }),
 });
 
 export type IGetPluginCenterListRo = z.infer<typeof getPluginCenterListRoSchema>;
@@ -41,7 +41,7 @@ export const getPluginCenterListVoSchema = z.array(
     helpUrl: z.string().optional(),
     i18n: pluginI18nSchema.optional(),
     url: z.string().optional(),
-    status: z.nativeEnum(PluginStatus),
+    status: z.enum(PluginStatus),
     createdTime: z.string(),
     lastModifiedTime: z.string().optional(),
     createdBy: pluginCreatedBySchema,

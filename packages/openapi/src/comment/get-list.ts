@@ -26,13 +26,19 @@ export const getCommentListQueryRoSchema = z.object({
     )
     .default(20)
     .optional()
-    .openapi({
+    .meta({
       example: 20,
       description: `The record count you want to take, maximum is ${1000}`,
     }),
   cursor: z.string().optional().nullable(),
   includeCursor: z
-    .union([z.boolean(), z.enum(['true', 'false']).transform((value) => value === 'true')])
+    .union([
+      z.boolean(),
+      z
+        .enum(['true', 'false'])
+        .transform((value) => value === 'true')
+        .meta({ type: 'string' }),
+    ])
     .optional(),
   direction: z.union([z.literal('forward'), z.literal('backward')]).optional(),
 });

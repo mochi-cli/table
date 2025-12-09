@@ -367,6 +367,14 @@
       },
       "webSearch": {
         "description": "ウェブ検索機能を有効にするためにFirecrawl APIキーを設定し、APIキーを取得するために<a>Firecrawl設定</a>にアクセスしてください"
+      },
+      "app": {
+        "domain": "ドメイン",
+        "v0ApiKey": "V0 APIキー",
+        "customDomain": "カスタムドメイン（オプション）",
+        "customDomainDescription": "アプリのデプロイ用のカスタムドメインを設定し、<a>Vercelドメイン</a>にアクセスしてカスタムドメインを取得してください",
+        "vercelToken": "Vercel APIトークン",
+        "vercelTokenDescription": "APIトークンを取得するために<a>Vercel設定</a>にアクセスしてください"
       }
     },
     "action": {
@@ -402,9 +410,9 @@
           "errorTips": "AI LLM APIをまだ設定していません。AIチャット/AI自動化が使用できません"
         },
         "app": {
-          "title": "アプリ生成",
-          "description": "v0 APIをまだ設定していません。アプリ生成機能が利用できません。<anchor>設定に移動</anchor>",
-          "errorTips": "v0 APIをまだ設定していません。アプリ生成機能が利用できません"
+          "title": "アプリビルダー",
+          "description": "v0 APIをまだ設定していません。アプリビルダー機能が利用できません。<anchor>設定に移動</anchor>",
+          "errorTips": "v0 APIをまだ設定していません。アプリビルダー機能が利用できません"
         },
         "webSearch": {
           "title": "ウェブ検索",

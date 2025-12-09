@@ -863,6 +863,7 @@
     "unauthorized": "Unauthorized",
     "unauthorizedShare": "Unauthorized share",
     "paymentRequired": "Payment required",
+    "creditLimitExceeded": "Credits have exceeded the limit",
     "restrictedResource": "Restricted resource",
     "notFound": "Not found",
     "conflict": "Conflict",
@@ -1116,6 +1117,7 @@
       "lookupFieldIdInvalid": "Lookup field {{lookupFieldId}} invalid",
       "formulaExpressionParseError": "Formula expression parse error",
       "formulaReferenceNotFound": "Formula reference field {{fieldIds}} not found",
+      "formulaReferenceNotFieldId": "Formula references {{fieldIds}} not found. Formulas must use field IDs (fldXXXXXXXXXXXXXXXX format), not field names.",
       "rollupExpressionParseError": "Rollup expression parse error",
       "choiceNameAlreadyExists": "Choice name {{name}} already exists",
       "symmetricFieldIdRequired": "Symmetric field ID is required",
@@ -1142,6 +1144,7 @@
     },
     "view": {
       "notFound": "View not found",
+      "cannotDeleteLastView": "Cannot delete the last view in a table. A table must have at least one view.",
       "defaultViewNotFound": "Default view not found",
       "propertyParseError": "Failed to parse view property",
       "primaryFieldCannotBeHidden": "Primary field cannot be hidden",

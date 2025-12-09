@@ -746,7 +746,117 @@
       "thinking": "思考中...",
       "toBeConfirmed": "待确认",
       "errorMessage": "错误信息",
-      "confirm": "确认"
+      "confirm": "确认",
+      "createRecordsSuccess": "成功创建 {{count}} 条记录",
+      "createRecordsFailed": "创建记录失败",
+      "updateRecordsSuccess": "成功更新 {{count}} 条记录",
+      "updateRecordsFailed": "更新记录失败",
+      "generatingRecords": "正在生成 {{count}} 条记录...",
+      "creatingRecords": "正在创建 {{count}} 条记录...",
+      "updatingRecords": "正在更新 {{count}} 条记录...",
+      "recordsPreview": "记录预览",
+      "andMoreRecords": "还有 {{count}} 条...",
+      "unknownError": "未知错误",
+      "recordIds": "记录 ID",
+      "records": "条记录",
+      "viewAll": "查看全部",
+      "showLess": "收起",
+      "generatingData": "正在生成数据...",
+      "generatingUpdates": "正在生成更新...",
+      "recordsGenerated": "已生成 {{count}} 条记录",
+      "recordsCount": "记录({{count}})",
+      "fieldsCount": "字段({{count}})",
+      "fieldsGenerated": "已生成 {{count}} 个字段",
+      "updatedProperties": "已更新 ({{count}})",
+      "configured": "已配置",
+      "recordsToUpdate": "待更新 {{count}} 条记录",
+      "showingLast": "后 {{count}} 条",
+      "recordLabel": "记录",
+      "statusGenerating": "生成中...",
+      "statusCreating": "创建中...",
+      "statusUpdating": "更新中...",
+      "statusCreated": "已创建",
+      "statusUpdated": "已更新",
+      "getApps": {
+        "title": "应用列表",
+        "loading": "加载应用中...",
+        "foundApps": "找到 {{count}} 个应用",
+        "noApps": "当前数据库中没有应用",
+        "openApp": "打开应用"
+      },
+      "generateApp": {
+        "title": "应用生成器",
+        "creatingApp": "创建应用",
+        "updatingApp": "更新应用",
+        "generatingApp": "生成应用",
+        "generating": "生成中...",
+        "openApp": "打开应用",
+        "viewProgress": "查看进度"
+      },
+      "generateAutomation": {
+        "title": "自动化构建器",
+        "creatingAutomation": "创建自动化",
+        "updatingAutomation": "更新自动化",
+        "generatingAutomation": "构建自动化",
+        "building": "构建中...",
+        "openAutomation": "打开自动化",
+        "viewProgress": "查看进度",
+        "testResults": "测试结果",
+        "triggerTest": "触发器",
+        "actionTest": "动作 {{index}}"
+      },
+      "htmlPreview": {
+        "preview": "预览",
+        "code": "代码",
+        "download": "下载",
+        "downloadHtml": "HTML",
+        "downloadImage": "图片 (PNG)",
+        "copy": "复制",
+        "copied": "已复制!",
+        "fullscreen": "全屏",
+        "exitFullscreen": "退出全屏",
+        "downloadSuccess": "图片下载成功",
+        "downloadFailed": "图片捕获失败",
+        "iframeFailed": "捕获失败：无法访问 iframe"
+      },
+      "loadAttachment": {
+        "title": "加载附件",
+        "loading": "正在加载附件",
+        "failed": "加载附件失败",
+        "empty": "没有加载任何附件",
+        "modeNative": "AI 视觉",
+        "modeNativeDesc": "已直接加载到 AI 原生上下文，可进行图像分析",
+        "modeExtracted": "文本提取",
+        "modeExtractedDesc": "文件内容已解析并提取为文本用于分析",
+        "visionLoaded": "已加载用于视觉分析",
+        "textExtracted": "已提取 {{chars}} 字符",
+        "contextLoaded": "已加载到 AI 上下文"
+      },
+      "textExtract": {
+        "title": "文本提取",
+        "loading": "正在提取文本",
+        "failed": "文本提取失败",
+        "empty": "未提取到文本",
+        "preview": "预览",
+        "truncated": "已截断",
+        "previews": "个预览",
+        "chars": "{{chars}} 字符",
+        "totalCharacters": "总计: {{chars}} 字符",
+        "filesTruncated": "({{count}} 个文件已截断)"
+      },
+      "importExcel": {
+        "title": "导入 Excel",
+        "loading": "正在处理文件...",
+        "failed": "导入失败",
+        "suggestions": "建议",
+        "analyzeComplete": "分析完成",
+        "worksheets": "工作表",
+        "columns": "列",
+        "nextStep": "下一步：AI 将根据字段映射进行导入",
+        "importComplete": "导入完成",
+        "stageAnalyze": "分析中",
+        "stageImport": "导入中"
+      }
     },
     "tools": {
       "getTeableApi": "获取 Teable API",
@@ -783,9 +893,11 @@
     },
     "action": {
       "createTable": "创建表格",
+      "updateTable": "更新表格",
       "updateTableName": "更新表格名称",
       "deleteTable": "删除表格",
       "createView": "创建视图",
+      "updateView": "更新视图",
       "updateViewName": "更新视图名称",
       "deleteView": "删除视图",
       "createField": "创建字段",
@@ -797,8 +909,10 @@
       "deleteField": "删除字段",
       "updateField": "更新字段",
       "createRecord": "创建记录",
+      "createRecords": "创建记录",
       "deleteRecord": "删除记录",
       "updateRecord": "更新记录",
+      "updateRecords": "更新记录",
 
       "updateBase": "更新数据库信息",
       "planTask": "规划任务中...",
@@ -810,7 +924,6 @@
       "generateAIFields": "生成 AI 字段",
       "generateLinkFields": "生成关联字段",
       "generateLookupFields": "生成查找字段",
-      "generateLinkFieldsRecords": "生成关联字段记录",
       "generateRollupFields": "生成聚合字段",
       "generateFormulaFields": "生成公式字段",
 
@@ -819,6 +932,11 @@
       "generateScriptAction": "生成 script 节点",
       "generateSendMailAction": "生成发送邮件节点",
       "generateAction": "生成节点",
+
+      "setupAutomationTrigger": "设置自动化触发器",
+      "testAutomationNode": "测试自动化节点",
+      "activateAutomation": "启用自动化",
+      "wait": "等待",
 
       "getRelativeData": "获取相关数据",
       "getPreviousNodeOutputVariables": "获取其他节点输出变量",
@@ -833,7 +951,50 @@
       "previewEnvironment": "准备预览环境",
 
       "analyzingAttachment": "分析附件中...",
-      "locateResource": "定位"
+      "locateResource": "定位",
+
+      "operationSuccess": "操作成功完成",
+      "operationFailed": "操作失败"
+    },
+    "queryTool": {
+      "getRecords": "查询记录",
+      "getRecordsWithTable": "查询记录 · {{tableName}}",
+      "getFields": "查询字段",
+      "getFieldsWithTable": "查询字段 · {{tableName}}",
+      "getTables": "查询表",
+      "getViews": "查询视图",
+      "getViewsWithTable": "查询视图 · {{tableName}}",
+      "sqlQuery": "SQL 查询",
+      "querying": "查询中...",
+      "queryFailed": "查询失败",
+      "noData": "无返回数据",
+      "dataFormatError": "数据格式错误",
+      "unsupportedQueryType": "不支持的查询类型: {{toolName}}",
+      "returnedRecords": "返回 {{count}} 条记录",
+      "record": "记录 {{index}}",
+      "moreRecords": "... +{{count}} 条记录",
+      "foundFields": "找到 {{count}} 个字段",
+      "moreFields": "... +{{count}} 个字段",
+      "foundTables": "找到 {{count}} 张表",
+      "moreTables": "... +{{count}} 张表",
+      "foundViews": "找到 {{count}} 个视图",
+      "moreViews": "... +{{count}} 个视图",
+      "queryReturned": "查询返回 {{rowCount}} 行 × {{columnCount}} 列",
+      "row": "行 {{index}}",
+      "moreRows": "... +{{count}} 行",
+      "getDoc": "获取文档",
+      "getDocWithTopic": "获取文档 · {{topic}}",
+      "getAutomations": "查询自动化",
+      "getAutomation": "查询自动化详情",
+      "getAutomationRuns": "查询自动化运行记录",
+      "foundAutomations": "找到 {{count}} 个自动化",
+      "moreAutomations": "... +{{count}} 个自动化",
+      "foundRuns": "找到 {{count}} 条运行记录",
+      "moreRuns": "... +{{count}} 条记录",
+      "active": "已启用",
+      "trigger": "触发器",
+      "actions": "{{count}} 个操作",
+      "moreActions": "... +{{count}} 个操作"
     },
     "codeBlock": {
       "hiddenLines": "{{count}}行已隐藏",
@@ -878,6 +1039,42 @@
       "title": "生成自动化",
       "generateSuccess": "生成自动化成功"
     },
+    "automation": {
+      "created": "已创建",
+      "updated": "已更新",
+      "workflow": "工作流",
+      "trigger": "触发器",
+      "scriptAction": "脚本动作",
+      "workflowLabel": "工作流",
+      "triggerLabel": "触发器",
+      "scriptActionLabel": "脚本动作",
+      "workflowId": "工作流",
+      "triggerId": "触发器",
+      "scriptActionId": "脚本动作",
+      "viewAutomation": "查看",
+      "navigateToAutomation": "跳转到自动化",
+      "triggerType": {
+        "recordCreated": "记录创建时",
+        "recordUpdated": "记录更新时",
+        "recordCreatedOrUpdated": "记录创建或更新时",
+        "formSubmitted": "表单提交时",
+        "scheduledTime": "定时触发",
+        "buttonClick": "按钮点击时"
+      },
+      "testPassed": "测试通过",
+      "testFailed": "测试失败",
+      "testOutput": "测试输出",
+      "activated": "已启用",
+      "deactivated": "已禁用",
+      "discarded": "已撤销更改",
+      "activateFailed": "启用失败",
+      "deactivateFailed": "禁用失败",
+      "discardFailed": "撤销失败",
+      "scriptUpdated": "脚本已更新",
+      "scriptUpdateFailed": "更新失败",
+      "waitedSeconds": "已等待 {{seconds}} 秒",
+      "waitFailed": "等待失败"
+    },
     "newChat": "新对话",
     "noModel": "暂无可用模型",
     "noHistory": "暂无聊天记录",
@@ -899,9 +1096,14 @@
     "thought": "深度思考",
     "meta": {
       "timeCostUnit": "秒",
-      "timeCostDescription": "生成耗时{{timeCost}}秒",
-      "creditDescription": "消耗{{credits}}算力",
-      "tokenDescription": "本次消耗：{{tokens}} tokens"
+      "timeCostDescription": "生成耗时 {{timeCost}} 秒",
+      "creditDescription": "消耗 {{credits}} 算力",
+      "tokenDescription": "本次消耗：{{tokens}} tokens",
+      "input": "输入",
+      "output": "输出",
+      "tokens": "Tokens",
+      "totalTimeCost": "总耗时",
+      "totalCreditCost": "总计"
     },
     "dataVisualization": {
       "error": "数据可视化失败"
@@ -918,6 +1120,21 @@
       "ask": "提问",
       "analyze": "分析",
       "build": "构建"
+    },
+    "buildApp": {
+      "thinking": {
+        "duration": "思考用时 {{duration}} 秒"
+      },
+      "task": {
+        "searching": "搜索 \"{{query}}\"",
+        "readingFiles": "读取文件:",
+        "foundResults": "找到 {{count}} 个结果",
+        "noIssuesFound": "未发现问题",
+        "defaultTitle": "任务"
+      },
+      "codeProject": {
+        "defaultTitle": "代码项目"
+      }
     }
   }
 }

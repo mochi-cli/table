@@ -3,13 +3,13 @@ import { z } from 'zod';
 import { axios } from '../axios';
 
 export const queryParamsRoSchema = z.object({
-  params: z.record(z.unknown()),
+  params: z.record(z.string(), z.unknown()),
 });
 
 export type IQueryParamsRo = z.infer<typeof queryParamsRoSchema>;
 
 export const queryParamsVoSchema = z.object({
-  queryId: z.string().openapi({
+  queryId: z.string().meta({
     example: 'qry_xxxxxxxx',
     description: 'Unique ID for the saved query parameters',
   }),

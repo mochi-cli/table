@@ -1,3 +1,4 @@
+export * from './zod';
 export * from './axios';
 export * from './generate.schema';
 export * from './record';
@@ -20,7 +21,6 @@ export * from './access-token';
 export * from './import';
 export * from './export';
 export * from './utils';
-export * from './zod';
 export * from './pin';
 export * from './billing';
 export * from './admin';
@@ -42,3 +42,4 @@ export * from './automation';
 export * from './mail';
 export * from './formula';
 export * from './unsubscribe';
+export * from './types';

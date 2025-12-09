@@ -11,8 +11,8 @@ export const GET_PLUGIN_PANEL_INSTALL_PLUGIN_QUERY =
 export const getPluginPanelInstallPluginQueryRoSchema = z.object({
   tableId: z.string(),
   cellFormat: z
-    .nativeEnum(CellFormat, {
-      errorMap: () => ({ message: 'Error cellFormat, You should set it to "json" or "text"' }),
+    .enum(CellFormat, {
+      message: 'Error cellFormat, You should set it to "json" or "text"',
     })
     .optional(),
 });

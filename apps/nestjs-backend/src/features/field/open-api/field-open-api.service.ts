@@ -1362,7 +1362,7 @@ export class FieldOpenApiService {
         ]),
         // all link field should be one way link
         isOneWay: true,
-      };
+      } as ILinkFieldOptions;
     }
 
     if (

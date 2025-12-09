@@ -863,6 +863,7 @@
     "unauthorized": "令牌无效",
     "unauthorizedShare": "无权限执行此操作",
     "paymentRequired": "需要支付才能完成此操作",
+    "creditLimitExceeded": "算力额度已超限",
     "restrictedResource": "此资源受限",
     "notFound": "请求的资源不存在或未共享",
     "conflict": "请求因与当前资源状态冲突而无法完成",
@@ -1116,6 +1117,7 @@
       "lookupFieldIdInvalid": "查找字段 {{lookupFieldId}} 无效",
       "formulaExpressionParseError": "公式的表达式解析错误",
       "formulaReferenceNotFound": "公式的引用字段 {{fieldIds}} 不存在",
+      "formulaReferenceNotFieldId": "公式引用 {{fieldIds}} 不存在。公式必须使用字段 ID（fldXXXXXXXXXXXXXXXX 格式），而不是字段名称。",
       "rollupExpressionParseError": "汇总字段的表达式解析错误",
       "choiceNameAlreadyExists": "选项名称 {{name}} 已存在",
       "symmetricFieldIdRequired": "双向关联对称的字段 ID 不能为空",
@@ -1142,6 +1144,7 @@
     },
     "view": {
       "notFound": "视图不存在",
+      "cannotDeleteLastView": "无法删除表格中的最后一个视图。表格必须至少保留一个视图。",
       "defaultViewNotFound": "默认视图不存在",
       "propertyParseError": "视图属性解析失败",
       "primaryFieldCannotBeHidden": "主字段不能被隐藏",

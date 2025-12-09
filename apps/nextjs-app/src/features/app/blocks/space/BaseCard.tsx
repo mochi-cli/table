@@ -11,7 +11,6 @@ import { useRouter } from 'next/router';
 import { useState, type FC, useRef } from 'react';
 import { Emoji } from '../../components/emoji/Emoji';
 import { EmojiPicker } from '../../components/emoji/EmojiPicker';
-import { useChatPanelStore } from '../../components/sidebar/useChatPanelStore';
 import { ColorBg } from './ColorBg';
 import { BaseActionTrigger } from './component/BaseActionTrigger';
 import { StarButton } from './space-side-bar/StarButton';
@@ -24,12 +23,11 @@ interface IBaseCard {
 
 export const BaseCard: FC<IBaseCard> = (props) => {
   const { base, className, spaceName } = props;
-  const router = useRouter();
   const queryClient = useQueryClient();
   const [renaming, setRenaming] = useState<boolean>();
   const inputRef = useRef<HTMLInputElement>(null);
   const [baseName, setBaseName] = useState<string>(base.name);
-  const { open: openChatPanel } = useChatPanelStore();
+  const router = useRouter();
 
   const { mutateAsync: updateBaseMutator } = useMutation({
     mutationFn: updateBase,
@@ -75,8 +73,14 @@ export const BaseCard: FC<IBaseCard> = (props) => {
     e.stopPropagation();
   };
 
+  const iconChange = (icon: string) => {
+    updateBaseMutator({
+      baseId: base.id,
+      updateBaseRo: { icon },
+    });
+  };
+
   const intoBase = () => {
-    openChatPanel();
     if (renaming) {
       return;
     }
@@ -85,13 +89,6 @@ export const BaseCard: FC<IBaseCard> = (props) => {
       query: {
         baseId: base.id,
       },
-    });
-  };
-
-  const iconChange = (icon: string) => {
-    updateBaseMutator({
-      baseId: base.id,
-      updateBaseRo: { icon },
     });
   };
 

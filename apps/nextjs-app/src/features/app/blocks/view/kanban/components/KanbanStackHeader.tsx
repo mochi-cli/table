@@ -68,15 +68,15 @@ export const KanbanStackHeader = (props: IKanbanStackHeaderProps) => {
 
   const onOptionUpdate = () => {
     const value = inputRef.current?.value;
-    const newChoice = { ...renamingChoice, name: value };
-    if (!value || isEqual(value, stackData)) return;
+    if (!value || !renamingChoice || isEqual(value, stackData)) return;
+    const newChoice: ISelectFieldChoice = { ...renamingChoice, name: value };
     const newChoices = choices.map((choice) => {
       if (choice.name === stackData) return newChoice;
       return choice;
     });
     stackField.convert({
       type,
-      options: { ...options, choices: newChoices },
+      options: { ...options, choices: newChoices } as ISelectFieldOptions,
     });
   };
 
@@ -92,7 +92,7 @@ export const KanbanStackHeader = (props: IKanbanStackHeaderProps) => {
     const newChoices = choices.filter((choice) => choice.name !== stackData);
     stackField.convert({
       type,
-      options: { ...options, choices: newChoices },
+      options: { ...options, choices: newChoices } as ISelectFieldOptions,
     });
   };
 
