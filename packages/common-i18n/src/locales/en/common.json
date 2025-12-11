@@ -64,6 +64,7 @@
   },
   "template": {
     "aiTitle": "Let's build together",
+    "aiGreeting": "How can I help you, {{name}}",
     "aiSubTitle": "The first AI platform where teams collaborate on data and generate production apps",
     "guideTitle": "Start from your scenario",
     "watchVideo": "Watch video",

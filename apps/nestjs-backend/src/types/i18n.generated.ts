@@ -275,6 +275,7 @@ export type I18nTranslations = {
                     "guide7": string;
                 };
             };
+            "aiGreeting": string;
         };
         "settings": {
             "title": string;

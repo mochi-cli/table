@@ -64,6 +64,7 @@
   },
   "template": {
     "aiTitle": "让我们一起构建",
+    "aiGreeting": "{{name}}，有什么可以帮您？",
     "aiSubTitle": "首个让团队在数据协作并生成生产级应用的 AI 平台",
     "guideTitle": "从你的场景开始",
     "watchVideo": "观看视频",

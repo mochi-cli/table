@@ -43,6 +43,8 @@ export { default as ConditionalRollup } from './components/ConditionalRollup';
 export { default as Copy } from './components/Copy';
 export { default as CreateRecord } from './components/CreateRecord';
 export { default as CreditCard } from './components/CreditCard';
+export { default as Cuppy } from './components/Cuppy';
+export { default as CuppyLoader } from './components/CuppyLoader';
 export { default as Database } from './components/Database';
 export { default as DeepThinking } from './components/DeepThinking';
 export { default as Deepseek } from './components/Deepseek';
