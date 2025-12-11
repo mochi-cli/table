@@ -90,13 +90,13 @@ export class TrashService {
   }
 
   async getTrash(trashRo: ITrashRo) {
-    const { resourceType } = trashRo;
+    const { resourceType, spaceId } = trashRo;
 
     switch (resourceType) {
       case ResourceType.Space:
         return await this.getSpaceTrash();
       case ResourceType.Base:
-        return await this.getBaseTrash();
+        return await this.getBaseTrash(spaceId);
       default:
         throw new CustomHttpException(
           `Invalid resource type ${resourceType}`,
@@ -150,23 +150,26 @@ export class TrashService {
     };
   }
 
-  private async getBaseTrash() {
+  private async getBaseTrash(spaceId?: string) {
     const { bases } = await this.getAuthorizedSpacesAndBases();
-    const baseIds = bases.map((base) => base.id);
-    const spaceIds = bases.map((base) => base.spaceId);
+    const authorizedBaseIds = bases.map((base) => base.id);
+    const authorizedBaseSpaceIds = bases.map((base) => base.spaceId);
     const baseIdMap = keyBy(bases, 'id');
 
     const trashedSpaces = await this.prismaService.trash.findMany({
       where: {
         resourceType: ResourceType.Space,
-        resourceId: { in: spaceIds },
+        resourceId: { in: authorizedBaseSpaceIds },
       },
       select: { resourceId: true },
     });
     const list = await this.prismaService.trash.findMany({
       where: {
-        parentId: { notIn: trashedSpaces.map((space) => space.resourceId) },
-        resourceId: { in: baseIds },
+        parentId: {
+          notIn: trashedSpaces.map((space) => space.resourceId),
+          in: spaceId ? [spaceId] : undefined,
+        },
+        resourceId: { in: authorizedBaseIds },
         resourceType: ResourceType.Base,
       },
     });

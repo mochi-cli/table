@@ -47,7 +47,7 @@ function Tree({ indent = 20, tree, className, ...props }: TreeProps) {
       <div
         data-slot="tree"
         style={mergedStyle}
-        className={cn('flex flex-col', className)}
+        className={cn('flex flex-col isolate', className)}
         {...otherProps}
       />
     </TreeContext.Provider>
@@ -89,7 +89,7 @@ function TreeItem<T = any>({
         data-slot="tree-item"
         style={mergedStyle}
         className={cn(
-          'group z-10 ps-[var(--tree-padding)] outline-none select-none pb-0.5 last:pb-0 focus:z-20 data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+          'group ps-[var(--tree-padding)] outline-none select-none pb-0.5 last:pb-0 focus:z-20 data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
           className
         )}
         data-focus={typeof item.isFocused === 'function' ? item.isFocused() || false : undefined}
@@ -145,7 +145,7 @@ function TreeItemLabel<T = any>({
       data-drag-target={isDragTarget ? 'true' : undefined}
       data-search-match={isSearchMatch ? 'true' : undefined}
       className={cn(
-        'flex items-center gap-1 rounded-md border border-transparent bg-background px-2 py-1 text-sm transition-colors hover:bg-accent group-focus-visible:ring-[3px] group-focus-visible:ring-ring/50 [&_svg]:pointer-events-none [&_svg]:shrink-0',
+        'flex items-center gap-1 rounded-md border border-transparent px-2 py-1 text-sm transition-colors hover:bg-accent group-focus-visible:ring-[3px] group-focus-visible:ring-ring/50 [&_svg]:pointer-events-none [&_svg]:shrink-0',
         !isFolder && 'ps-7',
         isDragTarget && 'border-dashed border-foreground bg-foreground/[0.06]',
         isSearchMatch && 'bg-blue-400/20',

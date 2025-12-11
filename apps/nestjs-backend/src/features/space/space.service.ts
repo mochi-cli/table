@@ -19,19 +19,19 @@ import type {
   IUpdateSpaceRo,
 } from '@teable/openapi';
 import { ResourceType, CollaboratorType, PrincipalType, IntegrationType } from '@teable/openapi';
-import { map } from 'lodash';
+import { keyBy, map } from 'lodash';
 import { ClsService } from 'nestjs-cls';
 import { ThresholdConfig, IThresholdConfig } from '../../configs/threshold.config';
 import { CustomHttpException } from '../../custom.exception';
 import { PerformanceCache, PerformanceCacheService } from '../../performance-cache';
 import { generateIntegrationCacheKey } from '../../performance-cache/generate-keys';
 import type { IClsStore } from '../../types/cls';
+import { getPublicFullStorageUrl } from '../attachments/plugins/utils';
 import { PermissionService } from '../auth/permission.service';
 import { BaseService } from '../base/base.service';
 import { CollaboratorService } from '../collaborator/collaborator.service';
 import { SettingOpenApiService } from '../setting/open-api/setting-open-api.service';
 import { SettingService } from '../setting/setting.service';
-
 @Injectable()
 export class SpaceService {
   constructor(
@@ -267,6 +267,9 @@ export class SpaceService {
         order: true,
         spaceId: true,
         icon: true,
+        createdBy: true,
+        lastModifiedTime: true,
+        createdTime: true,
       },
       where: {
         spaceId,
@@ -277,9 +280,25 @@ export class SpaceService {
       },
     });
 
+    const createdUserList = await this.prismaService.user.findMany({
+      where: { id: { in: baseList.map((base) => base.createdBy) } },
+      select: { id: true, name: true, avatar: true },
+    });
+    const createdUserMap = keyBy(createdUserList, 'id');
+
     return baseList.map((base) => {
       const role = roleMap[base.id] || roleMap[base.spaceId];
-      return { ...base, role };
+      const createdUser = createdUserMap[base.createdBy];
+      return {
+        ...base,
+        role,
+        lastModifiedTime: base.lastModifiedTime?.toISOString(),
+        createdTime: base.createdTime?.toISOString(),
+        createdUser: {
+          ...createdUser,
+          avatar: createdUser?.avatar && getPublicFullStorageUrl(createdUser.avatar),
+        },
+      };
     });
   }
 

@@ -236,6 +236,7 @@ export type I18nTranslations = {
             "exit": string;
             "next": string;
             "previous": string;
+            "select": string;
             "continue": string;
             "export": string;
             "import": string;
@@ -837,6 +838,7 @@ export type I18nTranslations = {
             };
         };
         "trash": {
+            "spaceTrash": string;
             "type": string;
             "resetTrash": string;
             "deletedBy": string;
@@ -2657,6 +2659,10 @@ export type I18nTranslations = {
             "description": string;
             "empty": string;
         };
+        "trash": {
+            "spaceDescription": string;
+            "baseDescription": string;
+        };
         "integration": {
             "title": string;
             "description": string;
@@ -2692,6 +2698,14 @@ export type I18nTranslations = {
         "noSpaces": {
             "title": string;
             "description": string;
+        };
+        "baseList": {
+            "allBases": string;
+            "owner": string;
+            "lastOpened": string;
+            "enter": string;
+            "noTables": string;
+            "empty": string;
         };
     };
     "system": {
