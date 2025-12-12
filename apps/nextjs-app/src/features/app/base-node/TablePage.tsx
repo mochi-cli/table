@@ -2,8 +2,8 @@
 import { dehydrate } from '@tanstack/react-query';
 import { BaseNodeResourceType, LastVisitResourceType } from '@teable/openapi';
 import { ReactQueryKeys } from '@teable/sdk/config';
+import dynamic from 'next/dynamic';
 import type { SsrApi } from '@/backend/api/rest/ssr-api';
-import { Table } from '@/features/app/blocks/table/Table';
 import type { IBaseResourceParsed } from '@/features/app/hooks/useBaseResource';
 import { getViewPageServerData } from '@/lib/view-pages-data';
 import { redirect } from './helper';
@@ -113,6 +113,13 @@ export const getTableServerSideProps = async (
   };
 };
 
+const DynamicTable = dynamic(
+  () => import('@/features/app/blocks/table/Table').then((mod) => mod.Table),
+  {
+    ssr: false,
+  }
+);
+
 export const TablePage = ({
   fieldServerData,
   viewServerData,
@@ -121,7 +128,7 @@ export const TablePage = ({
   groupPointsServerDataMap,
 }: ITablePageProps) => {
   return (
-    <Table
+    <DynamicTable
       fieldServerData={fieldServerData ?? []}
       viewServerData={viewServerData ?? []}
       recordsServerData={recordsServerData ?? { records: [] }}
