@@ -1,5 +1,5 @@
 /* eslint-disable sonarjs/no-duplicate-string */
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { HttpErrorCode } from '@teable/core';
 import type { Request } from 'express';
@@ -89,14 +89,13 @@ export class LocalStrategy extends PassportStrategy(Strategy) {
       if (isLockout) {
         throw lockError;
       }
-      const count = await this.cacheService.get(`signin:attempts:${email}`);
-      if (count && count >= maxLoginAttempts) {
+      // Use atomic increment to prevent race conditions
+      const attempts = await this.cacheService.incr(`signin:attempts:${email}`, 30);
+      if (attempts >= maxLoginAttempts) {
         await this.cacheService.set(`signin:lockout:${email}`, true, accountLockoutMinutes);
         await this.cacheService.del(`signin:attempts:${email}`);
         throw lockError;
       }
-      const attempts = (count || 0) + 1;
-      await this.cacheService.setDetail(`signin:attempts:${email}`, attempts, 30);
       throw new CustomHttpException(
         'Email or password is incorrect',
         HttpErrorCode.INVALID_CREDENTIALS,

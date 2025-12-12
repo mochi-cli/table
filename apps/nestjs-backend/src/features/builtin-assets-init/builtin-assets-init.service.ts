@@ -126,24 +126,15 @@ export class BuiltinAssetsInitService implements OnModuleInit {
     }
 
     try {
-      // Try to set lock with NX (only if not exists) using cache service
-      // We use a special approach since CacheService doesn't have setnx
-      const existingLock = await this.cacheService.get(LOCK_KEY);
-      if (existingLock) {
-        return false;
+      // Use atomic setnx operation to acquire lock
+      const acquired = await this.cacheService.setnx(LOCK_KEY, this.lockValue, LOCK_TTL);
+
+      if (acquired) {
+        this.logger.debug('Acquired distributed lock for builtin assets initialization');
+        return true;
       }
 
-      // Set our lock value
-      await this.cacheService.setDetail(LOCK_KEY, this.lockValue, LOCK_TTL);
-
-      // Verify we got the lock (race condition check)
-      const verifyLock = await this.cacheService.get(LOCK_KEY);
-      if (verifyLock !== this.lockValue) {
-        return false;
-      }
-
-      this.logger.debug('Acquired distributed lock for builtin assets initialization');
-      return true;
+      return false;
     } catch (error) {
       // If Redis fails, proceed without lock
       this.logger.warn('Failed to acquire Redis lock, proceeding anyway', error);
