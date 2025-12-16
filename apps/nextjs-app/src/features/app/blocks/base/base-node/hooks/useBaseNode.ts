@@ -6,7 +6,6 @@ import { ReactQueryKeys } from '@teable/sdk/config';
 import { useConnection } from '@teable/sdk/hooks';
 import { isEmpty, get } from 'lodash';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useDebounce } from 'react-use';
 import { buildTreeItems } from './helper';
 
 export type TreeItemData = Omit<IBaseNodeVo, 'children'> & { children: string[] };
@@ -16,7 +15,6 @@ export const useBaseNode = (baseId: string) => {
   const channel = getBaseNodeChannel(baseId);
   const presence = connection?.getPresence(channel);
   const [nodes, setNodes] = useState<IBaseNodeVo[]>([]);
-  const [shouldInvalidate, setShouldInvalidate] = useState(0);
 
   const queryClient = useQueryClient();
 
@@ -42,16 +40,6 @@ export const useBaseNode = (baseId: string) => {
       queryClient.invalidateQueries({ queryKey: ReactQueryKeys.baseNodeTree(baseId) });
     }
   }, [baseId, queryClient]);
-
-  useDebounce(
-    () => {
-      if (shouldInvalidate > 0) {
-        invalidateMenu();
-      }
-    },
-    500,
-    [shouldInvalidate]
-  );
 
   const maxFolderDepth = useMemo(() => {
     return queryData?.maxFolderDepth ?? 2;
@@ -87,7 +75,7 @@ export const useBaseNode = (baseId: string) => {
       if (!isEmpty(remotePresences)) {
         const remotePayload = get(remotePresences, channel);
         if (remotePayload) {
-          setShouldInvalidate((prev) => prev + 1);
+          invalidateMenu();
         }
       }
     };
@@ -99,7 +87,7 @@ export const useBaseNode = (baseId: string) => {
       presence?.listenerCount('receive') === 0 && presence?.unsubscribe();
       presence?.listenerCount('receive') === 0 && presence?.destroy();
     };
-  }, [connection, presence, channel, setNodes]);
+  }, [connection, presence, channel, setNodes, invalidateMenu]);
 
   return useMemo(() => {
     return {

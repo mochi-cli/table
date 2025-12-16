@@ -1,8 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
-import { generateBaseNodeId, ANONYMOUS_USER_ID, getBaseNodeChannel } from '@teable/core';
 import { PrismaService } from '@teable/db-main-prisma';
-import type { Prisma } from '@teable/db-main-prisma';
 import type {
   IBaseNodePresenceCreatePayload,
   IBaseNodePresenceDeletePayload,
@@ -10,8 +8,7 @@ import type {
   IBaseNodePresenceUpdatePayload,
 } from '@teable/openapi';
 import { BaseNodeResourceType } from '@teable/openapi';
-import { Knex } from 'knex';
-import { InjectModel } from 'nest-knexjs';
+import { ClsService } from 'nestjs-cls';
 import type { LocalPresence } from 'sharedb/lib/client';
 import type {
   BaseFolderUpdateEvent,
@@ -42,7 +39,8 @@ import { generateBaseNodeListCacheKey } from '../../performance-cache/generate-k
 import { PerformanceCacheService } from '../../performance-cache/service';
 import type { IPerformanceCacheStore } from '../../performance-cache/types';
 import { ShareDbService } from '../../share-db/share-db.service';
-import { buildBatchUpdateSql, presenceHandler } from './helper';
+import type { IClsStore } from '../../types/cls';
+import { presenceHandler } from './helper';
 
 type IResourceCreateEvent =
   | BaseFolderCreateEvent
@@ -72,45 +70,31 @@ export class BaseNodeListener {
 
   constructor(
     private readonly prismaService: PrismaService,
-    @InjectModel('CUSTOM_KNEX') private readonly knex: Knex,
     private readonly performanceCacheService: PerformanceCacheService<IPerformanceCacheStore>,
-    private readonly shareDbService: ShareDbService
+    private readonly shareDbService: ShareDbService,
+    private readonly cls: ClsService<IClsStore & { ignoreBaseNodeListener?: boolean }>
   ) {}
 
-  @OnEvent(Events.BASE_FOLDER_CREATE)
-  @OnEvent(Events.TABLE_CREATE)
-  @OnEvent(Events.DASHBOARD_CREATE)
-  @OnEvent(Events.WORKFLOW_CREATE)
-  @OnEvent(Events.APP_CREATE)
-  async onResourceCreate(event: IResourceCreateEvent) {
-    const { baseId, resourceType, resourceId, userId } = this.prepareResourceCreate(event);
+  private getIgnoreBaseNodeListener() {
+    return this.cls.get('ignoreBaseNodeListener');
+  }
 
+  @OnEvent(Events.BASE_FOLDER_CREATE, { async: true })
+  @OnEvent(Events.TABLE_CREATE, { async: true })
+  @OnEvent(Events.DASHBOARD_CREATE, { async: true })
+  @OnEvent(Events.WORKFLOW_CREATE, { async: true })
+  @OnEvent(Events.APP_CREATE, { async: true })
+  async onResourceCreate(event: IResourceCreateEvent) {
+    const ignoreBaseNodeListener = this.getIgnoreBaseNodeListener();
+    if (ignoreBaseNodeListener) {
+      return;
+    }
+
+    const { baseId, resourceType, resourceId } = this.prepareResourceCreate(event);
     if (!baseId || !resourceType || !resourceId) {
       this.logger.error('Invalid resource create event', event);
       return;
     }
-
-    const createNode = async (prisma: PrismaService) => {
-      const findNode = await prisma.baseNode.findFirst({
-        where: { baseId, resourceType, resourceId },
-      });
-      if (findNode) {
-        return;
-      }
-      const maxOrder = await this.getMaxOrder(baseId);
-      await prisma.baseNode.create({
-        data: {
-          id: generateBaseNodeId(),
-          baseId,
-          resourceType,
-          resourceId,
-          parentId: null,
-          order: maxOrder + 1,
-          createdBy: userId || ANONYMOUS_USER_ID,
-        },
-      });
-    };
-    await createNode(this.prismaService);
 
     this.presenceHandler(baseId, (presence) => {
       presence.submit({
@@ -169,12 +153,17 @@ export class BaseNodeListener {
     };
   }
 
-  @OnEvent(Events.BASE_FOLDER_UPDATE)
-  @OnEvent(Events.TABLE_UPDATE)
-  @OnEvent(Events.DASHBOARD_UPDATE)
-  @OnEvent(Events.WORKFLOW_UPDATE)
-  @OnEvent(Events.APP_UPDATE)
+  @OnEvent(Events.BASE_FOLDER_UPDATE, { async: true })
+  @OnEvent(Events.TABLE_UPDATE, { async: true })
+  @OnEvent(Events.DASHBOARD_UPDATE, { async: true })
+  @OnEvent(Events.WORKFLOW_UPDATE, { async: true })
+  @OnEvent(Events.APP_UPDATE, { async: true })
   async onResourceUpdate(event: IResourceUpdateEvent) {
+    const ignoreBaseNodeListener = this.getIgnoreBaseNodeListener();
+    if (ignoreBaseNodeListener) {
+      return;
+    }
+
     const { baseId, resourceType, resourceId } = this.prepareResourceUpdate(event);
     if (baseId && resourceType && resourceId) {
       this.presenceHandler(baseId, (presence) => {
@@ -233,13 +222,18 @@ export class BaseNodeListener {
     };
   }
 
-  @OnEvent(Events.BASE_DELETE)
-  @OnEvent(Events.BASE_FOLDER_DELETE)
-  @OnEvent(Events.TABLE_DELETE)
-  @OnEvent(Events.DASHBOARD_DELETE)
-  @OnEvent(Events.WORKFLOW_DELETE)
-  @OnEvent(Events.APP_DELETE)
+  @OnEvent(Events.BASE_DELETE, { async: true })
+  @OnEvent(Events.BASE_FOLDER_DELETE, { async: true })
+  @OnEvent(Events.TABLE_DELETE, { async: true })
+  @OnEvent(Events.DASHBOARD_DELETE, { async: true })
+  @OnEvent(Events.WORKFLOW_DELETE, { async: true })
+  @OnEvent(Events.APP_DELETE, { async: true })
   async onResourceDelete(event: IResourceDeleteEvent) {
+    const ignoreBaseNodeListener = this.getIgnoreBaseNodeListener();
+    if (ignoreBaseNodeListener) {
+      return;
+    }
+
     const { baseId, resourceType, resourceId } = this.prepareResourceDelete(event);
     if (!baseId) {
       return;
@@ -254,35 +248,6 @@ export class BaseNodeListener {
       this.logger.error('Invalid resource delete event', event);
       return;
     }
-
-    const deleteNode = async (prisma: Prisma.TransactionClient) => {
-      const toDeleteNode = await prisma.baseNode.findFirst({
-        where: { baseId, resourceType, resourceId },
-      });
-      if (!toDeleteNode) {
-        return;
-      }
-      await prisma.baseNode.deleteMany({
-        where: { id: toDeleteNode.id },
-      });
-      const maxOrder = await this.getMaxOrder(baseId);
-      const orphans = await prisma.baseNode.findMany({
-        where: { baseId, parentId: toDeleteNode.parentId },
-        select: { id: true, order: true },
-      });
-      if (orphans.length > 0) {
-        await this.batchUpdateBaseNodes(
-          orphans.map((orphan) => ({
-            id: orphan.id,
-            values: {
-              parentId: null,
-              order: maxOrder + orphan.order + 1,
-            },
-          }))
-        );
-      }
-    };
-    await deleteNode(this.prismaService);
 
     this.presenceHandler(baseId, (presence) => {
       presence.submit({
@@ -332,13 +297,10 @@ export class BaseNodeListener {
     };
   }
 
-  private presenceHandler<
-    T =
-      | IBaseNodePresenceFlushPayload
-      | IBaseNodePresenceCreatePayload
-      | IBaseNodePresenceUpdatePayload
-      | IBaseNodePresenceDeletePayload,
-  >(baseId: string, handler: (presence: LocalPresence<T>) => void) {
+  private presenceHandler<T = IBaseNodePresenceFlushPayload>(
+    baseId: string,
+    handler: (presence: LocalPresence<T>) => void
+  ) {
     this.performanceCacheService.del(generateBaseNodeListCacheKey(baseId));
     // Skip if ShareDB connection is already closed (e.g., during shutdown)
     if (this.shareDbService.shareDbAdapter.closed) {
@@ -346,23 +308,5 @@ export class BaseNodeListener {
       return;
     }
     presenceHandler(baseId, this.shareDbService, handler);
-  }
-
-  private async getMaxOrder(baseId: string, parentId?: string | null) {
-    const prisma = this.prismaService.txClient();
-    const aggregate = await prisma.baseNode.aggregate({
-      where: { baseId, parentId },
-      _max: { order: true },
-    });
-
-    return aggregate._max.order ?? 0;
-  }
-
-  private async batchUpdateBaseNodes(data: { id: string; values: { [key: string]: unknown } }[]) {
-    const sql = buildBatchUpdateSql(this.knex, data);
-    if (!sql) {
-      return;
-    }
-    await this.prismaService.$executeRawUnsafe(sql);
   }
 }

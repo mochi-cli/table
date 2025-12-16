@@ -63,7 +63,7 @@ export class BaseNodeService {
     private readonly shareDbService: ShareDbService,
     private readonly prismaService: PrismaService,
     @InjectModel('CUSTOM_KNEX') private readonly knex: Knex,
-    private readonly cls: ClsService<IClsStore>,
+    private readonly cls: ClsService<IClsStore & { ignoreBaseNodeListener?: boolean }>,
     private readonly baseNodeFolderService: BaseNodeFolderService,
     private readonly tableOpenApiService: TableOpenApiService,
     private readonly tableDuplicateService: TableDuplicateService,
@@ -72,6 +72,10 @@ export class BaseNodeService {
 
   private get userId() {
     return this.cls.get('user.id');
+  }
+
+  private setIgnoreBaseNodeListener() {
+    this.cls.set('ignoreBaseNodeListener', true);
   }
 
   private getSelect() {
@@ -326,33 +330,35 @@ export class BaseNodeService {
   }
 
   async create(baseId: string, ro: ICreateBaseNodeRo): Promise<IBaseNodeVo> {
+    this.setIgnoreBaseNodeListener();
+
     const { resourceType, parentId } = ro;
+    const resource = await this.createResource(baseId, ro);
+    const resourceId = resource.id;
 
-    const { entry, resource } = await this.prismaService.$tx(async (prisma) => {
-      const resource = await this.createResource(baseId, ro);
-      const resourceId = resource.id;
-
-      const maxOrder = await this.getMaxOrder(baseId);
-      const entry = await prisma.baseNode.create({
-        data: {
-          id: generateBaseNodeId(),
-          baseId,
-          resourceType,
-          resourceId,
-          order: maxOrder + 1,
-          parentId,
-          createdBy: this.userId,
-        },
-        select: this.getSelect(),
-      });
-
-      return {
-        entry,
-        resource,
-      };
+    const maxOrder = await this.getMaxOrder(baseId);
+    const entry = await this.prismaService.baseNode.create({
+      data: {
+        id: generateBaseNodeId(),
+        baseId,
+        resourceType,
+        resourceId,
+        order: maxOrder + 1,
+        parentId,
+        createdBy: this.userId,
+      },
+      select: this.getSelect(),
     });
 
-    return this.entry2vo(entry, omit(resource, 'id'));
+    const vo = await this.entry2vo(entry, omit(resource, 'id'));
+    this.presenceHandler(baseId, (presence) => {
+      presence.submit({
+        event: 'create',
+        data: { ...vo },
+      });
+    });
+
+    return vo;
   }
 
   protected async createResource(
@@ -413,6 +419,8 @@ export class BaseNodeService {
   }
 
   async duplicate(baseId: string, nodeId: string, ro: IDuplicateBaseNodeRo) {
+    this.setIgnoreBaseNodeListener();
+
     const anchor = await this.prismaService.baseNode
       .findFirstOrThrow({
         where: { baseId, id: nodeId },
@@ -434,14 +442,13 @@ export class BaseNodeService {
       });
     }
 
-    const { entry, resource } = await this.prismaService.$tx(async (prisma) => {
-      const resource = await this.duplicateResource(
-        baseId,
-        resourceType as BaseNodeResourceType,
-        resourceId,
-        ro
-      );
-
+    const resource = await this.duplicateResource(
+      baseId,
+      resourceType as BaseNodeResourceType,
+      resourceId,
+      ro
+    );
+    const { entry } = await this.prismaService.$tx(async (prisma) => {
       const maxOrder = await this.getMaxOrder(baseId, anchor.parentId);
       const newNodeId = generateBaseNodeId();
       const entry = await prisma.baseNode.create({
@@ -487,11 +494,17 @@ export class BaseNodeService {
 
       return {
         entry,
-        resource,
       };
     });
 
-    return this.entry2vo(entry, omit(resource, 'id'));
+    const vo = await this.entry2vo(entry, omit(resource, 'id'));
+    this.presenceHandler(baseId, (presence) => {
+      presence.submit({
+        event: 'create',
+        data: { ...vo },
+      });
+    });
+    return vo;
   }
 
   protected async duplicateResource(
@@ -537,6 +550,8 @@ export class BaseNodeService {
   }
 
   async update(baseId: string, nodeId: string, ro: IUpdateBaseNodeRo) {
+    this.setIgnoreBaseNodeListener();
+
     const node = await this.prismaService.baseNode
       .findFirstOrThrow({
         where: { baseId, id: nodeId },
@@ -550,16 +565,21 @@ export class BaseNodeService {
         });
       });
 
-    await this.prismaService.$tx(async () => {
-      await this.updateResource(
-        baseId,
-        node.resourceType as BaseNodeResourceType,
-        node.resourceId,
-        ro
-      );
-    });
+    await this.updateResource(
+      baseId,
+      node.resourceType as BaseNodeResourceType,
+      node.resourceId,
+      ro
+    );
 
-    return this.entry2vo(node);
+    const vo = await this.entry2vo(node);
+    this.presenceHandler(baseId, (presence) => {
+      presence.submit({
+        event: 'update',
+        data: { ...vo },
+      });
+    });
+    return vo;
   }
 
   protected async updateResource(
@@ -602,6 +622,8 @@ export class BaseNodeService {
   }
 
   async delete(baseId: string, nodeId: string, permanent?: boolean) {
+    this.setIgnoreBaseNodeListener();
+
     const node = await this.prismaService.baseNode
       .findFirstOrThrow({
         where: { baseId, id: nodeId },
@@ -631,18 +653,22 @@ export class BaseNodeService {
       }
     }
 
-    await this.prismaService.$tx(async (prisma) => {
-      await this.deleteResource(
-        baseId,
-        node.resourceType as BaseNodeResourceType,
-        node.resourceId,
-        permanent
-      );
-      await prisma.baseNode.delete({
-        where: { id: nodeId },
-      });
+    await this.deleteResource(
+      baseId,
+      node.resourceType as BaseNodeResourceType,
+      node.resourceId,
+      permanent
+    );
+    await this.prismaService.baseNode.delete({
+      where: { id: nodeId },
     });
 
+    this.presenceHandler(baseId, (presence) => {
+      presence.submit({
+        event: 'delete',
+        data: { id: nodeId },
+      });
+    });
     return node;
   }
 
@@ -680,6 +706,8 @@ export class BaseNodeService {
   }
 
   async move(baseId: string, nodeId: string, ro: IMoveBaseNodeRo): Promise<IBaseNodeVo> {
+    this.setIgnoreBaseNodeListener();
+
     const { parentId, anchorId, position } = ro;
 
     const node = await this.prismaService.baseNode
@@ -1058,7 +1086,6 @@ export class BaseNodeService {
 
   private presenceHandler<
     T =
-      | IBaseNodePresenceFlushPayload
       | IBaseNodePresenceCreatePayload
       | IBaseNodePresenceUpdatePayload
       | IBaseNodePresenceDeletePayload,
