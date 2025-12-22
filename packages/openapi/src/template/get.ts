@@ -55,6 +55,14 @@ export const templateVoSchema = z.object({
     })
     .optional(),
   visitCount: z.number(),
+  createdBy: z
+    .object({
+      id: z.string().startsWith(IdPrefix.User),
+      name: z.string().optional(),
+      avatar: z.string().optional(),
+      email: z.string().optional(),
+    })
+    .nullable(),
 });
 
 export type ITemplateVo = z.infer<typeof templateVoSchema>;
