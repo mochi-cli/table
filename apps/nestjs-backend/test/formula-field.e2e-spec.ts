@@ -984,6 +984,132 @@ describe('OpenAPI Formula Field (e2e)', () => {
     });
   });
 
+  describe('formula referencing link display with nested lookup', () => {
+    let doctors: ITableFullVo;
+    let patients: ITableFullVo;
+    let orders: ITableFullVo;
+    let doctorLink: IFieldVo;
+    let doctorNameLookup: IFieldVo;
+    let patientDisplayFormula: IFieldVo;
+    let patientLink: IFieldVo;
+    let orderFormula: IFieldVo;
+    let doctorRecordId: string;
+    let patientRecordId: string;
+    let patientCodeFieldId: string;
+    let orderNoFieldId: string;
+    let doctorNameFieldId: string;
+
+    beforeAll(async () => {
+      doctors = await createTable(baseId, {
+        name: 'NestedLookup_Doctors',
+        fields: [{ name: 'Name', type: FieldType.SingleLineText }],
+        records: [{ fields: { Name: 'Dr Smith' } }],
+      });
+      doctorNameFieldId = doctors.fields.find((f) => f.name === 'Name')!.id;
+      doctorRecordId = doctors.records[0].id;
+
+      patients = await createTable(baseId, {
+        name: 'NestedLookup_Patients',
+        fields: [{ name: 'Patient Code', type: FieldType.SingleLineText }],
+      });
+      patientCodeFieldId = patients.fields.find((f) => f.name === 'Patient Code')!.id;
+
+      doctorLink = await createField(patients.id, {
+        name: 'Doctor',
+        type: FieldType.Link,
+        options: {
+          relationship: Relationship.ManyOne,
+          foreignTableId: doctors.id,
+        },
+      });
+
+      doctorNameLookup = await createField(patients.id, {
+        name: 'Doctor Name',
+        type: FieldType.SingleLineText,
+        isLookup: true,
+        lookupOptions: {
+          foreignTableId: doctors.id,
+          linkFieldId: doctorLink.id,
+          lookupFieldId: doctorNameFieldId,
+        },
+      });
+
+      patientDisplayFormula = await createField(patients.id, {
+        name: 'Display',
+        type: FieldType.Formula,
+        options: {
+          expression: `{${patientCodeFieldId}} & "-" & {${doctorNameLookup.id}}`,
+        },
+      });
+
+      const createdPatients = await createRecords(patients.id, {
+        fieldKeyType: FieldKeyType.Id,
+        records: [
+          {
+            fields: {
+              [patientCodeFieldId]: 'P001',
+              [doctorLink.id]: { id: doctorRecordId },
+            },
+          },
+        ],
+      });
+      patientRecordId = createdPatients.records[0].id;
+
+      orders = await createTable(baseId, {
+        name: 'NestedLookup_Orders',
+        fields: [{ name: 'Order No', type: FieldType.SingleLineText }],
+      });
+      orderNoFieldId = orders.fields.find((f) => f.name === 'Order No')!.id;
+
+      patientLink = await createField(orders.id, {
+        name: 'Patient',
+        type: FieldType.Link,
+        options: {
+          relationship: Relationship.ManyOne,
+          foreignTableId: patients.id,
+          lookupFieldId: patientDisplayFormula.id,
+        },
+      });
+
+      orderFormula = await createField(orders.id, {
+        name: 'Order Summary',
+        type: FieldType.Formula,
+        options: {
+          expression: `{${orderNoFieldId}} & "-" & {${patientLink.id}}`,
+        },
+      });
+    });
+
+    afterAll(async () => {
+      if (orders?.id) {
+        await permanentDeleteTable(baseId, orders.id);
+      }
+      if (patients?.id) {
+        await permanentDeleteTable(baseId, patients.id);
+      }
+      if (doctors?.id) {
+        await permanentDeleteTable(baseId, doctors.id);
+      }
+    });
+
+    it('should compute formula when link display depends on lookup-of-link', async () => {
+      const createdOrders = await createRecords(orders.id, {
+        fieldKeyType: FieldKeyType.Id,
+        records: [
+          {
+            fields: {
+              [orderNoFieldId]: 'ORD-1',
+              [patientLink.id]: { id: patientRecordId },
+            },
+          },
+        ],
+      });
+
+      const record = await getRecord(orders.id, createdOrders.records[0].id);
+      expect(record.fields[orderFormula.id]).toBe('ORD-1-P001-Dr Smith');
+    });
+  });
+
   describe('formula using lookup datetime formatting inside concatenation', () => {
     let contractTable: ITableFullVo;
     let projectTable: ITableFullVo;

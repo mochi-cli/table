@@ -2175,8 +2175,15 @@ export class SelectColumnSqlConversionVisitor extends BaseSqlConversionVisitor<I
       fieldInfo.lookupOptions && isLinkLookupOptions(fieldInfo.lookupOptions)
         ? fieldInfo.lookupOptions
         : undefined;
-    if (cteMap && linkLookupOptions && cteMap.has(linkLookupOptions.linkFieldId)) {
-      const cteName = cteMap.get(linkLookupOptions.linkFieldId)!;
+    const linkLookupLinkId = linkLookupOptions?.linkFieldId;
+    const canReferenceLookupCte =
+      !!cteMap &&
+      !!linkLookupLinkId &&
+      cteMap.has(linkLookupLinkId) &&
+      (!readyLinkFieldIds || readyLinkFieldIds.has(linkLookupLinkId)) &&
+      selectContext.currentLinkFieldId !== linkLookupLinkId;
+    if (canReferenceLookupCte) {
+      const cteName = cteMap!.get(linkLookupLinkId!)!;
       const columnName = fieldInfo.isLookup
         ? `lookup_${fieldInfo.id}`
         : (fieldInfo as unknown as { type?: string }).type === 'rollup'

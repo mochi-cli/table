@@ -573,6 +573,20 @@ export class RecordQueryBuilderService implements IRecordQueryBuilder {
     return selectionMap;
   }
 
+  private getReadyLinkFieldIds(state: IMutableQueryBuilderState): ReadonlySet<string> | undefined {
+    const fieldCtes = state.getFieldCteMap();
+    if (!fieldCtes.size) {
+      return undefined;
+    }
+    const ready = new Set<string>();
+    for (const [fieldId, cteName] of fieldCtes) {
+      if (state.isCteJoined(cteName)) {
+        ready.add(fieldId);
+      }
+    }
+    return ready;
+  }
+
   private buildSelect(
     qb: Knex.QueryBuilder,
     table: TableDomain,
@@ -581,6 +595,7 @@ export class RecordQueryBuilderService implements IRecordQueryBuilder {
     rawProjection: boolean = false,
     preferRawFieldReferences: boolean = false
   ): this {
+    const readyLinkFieldIds = this.getReadyLinkFieldIds(state);
     const visitor = new FieldSelectVisitor(
       qb,
       this.dbProvider,
@@ -589,7 +604,9 @@ export class RecordQueryBuilderService implements IRecordQueryBuilder {
       this.dialect,
       undefined,
       rawProjection,
-      preferRawFieldReferences
+      preferRawFieldReferences,
+      undefined,
+      readyLinkFieldIds
     );
     const alias = getTableAliasFromTable(table);
 
@@ -618,7 +635,19 @@ export class RecordQueryBuilderService implements IRecordQueryBuilder {
     table: TableDomain,
     state: IMutableQueryBuilderState
   ): this {
-    const visitor = new FieldSelectVisitor(qb, this.dbProvider, table, state, this.dialect);
+    const readyLinkFieldIds = this.getReadyLinkFieldIds(state);
+    const visitor = new FieldSelectVisitor(
+      qb,
+      this.dbProvider,
+      table,
+      state,
+      this.dialect,
+      undefined,
+      false,
+      false,
+      undefined,
+      readyLinkFieldIds
+    );
 
     // Add field-specific selections using visitor pattern
     for (const field of table.fields.ordered) {
