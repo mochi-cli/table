@@ -2140,11 +2140,15 @@ export class SelectColumnSqlConversionVisitor extends BaseSqlConversionVisitor<I
       // display fields for nested link CTEs), we still need to reference the CTE to access the link
       // value even in raw contexts; otherwise formulas that reference link fields end up reading
       // NULL placeholders instead of the computed JSON payload.
-      const canReferenceCte =
-        !preferRaw && !isSelfReference && readyLinkFieldIds?.has(fieldId) && cteMap?.has(fieldId);
+      const cteName = cteMap?.get(fieldId);
+      const isReady = !readyLinkFieldIds || readyLinkFieldIds.has(fieldId);
+      const canReferenceCte = !preferRaw && !isSelfReference && !!cteName && isReady;
       if (canReferenceCte) {
-        const cteName = cteMap!.get(fieldId)!;
         selectionSql = `"${cteName}"."link_value"`;
+      } else if (!preferRaw && !isSelfReference && cteName && selectContext.tableAlias && isReady) {
+        const tableAlias = selectContext.tableAlias;
+        // Use a scalar subquery when the CTE isn't joined in scope but is available in WITH.
+        selectionSql = `(SELECT "${cteName}"."link_value" FROM "${cteName}" WHERE "${cteName}"."main_record_id" = "${tableAlias}"."__id")`;
       }
       // Provide a safe fallback if selection map has no entry
       if (!selectionSql) {
@@ -2422,7 +2426,16 @@ export class SelectColumnSqlConversionVisitor extends BaseSqlConversionVisitor<I
       if (parent instanceof FunctionCallContext) {
         const rawName = parent.func_name().text.toUpperCase();
         const fnName = normalizeFunctionNameAlias(rawName) as FunctionName;
-        return BOOLEAN_FUNCTIONS.has(fnName) || fnName === FunctionName.If;
+        if (BOOLEAN_FUNCTIONS.has(fnName)) {
+          return true;
+        }
+
+        if (fnName === FunctionName.If) {
+          const conditionExpr = parent.expr(0);
+          return conditionExpr ? this.isAncestorNode(conditionExpr, ctx) : false;
+        }
+
+        return false;
       }
 
       // Also check for binary logical operators
@@ -2438,6 +2451,17 @@ export class SelectColumnSqlConversionVisitor extends BaseSqlConversionVisitor<I
       parent = parent.parent;
     }
 
+    return false;
+  }
+
+  private isAncestorNode(ancestor: any, node: any): boolean {
+    let current = node;
+    while (current) {
+      if (current === ancestor) {
+        return true;
+      }
+      current = current.parent;
+    }
     return false;
   }
 }

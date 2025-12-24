@@ -70,7 +70,19 @@ export function isTrustedNumeric(info: IResolvedFormulaParamInfo): boolean {
 }
 
 export function isTextLikeParam(info: IResolvedFormulaParamInfo): boolean {
-  return info.type === 'string' && !info.isJsonField;
+  if (info.type !== 'string') {
+    return false;
+  }
+  if (!info.isJsonField) {
+    return true;
+  }
+  if (info.isMultiValueField) {
+    return false;
+  }
+  if (info.fieldCellValueType && info.fieldCellValueType !== 'string') {
+    return false;
+  }
+  return true;
 }
 
 export function isDatetimeLikeParam(info: IResolvedFormulaParamInfo): boolean {
