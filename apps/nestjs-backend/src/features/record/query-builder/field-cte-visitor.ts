@@ -241,6 +241,12 @@ class FieldCteSelectionVisitor implements IFieldVisitor<IFieldSelectName> {
     }
     return expression;
   }
+  private buildPhysicalFieldExpression(field: FieldCore, alias: string): string {
+    if (field.hasError) {
+      return this.dialect.typedNullFor(field.dbFieldType);
+    }
+    return `"${alias}"."${field.dbFieldName}"`;
+  }
   /**
    * Build a subquery (SELECT 1 WHERE ...) for foreign table filter using provider's filterQuery.
    * The subquery references the current foreign alias in-scope and carries proper bindings.
@@ -421,16 +427,6 @@ class FieldCteSelectionVisitor implements IFieldVisitor<IFieldSelectName> {
       return `"${cteName}"."conditional_lookup_${field.id}"`;
     }
 
-    const buildSelectVisitor = (extraBlockedId?: string) =>
-      this.createFieldSelectVisitor(
-        this.foreignTable,
-        undefined,
-        true,
-        true,
-        extraBlockedId ? [extraBlockedId] : undefined
-      );
-    const selectVisitor = buildSelectVisitor();
-
     const foreignAlias = this.getForeignAlias();
     const targetLookupField = field.getForeignLookupField(this.foreignTable);
 
@@ -453,106 +449,22 @@ class FieldCteSelectionVisitor implements IFieldVisitor<IFieldSelectName> {
       return this.dialect.typedNullFor(field.dbFieldType);
     }
 
-    // If the target is a Link field, read its link_value from the JOINed CTE or subquery
-    let fallbackBlockedLinkIdForTarget: string | undefined;
+    // Prefer physical column values to avoid recursive formula/lookup expansion.
+    let expression = this.buildPhysicalFieldExpression(targetLookupField, foreignAlias);
 
-    // Treat lookup-link targets as lookups (handled below); only use this branch for real link fields.
-    if (targetLookupField.type === FieldType.Link && !targetLookupField.isLookup) {
-      const nestedLinkFieldId = (targetLookupField as LinkFieldCore).id;
-      const fieldCteMap = this.state.getFieldCteMap();
-      if (this.canReuseNestedCte(nestedLinkFieldId) && this.joinedCtes?.has(nestedLinkFieldId)) {
-        const nestedCteName = fieldCteMap.get(nestedLinkFieldId)!;
-        const linkExpr = `"${nestedCteName}"."link_value"`;
-        return this.isSingleValueRelationshipContext
-          ? linkExpr
-          : field.isMultipleCellValue
-            ? this.getJsonAggregationFunction(linkExpr)
-            : linkExpr;
-      }
-      if (nestedLinkFieldId === this.currentLinkFieldId) {
-        return `"${foreignAlias}"."${targetLookupField.dbFieldName}"`;
-      }
-      fallbackBlockedLinkIdForTarget = nestedLinkFieldId;
-    }
-
-    // If the target is a Rollup field, read its precomputed rollup value from the link CTE
-    if (targetLookupField.type === FieldType.Rollup) {
-      const rollupField = targetLookupField as RollupFieldCore;
-      const rollupLinkField = rollupField.getLinkField(this.foreignTable);
-      if (rollupLinkField) {
-        const nestedLinkFieldId = rollupLinkField.id;
-        if (this.canReuseNestedCte(nestedLinkFieldId) && this.joinedCtes?.has(nestedLinkFieldId)) {
-          const nestedCteName = this.fieldCteMap.get(nestedLinkFieldId)!;
-          const expr = `"${nestedCteName}"."rollup_${rollupField.id}"`;
-          return this.isSingleValueRelationshipContext
-            ? expr
-            : field.isMultipleCellValue
-              ? this.getJsonAggregationFunction(expr)
-              : expr;
-        } else {
-          fallbackBlockedLinkIdForTarget = nestedLinkFieldId;
-        }
-      }
-    }
-
-    // If the target is itself a lookup, reference its precomputed value from the JOINed CTE
-    // when available; otherwise compute it directly.
-    let expression: string;
-    if (targetLookupField.isLookup) {
-      const nestedLinkFieldId = getLinkFieldId(targetLookupField.lookupOptions);
-      if (nestedLinkFieldId && nestedLinkFieldId === this.currentLinkFieldId) {
-        // When the lookup we target is computed from the same link CTE we are currently
-        // generating (self-referencing), read its materialized column from the foreign
-        // table instead of trying to reuse or re-enter the link CTE.
-        expression = `"${foreignAlias}"."${targetLookupField.dbFieldName}"`;
-      } else {
-        const fieldCteMap = this.state.getFieldCteMap();
-        if (
-          nestedLinkFieldId &&
-          this.canReuseNestedCte(nestedLinkFieldId) &&
-          this.joinedCtes?.has(nestedLinkFieldId)
-        ) {
-          const nestedCteName = fieldCteMap.get(nestedLinkFieldId)!;
-          expression = `"${nestedCteName}"."lookup_${targetLookupField.id}"`;
-        } else if (nestedLinkFieldId) {
-          // Block the nested link id so the select visitor does not attempt to reuse
-          // the same link CTE (which may not exist in this scope) and instead computes
-          // the lookup expression directly.
-          const visitor = buildSelectVisitor(nestedLinkFieldId);
-          const targetFieldResult = targetLookupField.accept(visitor);
-          expression = this.unwrapSelectName(targetFieldResult);
-        } else {
-          const targetFieldResult = targetLookupField.accept(selectVisitor);
-          expression = this.unwrapSelectName(targetFieldResult);
-        }
-      }
-    } else {
-      const visitor =
-        fallbackBlockedLinkIdForTarget !== undefined
-          ? buildSelectVisitor(fallbackBlockedLinkIdForTarget)
-          : selectVisitor;
-      const targetFieldResult = targetLookupField.accept(visitor);
-      const defaultForeignAlias = getTableAliasFromTable(this.foreignTable);
-      const baseExpression = this.unwrapSelectName(targetFieldResult);
-      const normalizedBaseExpression =
-        defaultForeignAlias !== foreignAlias
-          ? baseExpression.replaceAll(`"${defaultForeignAlias}"`, `"${foreignAlias}"`)
-          : baseExpression;
-      expression = normalizedBaseExpression;
-
-      // For Postgres multi-value lookups targeting datetime-like fields, normalize the
-      // element expression to an ISO8601 UTC string so downstream JSON comparisons using
-      // lexicographical ranges (jsonpath @ >= "..." && @ <= "...") behave correctly.
-      // Do NOT alter single-value lookups to preserve native type comparisons in filters.
-      if (
-        this.dbProvider.driver === DriverClient.Pg &&
-        field.isMultipleCellValue &&
-        isDateLikeField(targetLookupField)
-      ) {
-        // Format: 2020-01-10T16:00:00.000Z, wrap as jsonb so downstream aggregation remains valid JSON.
-        const isoUtcExpr = `to_char(${normalizedBaseExpression} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`;
-        expression = `to_jsonb(${isoUtcExpr})`;
-      }
+    // For Postgres multi-value lookups targeting datetime-like fields, normalize the
+    // element expression to an ISO8601 UTC string so downstream JSON comparisons using
+    // lexicographical ranges (jsonpath @ >= "..." && @ <= "...") behave correctly.
+    // Do NOT alter single-value lookups to preserve native type comparisons in filters.
+    if (
+      this.dbProvider.driver === DriverClient.Pg &&
+      field.isMultipleCellValue &&
+      isDateLikeField(targetLookupField) &&
+      targetLookupField.dbFieldType === DbFieldType.DateTime
+    ) {
+      // Format: 2020-01-10T16:00:00.000Z, wrap as jsonb so downstream aggregation remains valid JSON.
+      const isoUtcExpr = `to_char(${expression} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`;
+      expression = `to_jsonb(${isoUtcExpr})`;
     }
     // Build deterministic order-by for multi-value lookups using the link field configuration
     const linkForOrderingId = getLinkFieldId(field.lookupOptions);
@@ -840,14 +752,11 @@ class FieldCteSelectionVisitor implements IFieldVisitor<IFieldSelectName> {
     // Use table alias for cleaner SQL
     const recordIdRef = `"${foreignTableAlias}"."${ID_FIELD_NAME}"`;
 
-    const selectVisitor = this.createFieldSelectVisitor(
-      foreignTable,
-      foreignTableAlias,
-      true,
-      false
+    // Prefer physical column values to avoid recursive formula/lookup expansion.
+    let rawSelectionExpression = this.buildPhysicalFieldExpression(
+      targetLookupField,
+      foreignTableAlias
     );
-    const targetFieldResult = targetLookupField.accept(selectVisitor);
-    let rawSelectionExpression = this.unwrapSelectName(targetFieldResult);
 
     // Apply field formatting to build the display expression
     const formattingVisitor = new FieldFormattingVisitor(rawSelectionExpression, this.dialect);
@@ -987,68 +896,13 @@ class FieldCteSelectionVisitor implements IFieldVisitor<IFieldSelectName> {
       return this.dialect.typedNullFor(field.dbFieldType);
     }
 
-    const buildSelectVisitor = (extraBlockedId?: string) =>
-      this.createFieldSelectVisitor(
-        this.foreignTable,
-        this.getForeignAlias(),
-        true,
-        false,
-        extraBlockedId ? [extraBlockedId] : undefined
-      );
-    const selectVisitor = buildSelectVisitor();
-
     const foreignAlias = this.getForeignAlias();
     const targetLookupField = field.getForeignLookupField(this.foreignTable);
     if (!targetLookupField) {
       return this.dialect.typedNullFor(field.dbFieldType);
     }
-    // If the target of rollup depends on a foreign link CTE, reference the JOINed CTE columns or use subquery
-    if (targetLookupField.type === FieldType.Formula) {
-      const formulaField = targetLookupField as FormulaFieldCore;
-      const referenced = formulaField.getReferenceFields(this.foreignTable);
-      for (const ref of referenced) {
-        // Pre-generate nested CTEs for foreign-table link dependencies if any lookup/rollup targets are themselves lookup fields.
-        ref.accept(selectVisitor);
-      }
-    }
-
-    // If the target of rollup depends on a foreign link CTE, reference the JOINed CTE columns or use subquery
-    let expression: string;
-    const nestedLinkFieldId = getLinkFieldId(targetLookupField.lookupOptions);
-    if (this.canReuseNestedCte(nestedLinkFieldId) && this.joinedCtes?.has(nestedLinkFieldId)) {
-      const nestedCteName = this.fieldCteMap.get(nestedLinkFieldId)!;
-      const columnName = targetLookupField.isLookup
-        ? `lookup_${targetLookupField.id}`
-        : targetLookupField.type === FieldType.Rollup
-          ? `rollup_${targetLookupField.id}`
-          : undefined;
-      if (columnName) {
-        expression = `"${nestedCteName}"."${columnName}"`;
-      } else {
-        const targetFieldResult = targetLookupField.accept(selectVisitor);
-        expression = this.unwrapSelectName(targetFieldResult);
-      }
-    } else {
-      const visitor = buildSelectVisitor(nestedLinkFieldId);
-      const targetFieldResult = targetLookupField.accept(visitor);
-      expression = this.unwrapSelectName(targetFieldResult);
-    }
-
-    if (
-      targetLookupField.isConditionalLookup ||
-      (targetLookupField.type === FieldType.ConditionalRollup && !targetLookupField.isLookup)
-    ) {
-      const nestedCteName = this.fieldCteMap.get(targetLookupField.id);
-      if (nestedCteName) {
-        const columnName =
-          targetLookupField.type === FieldType.ConditionalRollup && !targetLookupField.isLookup
-            ? `conditional_rollup_${targetLookupField.id}`
-            : `conditional_lookup_${targetLookupField.id}`;
-        if (this.joinedCtes?.has(targetLookupField.id)) {
-          expression = `"${nestedCteName}"."${columnName}"`;
-        }
-      }
-    }
+    // Prefer physical column values to avoid recursive formula/lookup expansion.
+    const expression = this.buildPhysicalFieldExpression(targetLookupField, foreignAlias);
     const linkField = field.getLinkField(this.table);
     const options = linkField?.options as ILinkFieldOptions;
     const isSingleValueRelationship =

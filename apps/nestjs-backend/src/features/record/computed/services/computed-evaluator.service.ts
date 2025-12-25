@@ -1,7 +1,9 @@
 /* eslint-disable sonarjs/cognitive-complexity */
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import type { FieldCore, FormulaFieldCore, TableDomain } from '@teable/core';
 import { FieldType, IdPrefix, RecordOpBuilder, Tables } from '@teable/core';
+import { PrismaService } from '@teable/db-main-prisma';
 import type { Knex } from 'knex';
 import { RawOpType } from '../../../../share-db/interface';
 import { Timing } from '../../../../utils/timing';
@@ -32,7 +34,8 @@ export class ComputedEvaluatorService {
   constructor(
     @InjectRecordQueryBuilder() private readonly recordQueryBuilder: IRecordQueryBuilder,
     private readonly recordComputedUpdateService: RecordComputedUpdateService,
-    private readonly batchService: BatchService
+    private readonly batchService: BatchService,
+    private readonly prismaService: PrismaService
   ) {}
 
   /**
@@ -62,69 +65,210 @@ export class ComputedEvaluatorService {
       throw new Error('ComputedEvaluatorService.evaluate requires table domains');
     }
 
-    for (const [tableId, group] of entries) {
-      const requestedFieldIds = Array.from(group.fieldIds);
-      const preferAutoNumberPaging =
-        globalPreferAutoNumberPaging || group.preferAutoNumberPaging === true;
-      const tableDomain = tableDomainCache.get(tableId);
-      if (!tableDomain) {
-        throw new Error(`Missing table domain for table ${tableId}`);
-      }
-      const fieldInstances = this.getFieldInstancesFromDomain(tableDomain, requestedFieldIds);
-      if (!fieldInstances.length) continue;
+    const layers = await this.buildFieldLayers(entries);
+    if (!layers.length) {
+      return totalOps;
+    }
 
-      const validFieldIdSet = new Set(fieldInstances.map((f) => f.id));
-      const impactedFieldIds = new Set(requestedFieldIds.filter((fid) => validFieldIdSet.has(fid)));
-      if (!impactedFieldIds.size) continue;
+    for (const layer of layers) {
+      for (const [tableId, layerFieldIds] of layer) {
+        const group = impact[tableId];
+        if (!group) continue;
+        const requestedFieldIds = Array.from(layerFieldIds);
+        if (!requestedFieldIds.length) continue;
 
-      const recordIds = Array.from(group.recordIds);
-      const dbTableName = tableDomain.dbTableName;
-      const builderRestrictRecordIds =
-        !preferAutoNumberPaging && recordIds.length > 0 && recordIds.length <= recordIdBatchSize
-          ? recordIds
-          : undefined;
+        const preferAutoNumberPaging =
+          globalPreferAutoNumberPaging || group.preferAutoNumberPaging === true;
+        const tableDomain = tableDomainCache.get(tableId);
+        if (!tableDomain) {
+          throw new Error(`Missing table domain for table ${tableId}`);
+        }
 
-      const tablesOverride = this.buildTablesOverride(tableId, tableDomainCache);
-      const { qb, alias } = await this.recordQueryBuilder.createRecordQueryBuilder(dbTableName, {
-        tableId,
-        projection: Array.from(validFieldIdSet),
-        rawProjection: true,
-        preferRawFieldReferences: true,
-        projectionByTable,
-        restrictRecordIds: builderRestrictRecordIds,
-        tables: tablesOverride,
-      });
+        const fieldInstances = this.getFieldInstancesFromDomain(tableDomain, requestedFieldIds);
+        if (!fieldInstances.length) continue;
 
-      const idCol = alias ? `${alias}.__id` : '__id';
-      const orderCol = alias ? `${alias}.${AUTO_NUMBER_FIELD_NAME}` : AUTO_NUMBER_FIELD_NAME;
-      const baseQb = qb.clone();
-
-      const paginationContext = this.createPaginationContext({
-        tableId,
-        recordIds,
-        preferAutoNumberPaging,
-        baseQueryBuilder: baseQb,
-        idColumn: idCol,
-        orderColumn: orderCol,
-        fieldInstances,
-        dbTableName,
-      });
-
-      const strategy = this.selectPaginationStrategy(paginationContext);
-      await strategy.run(paginationContext, async (rows) => {
-        if (!rows.length) return;
-        const evaluatedRows = this.buildEvaluatedRows(rows, fieldInstances);
-        totalOps += this.publishBatch(
-          tableId,
-          impactedFieldIds,
-          validFieldIdSet,
-          excludeFieldIds,
-          evaluatedRows
+        const validFieldIdSet = new Set(fieldInstances.map((f) => f.id));
+        const impactedFieldIds = new Set(
+          requestedFieldIds.filter((fid) => validFieldIdSet.has(fid))
         );
-      });
+        if (!impactedFieldIds.size) continue;
+
+        const recordIds = Array.from(group.recordIds);
+        const dbTableName = tableDomain.dbTableName;
+        const builderRestrictRecordIds =
+          !preferAutoNumberPaging && recordIds.length > 0 && recordIds.length <= recordIdBatchSize
+            ? recordIds
+            : undefined;
+
+        const tablesOverride = this.buildTablesOverride(tableId, tableDomainCache);
+        const { qb, alias } = await this.recordQueryBuilder.createRecordQueryBuilder(dbTableName, {
+          tableId,
+          projection: Array.from(validFieldIdSet),
+          rawProjection: true,
+          preferRawFieldReferences: true,
+          projectionByTable,
+          restrictRecordIds: builderRestrictRecordIds,
+          tables: tablesOverride,
+        });
+
+        const idCol = alias ? `${alias}.__id` : '__id';
+        const orderCol = alias ? `${alias}.${AUTO_NUMBER_FIELD_NAME}` : AUTO_NUMBER_FIELD_NAME;
+        const baseQb = qb.clone();
+
+        const paginationContext = this.createPaginationContext({
+          tableId,
+          recordIds,
+          preferAutoNumberPaging,
+          baseQueryBuilder: baseQb,
+          idColumn: idCol,
+          orderColumn: orderCol,
+          fieldInstances,
+          dbTableName,
+        });
+
+        const strategy = this.selectPaginationStrategy(paginationContext);
+        await strategy.run(paginationContext, async (rows) => {
+          if (!rows.length) return;
+          const evaluatedRows = this.buildEvaluatedRows(rows, fieldInstances);
+          totalOps += this.publishBatch(
+            tableId,
+            impactedFieldIds,
+            validFieldIdSet,
+            excludeFieldIds,
+            evaluatedRows
+          );
+        });
+      }
     }
 
     return totalOps;
+  }
+
+  private async buildFieldLayers(
+    entries: Array<[string, IComputedImpactByTable[string]]>
+  ): Promise<Array<Map<string, Set<string>>>> {
+    const fieldIds = entries.flatMap(([, group]) => Array.from(group.fieldIds));
+    const uniqueFieldIds = Array.from(new Set(fieldIds.filter(Boolean)));
+    if (!uniqueFieldIds.length) {
+      return [];
+    }
+
+    const fieldIdToTableId = new Map<string, string>();
+    for (const [tableId, group] of entries) {
+      for (const fieldId of group.fieldIds) {
+        fieldIdToTableId.set(fieldId, tableId);
+      }
+    }
+
+    const edges = await this.loadFieldDependencyEdges(uniqueFieldIds);
+    if (!edges.length) {
+      return this.buildDefaultLayers(entries);
+    }
+
+    const levels = this.topoSortFieldLevels(uniqueFieldIds, edges);
+    if (!levels) {
+      return this.buildDefaultLayers(entries);
+    }
+
+    const layered = new Map<number, Map<string, Set<string>>>();
+    for (const fieldId of uniqueFieldIds) {
+      const level = levels.get(fieldId) ?? 0;
+      const tableId = fieldIdToTableId.get(fieldId);
+      if (!tableId) continue;
+      let tableMap = layered.get(level);
+      if (!tableMap) {
+        tableMap = new Map<string, Set<string>>();
+        layered.set(level, tableMap);
+      }
+      const fieldSet = tableMap.get(tableId) ?? new Set<string>();
+      fieldSet.add(fieldId);
+      tableMap.set(tableId, fieldSet);
+    }
+
+    const orderedLevels = Array.from(layered.keys()).sort((a, b) => a - b);
+    return orderedLevels.map((level) => layered.get(level)!);
+  }
+
+  private buildDefaultLayers(
+    entries: Array<[string, IComputedImpactByTable[string]]>
+  ): Array<Map<string, Set<string>>> {
+    const layer = new Map<string, Set<string>>();
+    for (const [tableId, group] of entries) {
+      if (!group.fieldIds.size) continue;
+      layer.set(tableId, new Set(group.fieldIds));
+    }
+    return layer.size ? [layer] : [];
+  }
+
+  private async loadFieldDependencyEdges(
+    fieldIds: string[]
+  ): Promise<Array<{ fromFieldId: string; toFieldId: string }>> {
+    const sql = Prisma.sql`
+      SELECT DISTINCT
+        r.from_field_id AS "fromFieldId",
+        r.to_field_id AS "toFieldId"
+      FROM reference r
+      WHERE r.from_field_id IN (${Prisma.join(fieldIds)})
+        AND r.to_field_id IN (${Prisma.join(fieldIds)})
+    `;
+    return this.prismaService
+      .txClient()
+      .$queryRaw<Array<{ fromFieldId: string; toFieldId: string }>>(sql);
+  }
+
+  private topoSortFieldLevels(
+    fieldIds: string[],
+    edges: Array<{ fromFieldId: string; toFieldId: string }>
+  ): Map<string, number> | null {
+    const orderIndex = new Map(fieldIds.map((fieldId, index) => [fieldId, index]));
+    const fieldSet = new Set(fieldIds);
+    const adjacency = new Map<string, Set<string>>();
+    const indegree = new Map<string, number>();
+    const levels = new Map<string, number>();
+
+    for (const fieldId of fieldIds) {
+      indegree.set(fieldId, 0);
+      levels.set(fieldId, 0);
+    }
+
+    for (const edge of edges) {
+      const { fromFieldId, toFieldId } = edge;
+      if (!fieldSet.has(fromFieldId) || !fieldSet.has(toFieldId) || fromFieldId === toFieldId) {
+        continue;
+      }
+      const targets = adjacency.get(fromFieldId) ?? new Set<string>();
+      if (!targets.has(toFieldId)) {
+        targets.add(toFieldId);
+        adjacency.set(fromFieldId, targets);
+        indegree.set(toFieldId, (indegree.get(toFieldId) ?? 0) + 1);
+      }
+    }
+
+    const queue = fieldIds
+      .filter((fieldId) => (indegree.get(fieldId) ?? 0) === 0)
+      .sort((a, b) => (orderIndex.get(a) ?? 0) - (orderIndex.get(b) ?? 0));
+    const result: string[] = [];
+
+    while (queue.length) {
+      const current = queue.shift()!;
+      result.push(current);
+      const targets = adjacency.get(current);
+      if (!targets) continue;
+      for (const next of targets) {
+        const nextLevel = (levels.get(current) ?? 0) + 1;
+        if ((levels.get(next) ?? 0) < nextLevel) {
+          levels.set(next, nextLevel);
+        }
+        const nextDegree = (indegree.get(next) ?? 0) - 1;
+        indegree.set(next, nextDegree);
+        if (nextDegree === 0) {
+          queue.push(next);
+          queue.sort((a, b) => (orderIndex.get(a) ?? 0) - (orderIndex.get(b) ?? 0));
+        }
+      }
+    }
+
+    return result.length === fieldIds.length ? levels : null;
   }
 
   private getFieldInstancesFromDomain(

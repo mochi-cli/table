@@ -1245,6 +1245,239 @@ IF(
       await permanentDeleteTable(baseId, t2.id);
       await permanentDeleteTable(baseId, t1.id);
     });
+
+    it('handles interleaved lookup dependencies across tables', async () => {
+      // T1: base number
+      const t1 = await createTable(baseId, {
+        name: 'Interleave_T1',
+        fields: [{ name: 'A', type: FieldType.Number } as IFieldRo],
+        records: [{ fields: { A: 1 } }],
+      });
+      const aId = t1.fields.find((f) => f.name === 'A')!.id;
+
+      // T3: base number used by T2 lookup (creates table-level cycle)
+      const t3 = await createTable(baseId, {
+        name: 'Interleave_T3',
+        fields: [{ name: 'CBase', type: FieldType.Number } as IFieldRo],
+        records: [{ fields: { CBase: 5 } }],
+      });
+      const cBaseId = t3.fields.find((f) => f.name === 'CBase')!.id;
+
+      // T2: lookup A via link to T1; also lookup CBase via link to T3
+      const t2 = await createTable(baseId, {
+        name: 'Interleave_T2',
+        fields: [],
+        records: [{ fields: {} }],
+      });
+      const linkT1 = await createField(t2.id, {
+        name: 'L_T1',
+        type: FieldType.Link,
+        options: { relationship: Relationship.ManyMany, foreignTableId: t1.id },
+      } as IFieldRo);
+      const lkpA = await createField(t2.id, {
+        name: 'LKP_A',
+        type: FieldType.Number,
+        isLookup: true,
+        lookupOptions: { foreignTableId: t1.id, linkFieldId: linkT1.id, lookupFieldId: aId } as any,
+      } as any);
+      const linkT3 = await createField(t2.id, {
+        name: 'L_T3',
+        type: FieldType.Link,
+        options: { relationship: Relationship.ManyMany, foreignTableId: t3.id },
+      } as IFieldRo);
+      const lkpC = await createField(t2.id, {
+        name: 'LKP_C',
+        type: FieldType.Number,
+        isLookup: true,
+        lookupOptions: {
+          foreignTableId: t3.id,
+          linkFieldId: linkT3.id,
+          lookupFieldId: cBaseId,
+        } as any,
+      } as any);
+
+      // T3: lookup LKP_A from T2 (depends on T2)
+      const linkT2 = await createField(t3.id, {
+        name: 'L_T2',
+        type: FieldType.Link,
+        options: { relationship: Relationship.ManyMany, foreignTableId: t2.id },
+      } as IFieldRo);
+      const lkpFromT2 = await createField(t3.id, {
+        name: 'LKP_T2_A',
+        type: FieldType.Number,
+        isLookup: true,
+        lookupOptions: {
+          foreignTableId: t2.id,
+          linkFieldId: linkT2.id,
+          lookupFieldId: lkpA.id,
+        } as any,
+      } as any);
+
+      // Establish links to create interleaved dependencies
+      await updateRecordByApi(t2.id, t2.records[0].id, linkT1.id, [{ id: t1.records[0].id }]);
+      await updateRecordByApi(t2.id, t2.records[0].id, linkT3.id, [{ id: t3.records[0].id }]);
+      await updateRecordByApi(t3.id, t3.records[0].id, linkT2.id, [{ id: t2.records[0].id }]);
+
+      const { payloads } = (await createAwaitWithEventWithResultWithCount(
+        eventEmitterService,
+        Events.TABLE_RECORD_UPDATE,
+        3
+      )(async () => {
+        await updateRecordByApi(t1.id, t1.records[0].id, aId, 7);
+      })) as any;
+
+      const t2Event = (payloads as any[]).find((e) => e.payload.tableId === t2.id)!;
+      const t2Changes = (
+        Array.isArray(t2Event.payload.record) ? t2Event.payload.record[0] : t2Event.payload.record
+      ).fields as FieldChangeMap;
+      const t2Change = assertChange(t2Changes[lkpA.id]);
+      expectNoOldValue(t2Change);
+      expect(t2Change.newValue).toEqual([7]);
+
+      const t3Event = (payloads as any[]).find((e) => e.payload.tableId === t3.id)!;
+      const t3Changes = (
+        Array.isArray(t3Event.payload.record) ? t3Event.payload.record[0] : t3Event.payload.record
+      ).fields as FieldChangeMap;
+      const t3Change = assertChange(t3Changes[lkpFromT2.id]);
+      expectNoOldValue(t3Change);
+      expect(t3Change.newValue).toEqual([7]);
+
+      const t2Db = await getDbTableName(t2.id);
+      const t3Db = await getDbTableName(t3.id);
+      const t2Row = await getRow(t2Db, t2.records[0].id);
+      const t3Row = await getRow(t3Db, t3.records[0].id);
+      const t2Fields = await getFields(t2.id);
+      const [lkpAFull] = t2Fields.filter((x) => x.id === (lkpA as any).id) as any[];
+      const [lkpCFull] = t2Fields.filter((x) => x.id === (lkpC as any).id) as any[];
+      const [lkpFromT2Full] = (await getFields(t3.id)).filter(
+        (x) => x.id === (lkpFromT2 as any).id
+      ) as any[];
+      expect(parseMaybe((t2Row as any)[lkpAFull.dbFieldName])).toEqual([7]);
+      expect(parseMaybe((t2Row as any)[lkpCFull.dbFieldName])).toEqual([5]);
+      expect(parseMaybe((t3Row as any)[lkpFromT2Full.dbFieldName])).toEqual([7]);
+
+      await permanentDeleteTable(baseId, t2.id);
+      await permanentDeleteTable(baseId, t3.id);
+      await permanentDeleteTable(baseId, t1.id);
+    });
+
+    it('propagates multi-level lookup chain across four tables', async () => {
+      // T1: A (number)
+      const t1 = await createTable(baseId, {
+        name: 'Chain4_T1',
+        fields: [{ name: 'A', type: FieldType.Number } as IFieldRo],
+        records: [{ fields: { A: 2 } }],
+      });
+      const aId = t1.fields.find((f) => f.name === 'A')!.id;
+      await updateRecordByApi(t1.id, t1.records[0].id, aId, 2);
+
+      // T2: link -> T1, L2 = lookup(A)
+      const t2 = await createTable(baseId, {
+        name: 'Chain4_T2',
+        fields: [],
+        records: [{ fields: {} }],
+      });
+      const l12 = await createField(t2.id, {
+        name: 'L_T1',
+        type: FieldType.Link,
+        options: { relationship: Relationship.ManyMany, foreignTableId: t1.id },
+      } as IFieldRo);
+      const l2 = await createField(t2.id, {
+        name: 'L2',
+        type: FieldType.Number,
+        isLookup: true,
+        lookupOptions: { foreignTableId: t1.id, linkFieldId: l12.id, lookupFieldId: aId } as any,
+      } as any);
+      await updateRecordByApi(t2.id, t2.records[0].id, l12.id, [{ id: t1.records[0].id }]);
+
+      // T3: link -> T2, L3 = lookup(L2)
+      const t3 = await createTable(baseId, {
+        name: 'Chain4_T3',
+        fields: [],
+        records: [{ fields: {} }],
+      });
+      const l23 = await createField(t3.id, {
+        name: 'L_T2',
+        type: FieldType.Link,
+        options: { relationship: Relationship.ManyMany, foreignTableId: t2.id },
+      } as IFieldRo);
+      const l3 = await createField(t3.id, {
+        name: 'L3',
+        type: FieldType.Number,
+        isLookup: true,
+        lookupOptions: { foreignTableId: t2.id, linkFieldId: l23.id, lookupFieldId: l2.id } as any,
+      } as any);
+      await updateRecordByApi(t3.id, t3.records[0].id, l23.id, [{ id: t2.records[0].id }]);
+
+      // T4: link -> T3, L4 = lookup(L3)
+      const t4 = await createTable(baseId, {
+        name: 'Chain4_T4',
+        fields: [],
+        records: [{ fields: {} }],
+      });
+      const l34 = await createField(t4.id, {
+        name: 'L_T3',
+        type: FieldType.Link,
+        options: { relationship: Relationship.ManyMany, foreignTableId: t3.id },
+      } as IFieldRo);
+      const l4 = await createField(t4.id, {
+        name: 'L4',
+        type: FieldType.Number,
+        isLookup: true,
+        lookupOptions: { foreignTableId: t3.id, linkFieldId: l34.id, lookupFieldId: l3.id } as any,
+      } as any);
+      await updateRecordByApi(t4.id, t4.records[0].id, l34.id, [{ id: t3.records[0].id }]);
+
+      const { payloads } = (await createAwaitWithEventWithResultWithCount(
+        eventEmitterService,
+        Events.TABLE_RECORD_UPDATE,
+        4
+      )(async () => {
+        await updateRecordByApi(t1.id, t1.records[0].id, aId, 9);
+      })) as any;
+
+      const t2Event = (payloads as any[]).find((e) => e.payload.tableId === t2.id)!;
+      const t2Changes = (
+        Array.isArray(t2Event.payload.record) ? t2Event.payload.record[0] : t2Event.payload.record
+      ).fields as FieldChangeMap;
+      const t2Change = assertChange(t2Changes[l2.id]);
+      expectNoOldValue(t2Change);
+      expect(t2Change.newValue).toEqual([9]);
+
+      const t3Event = (payloads as any[]).find((e) => e.payload.tableId === t3.id)!;
+      const t3Changes = (
+        Array.isArray(t3Event.payload.record) ? t3Event.payload.record[0] : t3Event.payload.record
+      ).fields as FieldChangeMap;
+      const t3Change = assertChange(t3Changes[l3.id]);
+      expectNoOldValue(t3Change);
+      expect(t3Change.newValue).toEqual([9]);
+
+      const t4Event = (payloads as any[]).find((e) => e.payload.tableId === t4.id)!;
+      const t4Changes = (
+        Array.isArray(t4Event.payload.record) ? t4Event.payload.record[0] : t4Event.payload.record
+      ).fields as FieldChangeMap;
+      const t4Change = assertChange(t4Changes[l4.id]);
+      expectNoOldValue(t4Change);
+      expect(t4Change.newValue).toEqual([9]);
+
+      const t2Db = await getDbTableName(t2.id);
+      const t3Db = await getDbTableName(t3.id);
+      const t4Db = await getDbTableName(t4.id);
+      const t2Row = await getRow(t2Db, t2.records[0].id);
+      const t3Row = await getRow(t3Db, t3.records[0].id);
+      const t4Row = await getRow(t4Db, t4.records[0].id);
+      const [l2Full] = (await getFields(t2.id)).filter((x) => x.id === (l2 as any).id) as any[];
+      const [l3Full] = (await getFields(t3.id)).filter((x) => x.id === (l3 as any).id) as any[];
+      const [l4Full] = (await getFields(t4.id)).filter((x) => x.id === (l4 as any).id) as any[];
+      expect(parseMaybe((t2Row as any)[l2Full.dbFieldName])).toEqual([9]);
+      expect(parseMaybe((t3Row as any)[l3Full.dbFieldName])).toEqual([9]);
+      expect(parseMaybe((t4Row as any)[l4Full.dbFieldName])).toEqual([9]);
+
+      await permanentDeleteTable(baseId, t4.id);
+      await permanentDeleteTable(baseId, t3.id);
+      await permanentDeleteTable(baseId, t2.id);
+      await permanentDeleteTable(baseId, t1.id);
+    });
   });
 
   // ===== Conditional Rollup =====
