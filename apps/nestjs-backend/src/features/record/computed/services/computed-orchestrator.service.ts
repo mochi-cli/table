@@ -467,56 +467,48 @@ export class ComputedOrchestratorService {
       return cache;
     }
 
-    const processed = new Set<string>();
-    const queue = new Set<string>(targetIds);
-
-    while (queue.size) {
-      const batch = Array.from(queue);
-      queue.clear();
-
-      const missing = batch.filter((tableId) => !cache.has(tableId));
-      if (missing.length) {
-        const fetched = await this.tableDomainQueryService.getTableDomainsByIds(missing);
-        for (const [tableId, domain] of fetched) {
-          cache.set(tableId, domain);
-        }
-        const unresolved = missing.filter((tableId) => !cache.has(tableId));
-        unresolved.forEach((tableId) => processed.add(tableId));
+    const fetchMissingDomains = async (tableIds: Iterable<string>) => {
+      const unique = Array.from(new Set(Array.from(tableIds).filter(Boolean)));
+      if (!unique.length) return;
+      const missing = unique.filter((tableId) => !cache.has(tableId));
+      if (!missing.length) return;
+      const fetched = await this.tableDomainQueryService.getTableDomainsByIds(missing);
+      for (const [tableId, domain] of fetched) {
+        cache.set(tableId, domain);
       }
+    };
 
-      for (const tableId of batch) {
-        if (processed.has(tableId)) {
-          continue;
-        }
-        const domain = cache.get(tableId);
-        if (!domain) {
-          processed.add(tableId);
-          continue;
-        }
-        processed.add(tableId);
-        const projection = projectionByTable.get(tableId);
-        const relatedTableIds = domain.getAllForeignTableIds(
-          projection && projection.size ? Array.from(projection) : undefined
-        );
-        for (const relatedTableId of relatedTableIds) {
-          if (!projectionByTable.has(relatedTableId)) {
-            projectionByTable.set(relatedTableId, undefined);
-          }
-          if (!processed.has(relatedTableId)) {
-            queue.add(relatedTableId);
-          }
-        }
+    await fetchMissingDomains(targetIds);
+
+    // Only expand one hop from the impacted tables; deeper dependencies are resolved via
+    // persisted physical columns instead of recursive CTE expansion.
+    const relatedIds = new Set<string>();
+    for (const tableId of targetIds) {
+      const domain = cache.get(tableId);
+      if (!domain) {
+        continue;
       }
+      const projection = projectionByTable.get(tableId);
+      const relatedTableIds = domain.getAllForeignTableIds(
+        projection && projection.size ? Array.from(projection) : undefined
+      );
+      for (const relatedTableId of relatedTableIds) {
+        if (!projectionByTable.has(relatedTableId)) {
+          projectionByTable.set(relatedTableId, undefined);
+        }
+        relatedIds.add(relatedTableId);
+      }
+    }
+
+    if (relatedIds.size) {
+      await fetchMissingDomains(relatedIds);
     }
 
     const unresolved = Array.from(projectionByTable.keys()).filter(
       (tableId) => !cache.has(tableId)
     );
     if (unresolved.length) {
-      const fetched = await this.tableDomainQueryService.getTableDomainsByIds(unresolved);
-      for (const [tableId, domain] of fetched) {
-        cache.set(tableId, domain);
-      }
+      await fetchMissingDomains(unresolved);
       const stillMissing = unresolved.filter((tableId) => !cache.has(tableId));
       if (stillMissing.length) {
         throw new NotFoundException(`Table(s) not found: ${stillMissing.join(', ')}`);

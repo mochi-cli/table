@@ -1431,11 +1431,9 @@ export class ComputedDependencyCollectorService {
     const changedRecordIds = Array.from(new Set(ctxs.map((c) => c.recordId)));
     const fieldToTableMap = new Map<string, string>();
     changedFieldIds.forEach((fid) => fieldToTableMap.set(fid, tableId));
-    const relatedTables = await this.tableDomainQueryService.getAllRelatedTableDomains(
-      tableId,
-      changedFieldIds
-    );
-    const execCtx = this.createExecutionContext(relatedTables.tableDomains);
+    const entryDomain = await this.tableDomainQueryService.getTableDomainById(tableId);
+    const seedTableDomains = new Map<string, TableDomain>([[tableId, entryDomain]]);
+    const execCtx = this.createExecutionContext(seedTableDomains);
 
     // 1) Transitive dependents grouped by table (SQL CTE + join field)
     const contextByRecord = ctxs.reduce<Map<string, ICellContext[]>>((map, ctx) => {
@@ -1550,7 +1548,7 @@ export class ComputedDependencyCollectorService {
     this.addContextFreeFormulasToImpact(impact, tableId, contextFreeFormulaIds);
 
     if (!Object.keys(impact).length) {
-      return { impact: {}, tableDomains: new Map(relatedTables.tableDomains) };
+      return { impact: {}, tableDomains: new Map(seedTableDomains) };
     }
 
     const impactedTables = new Set([...Object.keys(impact), tableId]);
@@ -1706,7 +1704,7 @@ export class ComputedDependencyCollectorService {
           explicitSeeds,
           tablesWithAllRecords,
           linkEdges,
-          tableDomains: relatedTables.tableDomains,
+          tableDomains,
           ctx: execCtx,
         });
         const growth = this.findRecordSetGrowth(recordSets, nextRecordSets);
@@ -1729,6 +1727,6 @@ export class ComputedDependencyCollectorService {
       }
     }
 
-    return { impact, tableDomains: new Map(relatedTables.tableDomains) };
+    return { impact, tableDomains: new Map(tableDomains) };
   }
 }

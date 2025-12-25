@@ -2169,6 +2169,27 @@ export class SelectColumnSqlConversionVisitor extends BaseSqlConversionVisitor<I
       return this.dialect!.linkExtractTitles(selectionSql, !!fieldInfo.isMultipleCellValue);
     }
 
+    if (
+      preferRaw &&
+      (fieldInfo.isLookup ||
+        fieldInfo.type === FieldType.Rollup ||
+        fieldInfo.type === FieldType.ConditionalRollup)
+    ) {
+      const tableAlias = selectContext.tableAlias;
+      const directRef = tableAlias
+        ? `"${tableAlias}"."${fieldInfo.dbFieldName}"`
+        : `"${fieldInfo.dbFieldName}"`;
+      return this.coerceRawMultiValueReference(directRef, fieldInfo, selectContext);
+    }
+
+    if (preferRaw && shouldExpandFieldReference(fieldInfo)) {
+      const tableAlias = selectContext.tableAlias;
+      const directRef = tableAlias
+        ? `"${tableAlias}"."${fieldInfo.dbFieldName}"`
+        : `"${fieldInfo.dbFieldName}"`;
+      return this.coerceRawMultiValueReference(directRef, fieldInfo, selectContext);
+    }
+
     // Check if this is a formula field that needs recursive expansion
     if (shouldExpandFieldReference(fieldInfo)) {
       return this.expandFormulaField(fieldId, fieldInfo);
@@ -2181,6 +2202,7 @@ export class SelectColumnSqlConversionVisitor extends BaseSqlConversionVisitor<I
         : undefined;
     const linkLookupLinkId = linkLookupOptions?.linkFieldId;
     const canReferenceLookupCte =
+      !preferRaw &&
       !!cteMap &&
       !!linkLookupLinkId &&
       cteMap.has(linkLookupLinkId) &&

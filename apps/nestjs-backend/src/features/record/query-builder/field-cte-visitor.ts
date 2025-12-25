@@ -967,6 +967,7 @@ export class FieldCteVisitor implements IFieldVisitor<ICteResult> {
   private readonly pendingLinkCteNames = new Map<string, string>();
   private filteredIdSet?: Set<string>;
   private readonly projection?: string[];
+  private readonly expandFormulaReferences: boolean;
 
   constructor(
     public readonly qb: Knex.QueryBuilder,
@@ -974,11 +975,13 @@ export class FieldCteVisitor implements IFieldVisitor<ICteResult> {
     private readonly tables: Tables,
     state: IMutableQueryBuilderState | undefined,
     private readonly dialect: IRecordQueryDialectProvider,
-    projection?: string[]
+    projection?: string[],
+    expandFormulaReferences: boolean = true
   ) {
     this.state = state ?? new RecordQueryBuilderManager('table');
     this._table = tables.mustGetEntryTable();
     this.projection = projection;
+    this.expandFormulaReferences = expandFormulaReferences;
   }
 
   get table() {
@@ -1039,6 +1042,13 @@ export class FieldCteVisitor implements IFieldVisitor<ICteResult> {
 
   private getCteNameForField(fieldId: string): string | undefined {
     return this.state.getCteName(fieldId) ?? this.pendingLinkCteNames.get(fieldId);
+  }
+
+  private buildPhysicalFieldExpression(field: FieldCore, alias: string): string {
+    if (field.hasError) {
+      return this.dialect.typedNullFor(field.dbFieldType);
+    }
+    return `"${alias}"."${field.dbFieldName}"`;
   }
 
   private getBaseIdSubquery(): Knex.QueryBuilder | undefined {
@@ -1370,7 +1380,17 @@ export class FieldCteVisitor implements IFieldVisitor<ICteResult> {
     foreignAlias: string,
     selectVisitor: FieldSelectVisitor
   ): string {
-    if (targetField.type === FieldType.ConditionalRollup && !targetField.isLookup) {
+    if (
+      !this.expandFormulaReferences &&
+      (targetField.isLookup ||
+        targetField.type === FieldType.Rollup ||
+        targetField.type === FieldType.ConditionalRollup ||
+        targetField.type === FieldType.Link)
+    ) {
+      return this.buildPhysicalFieldExpression(targetField, foreignAlias);
+    }
+
+    if (targetField.type === FieldType.ConditionalRollup) {
       const conditionalTarget = targetField as ConditionalRollupFieldCore;
       this.generateConditionalRollupFieldCteForScope(foreignTable, conditionalTarget);
       const nestedCteName = this.getCteNameForField(conditionalTarget.id);
@@ -1388,10 +1408,7 @@ export class FieldCteVisitor implements IFieldVisitor<ICteResult> {
       }
       const nestedCteName = this.getCteNameForField(targetField.id);
       if (nestedCteName) {
-        const column =
-          targetField.type === FieldType.ConditionalRollup
-            ? `conditional_rollup_${targetField.id}`
-            : `conditional_lookup_${targetField.id}`;
+        const column = `conditional_lookup_${targetField.id}`;
         return `((SELECT "${column}" FROM "${nestedCteName}" WHERE "${nestedCteName}"."main_record_id" = "${foreignAlias}"."${ID_FIELD_NAME}"))`;
       }
     }
@@ -1447,7 +1464,7 @@ export class FieldCteVisitor implements IFieldVisitor<ICteResult> {
         foreignTable,
         foreignAliasUsed,
         true,
-        false
+        !this.expandFormulaReferences
       );
 
       const rawExpression = this.resolveConditionalComputedTargetExpression(
@@ -1755,7 +1772,7 @@ export class FieldCteVisitor implements IFieldVisitor<ICteResult> {
         foreignTable,
         foreignAliasUsed,
         true,
-        false
+        !this.expandFormulaReferences
       );
 
       const rawExpression = this.resolveConditionalComputedTargetExpression(
@@ -2010,14 +2027,21 @@ export class FieldCteVisitor implements IFieldVisitor<ICteResult> {
   }
 
   public build() {
-    const list = getOrderedFieldsByProjection(this.table, this.projection) as FieldCore[];
+    const list = getOrderedFieldsByProjection(
+      this.table,
+      this.projection,
+      this.expandFormulaReferences
+    ) as FieldCore[];
     this.filteredIdSet = new Set(list.map((f) => f.id));
 
     // Ensure CTEs for any link fields that are dependencies of the projected fields.
     // This allows selecting lookup/rollup values even when the link fields themselves
     // are not part of the projection.
     for (const field of list) {
-      const linkFields = field.getLinkFields(this.table);
+      const linkFields =
+        !this.expandFormulaReferences && field.type === FieldType.Formula
+          ? []
+          : field.getLinkFields(this.table);
       for (const lf of linkFields) {
         if (!lf) continue;
         if (!this.state.getFieldCteMap().has(lf.id)) {
@@ -2148,9 +2172,11 @@ export class FieldCteVisitor implements IFieldVisitor<ICteResult> {
             }
           ).getReferenceFields;
           if (typeof maybeGetReferenceFields === 'function') {
-            const referencedFields = maybeGetReferenceFields.call(field, foreignTable) ?? [];
-            for (const refField of referencedFields) {
-              collectLinkDependencies(refField, visited);
+            if (this.expandFormulaReferences) {
+              const referencedFields = maybeGetReferenceFields.call(field, foreignTable) ?? [];
+              for (const refField of referencedFields) {
+                collectLinkDependencies(refField, visited);
+              }
             }
           }
         };

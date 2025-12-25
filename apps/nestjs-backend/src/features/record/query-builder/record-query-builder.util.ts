@@ -37,7 +37,8 @@ export function getLinkUsesJunctionTable(field: LinkFieldCore): boolean {
 // eslint-disable-next-line sonarjs/cognitive-complexity
 export function getOrderedFieldsByProjection(
   table: TableDomain,
-  projection?: string[]
+  projection?: string[],
+  expandFormulaReferences: boolean = true
 ): FieldCore[] {
   const ordered = table.fields.ordered as FieldCore[];
   if (!projection || projection.length === 0) return ordered;
@@ -77,6 +78,7 @@ export function getOrderedFieldsByProjection(
 
     // Formula: recursively include references
     if (field.type === FieldType.Formula) {
+      if (!expandFormulaReferences) continue;
       if (visitedFormula.has(field.id)) continue;
       visitedFormula.add(field.id);
       const refs = (field as FormulaFieldCore).getReferenceFields(table);

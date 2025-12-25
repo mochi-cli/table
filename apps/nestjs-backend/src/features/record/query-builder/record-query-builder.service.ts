@@ -150,7 +150,13 @@ export class RecordQueryBuilderService implements IRecordQueryBuilder {
         hasSearch: options.hasSearch,
         restrictRecordIds: options.restrictRecordIds,
       });
-      this.buildFieldCtes(qb, tables, state, options.projection);
+      this.buildFieldCtes(
+        qb,
+        tables,
+        state,
+        options.projection,
+        options.preferRawFieldReferences ?? false
+      );
     }
 
     return { qb, alias, table, state };
@@ -187,6 +193,7 @@ export class RecordQueryBuilderService implements IRecordQueryBuilder {
       defaultOrderField: options.defaultOrderField,
       hasSearch: options.hasSearch,
       restrictRecordIds,
+      preferRawFieldReferences: options.preferRawFieldReferences,
     });
 
     this.buildSelect(
@@ -281,7 +288,8 @@ export class RecordQueryBuilderService implements IRecordQueryBuilder {
     qb: Knex.QueryBuilder,
     tables: Tables | undefined,
     state: IMutableQueryBuilderState,
-    projection?: string[]
+    projection?: string[],
+    preferRawFieldReferences: boolean = false
   ): void {
     if (!tables) {
       return;
@@ -292,7 +300,8 @@ export class RecordQueryBuilderService implements IRecordQueryBuilder {
       tables,
       state,
       this.dialect,
-      projection
+      projection,
+      !preferRawFieldReferences
     );
     visitor.build();
   }
@@ -614,7 +623,11 @@ export class RecordQueryBuilderService implements IRecordQueryBuilder {
       qb.select(`${alias}.${field}`);
     }
 
-    const orderedFields = getOrderedFieldsByProjection(table, projection) as FieldCore[];
+    const orderedFields = getOrderedFieldsByProjection(
+      table,
+      projection,
+      !preferRawFieldReferences
+    ) as FieldCore[];
     for (const field of orderedFields) {
       const result = field.accept(visitor);
       if (!result) continue;
