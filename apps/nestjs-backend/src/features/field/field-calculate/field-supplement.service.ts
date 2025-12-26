@@ -1883,7 +1883,7 @@ export class FieldSupplementService {
 
   // eslint-disable-next-line sonarjs/cognitive-complexity
   getFieldReferenceIds(field: IFieldInstance): string[] {
-    if (field.lookupOptions && field.type !== FieldType.ConditionalRollup) {
+    if (field.lookupOptions && (field.isLookup || field.type !== FieldType.ConditionalRollup)) {
       // Lookup/Rollup fields depend on BOTH the target lookup field and the link field.
       // This ensures when a link cell changes, the dependent lookup/rollup fields are
       // included in the computed impact and persisted via updateFromSelect.

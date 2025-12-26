@@ -2526,22 +2526,23 @@ describe('OpenAPI Conditional Rollup field (e2e)', () => {
       await permanentDeleteTable(baseId, foreign.id);
     });
 
-    it('rejects creating a standard lookup targeting a conditional rollup field', async () => {
+    it('allows creating a standard lookup targeting a conditional rollup field', async () => {
       const hostRecord = await getRecord(host.id, host.records[0].id);
       expect(hostRecord.fields[conditionalRollupField.id]).toEqual(130);
 
-      await expect(
-        createField(consumer.id, {
-          name: 'Lookup Category Total',
-          type: FieldType.ConditionalRollup,
-          isLookup: true,
-          lookupOptions: {
-            foreignTableId: host.id,
-            linkFieldId: consumerLinkField.id,
-            lookupFieldId: conditionalRollupField.id,
-          } as ILookupOptionsRo,
-        } as IFieldRo)
-      ).rejects.toMatchObject({ status: 500 });
+      const lookupField = await createField(consumer.id, {
+        name: 'Lookup Category Total',
+        type: FieldType.ConditionalRollup,
+        isLookup: true,
+        lookupOptions: {
+          foreignTableId: host.id,
+          linkFieldId: consumerLinkField.id,
+          lookupFieldId: conditionalRollupField.id,
+        } as ILookupOptionsRo,
+      } as IFieldRo);
+
+      const consumerRecord = await getRecord(consumer.id, consumer.records[0].id);
+      expect(consumerRecord.fields[lookupField.id]).toEqual(130);
     });
   });
 

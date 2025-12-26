@@ -917,6 +917,9 @@ class FieldCteSelectionVisitor implements IFieldVisitor<IFieldSelectName> {
   }
 
   visitConditionalRollupField(field: ConditionalRollupFieldCore): IFieldSelectName {
+    if (field.isLookup) {
+      return this.visitLookupField(field);
+    }
     const cteName = this.fieldCteMap.get(field.id);
     if (!cteName) {
       return this.dialect.typedNullFor(field.dbFieldType);
