@@ -6575,6 +6575,79 @@ describe('OpenAPI formula (e2e)', () => {
       expect(olderRecord.data.fields[formulaField.name]).toEqual('Older');
     });
 
+    it('should evaluate formula referencing created time on record create', async () => {
+      const createdTimeField = await createField(table.id, {
+        name: 'Created time',
+        type: FieldType.CreatedTime,
+      });
+
+      const formulaField = await createField(table.id, {
+        name: 'Created age (days)',
+        type: FieldType.Formula,
+        options: {
+          expression: `DATETIME_DIFF(NOW(), {${createdTimeField.id}}, "day")`,
+          timeZone: 'UTC',
+        },
+      });
+
+      const created = await createRecords(table.id, {
+        fieldKeyType: FieldKeyType.Id,
+        records: [{ fields: {} }],
+      });
+
+      const record = await getRecord(table.id, created.records[0].id);
+      expect(record.data.fields[formulaField.name]).toEqual(0);
+    });
+
+    it('should evaluate formula referencing created by on record create', async () => {
+      const createdByField = await createField(table.id, {
+        name: 'Created by',
+        type: FieldType.CreatedBy,
+      });
+
+      const formulaField = await createField(table.id, {
+        name: 'Creator Name',
+        type: FieldType.Formula,
+        options: {
+          expression: `{${createdByField.id}}`,
+        },
+      });
+
+      const created = await createRecords(table.id, {
+        fieldKeyType: FieldKeyType.Id,
+        records: [{ fields: {} }],
+      });
+
+      const record = await getRecord(table.id, created.records[0].id);
+      const createdByValue = record.data.fields[createdByField.name] as { title?: string } | null;
+      expect(createdByValue?.title).toBeTruthy();
+      expect(record.data.fields[formulaField.name]).toEqual(createdByValue?.title);
+    });
+
+    it('should evaluate formula referencing auto number on record create', async () => {
+      const autoNumberField = await createField(table.id, {
+        name: 'Auto number',
+        type: FieldType.AutoNumber,
+      });
+
+      const formulaField = await createField(table.id, {
+        name: 'Auto number x2',
+        type: FieldType.Formula,
+        options: {
+          expression: `{${autoNumberField.id}} * 2`,
+        },
+      });
+
+      const created = await createRecords(table.id, {
+        fieldKeyType: FieldKeyType.Id,
+        records: [{ fields: {} }],
+      });
+
+      const record = await getRecord(table.id, created.records[0].id);
+      const autoNumberValue = record.data.fields[autoNumberField.name] as number;
+      expect(record.data.fields[formulaField.name]).toEqual(autoNumberValue * 2);
+    });
+
     it('should evaluate timezone-aware formatting formulas referencing fields', async () => {
       const dateField = await createField(table.id, {
         name: 'tz source',

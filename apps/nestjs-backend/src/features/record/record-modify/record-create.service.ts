@@ -1,11 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import type { IMakeOptional, TableDomain } from '@teable/core';
-import { CellFormat, FieldKeyType, HttpErrorCode, generateRecordId } from '@teable/core';
+import { CellFormat, FieldKeyType, FieldType, HttpErrorCode, generateRecordId } from '@teable/core';
 import type { ICreateRecordsRo, ICreateRecordsVo } from '@teable/openapi';
 import { ThresholdConfig, IThresholdConfig } from '../../../configs/threshold.config';
 import { CustomHttpException } from '../../../custom.exception';
 import { BatchService } from '../../calculation/batch.service';
 import { LinkService } from '../../calculation/link.service';
+import type { ICellContext } from '../../calculation/utils/changes';
 import { TableDomainQueryService } from '../../table-domain';
 import { ComputedOrchestratorService } from '../computed/services/computed-orchestrator.service';
 import type { IRecordInnerRo } from '../record.service';
@@ -85,10 +86,11 @@ export class RecordCreateService {
     await this.linkService.getDerivateByLink(table.id, createCtxs, undefined, projectionByTable);
     const changes = this.shared.compressAndFilterChanges(table, createCtxs);
     const opsMap = this.shared.formatChangesToOps(changes);
+    const computedCtxs = this.appendSystemFieldContextsForCreate(table, recordIds, createCtxs);
     // Publish computed values (with old/new) around base updates
     await this.computedOrchestrator.computeCellChangesForRecords(
       table.id,
-      createCtxs,
+      computedCtxs,
       async (tables) => {
         await this.batchService.updateRecords(opsMap, undefined, undefined, tables);
       }
@@ -130,5 +132,40 @@ export class RecordCreateService {
     }, new Set<string>());
 
     return projectionIds.size ? { [table.id]: Array.from(projectionIds) } : undefined;
+  }
+
+  private appendSystemFieldContextsForCreate(
+    table: TableDomain,
+    recordIds: string[],
+    cellContexts: ICellContext[]
+  ): ICellContext[] {
+    if (!recordIds.length) return cellContexts;
+
+    const systemFieldIds = table.fieldList
+      .filter(
+        (field) =>
+          field.type === FieldType.CreatedTime ||
+          field.type === FieldType.CreatedBy ||
+          field.type === FieldType.LastModifiedTime ||
+          field.type === FieldType.LastModifiedBy ||
+          field.type === FieldType.AutoNumber
+      )
+      .map((field) => field.id);
+
+    if (!systemFieldIds.length) return cellContexts;
+
+    const existing = new Set(cellContexts.map((ctx) => `${ctx.recordId}:${ctx.fieldId}`));
+    const extraContexts: ICellContext[] = [];
+
+    for (const recordId of recordIds) {
+      for (const fieldId of systemFieldIds) {
+        const key = `${recordId}:${fieldId}`;
+        if (existing.has(key)) continue;
+        existing.add(key);
+        extraContexts.push({ recordId, fieldId });
+      }
+    }
+
+    return extraContexts.length ? cellContexts.concat(extraContexts) : cellContexts;
   }
 }
