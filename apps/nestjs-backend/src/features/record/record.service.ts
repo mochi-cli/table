@@ -879,11 +879,12 @@ export class RecordService {
   async getRecordsById(
     tableId: string,
     recordIds: string[],
-    withPermission = true
+    withPermission = true,
+    useQueryModel = true
   ): Promise<IRecordsVo> {
     const recordSnapshot = await this[
       withPermission ? 'getSnapshotBulkWithPermission' : 'getSnapshotBulk'
-    ](tableId, recordIds, undefined, FieldKeyType.Id, undefined, true);
+    ](tableId, recordIds, undefined, FieldKeyType.Id, undefined, useQueryModel);
 
     if (!recordSnapshot.length) {
       throw new CustomHttpException('Can not get record', HttpErrorCode.NOT_FOUND, {

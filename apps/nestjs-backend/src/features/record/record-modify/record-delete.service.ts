@@ -29,11 +29,17 @@ export class RecordDeleteService {
 
   async deleteRecords(tableId: string, recordIds: string[], windowId?: string) {
     const table = await this.tableDomainQueryService.getTableDomainById(tableId);
-    const { records, orders } = await this.prismaService.$tx(async () => {
-      const records = await this.recordService.getRecordsById(tableId, recordIds, false);
+    const { records: recordsForEvent, orders } = await this.prismaService.$tx(async () => {
+      // Use a base-table query to ensure link values are derived from junction tables.
+      const recordsForEvent = await this.recordService.getRecordsById(
+        tableId,
+        recordIds,
+        false,
+        false
+      );
       const cellContextsByTableId = await this.linkService.getDeleteRecordUpdateContext(
         tableId,
-        records.records
+        recordsForEvent.records
       );
 
       // Prepare sources for multi-orchestrator run
@@ -64,7 +70,7 @@ export class RecordDeleteService {
         await this.recordService.batchDeleteRecords(tableId, recordIds);
       });
 
-      return { records, orders };
+      return { records: recordsForEvent, orders };
     });
 
     this.eventEmitterService.emitAsync(Events.OPERATION_RECORDS_DELETE, {
@@ -72,12 +78,12 @@ export class RecordDeleteService {
       windowId,
       tableId,
       userId: this.cls.get('user.id'),
-      records: records.records.map((record, index) => ({
+      records: recordsForEvent.records.map((record, index) => ({
         ...record,
         order: orders?.[index],
       })),
     });
 
-    return records;
+    return recordsForEvent;
   }
 }
