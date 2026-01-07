@@ -40,6 +40,7 @@ import {
   type FieldCore,
   type IRollupFieldOptions,
   DbFieldType,
+  CellValueType,
   extractFieldIdsFromFilter,
   SortFunc,
   isFieldReferenceValue,
@@ -1487,6 +1488,32 @@ export class FieldCteVisitor implements IFieldVisitor<ICteResult> {
     return this.unwrapSelectName(targetSelect);
   }
 
+  private coerceConditionalLookupTargetExpression(
+    expression: string,
+    targetField: FieldCore
+  ): string {
+    if (targetField.isConditionalLookup || targetField.isMultipleCellValue) {
+      return expression;
+    }
+    if (targetField.cellValueType === CellValueType.Number) {
+      if (this.dbProvider.driver === DriverClient.Pg) {
+        return `(${expression})::double precision`;
+      }
+      if (this.dbProvider.driver === DriverClient.Sqlite) {
+        return `CAST(${expression} AS NUMERIC)`;
+      }
+    }
+    if (targetField.cellValueType === CellValueType.Boolean) {
+      if (this.dbProvider.driver === DriverClient.Pg) {
+        return `(${expression})::boolean`;
+      }
+      if (this.dbProvider.driver === DriverClient.Sqlite) {
+        return `CAST(${expression} AS NUMERIC)`;
+      }
+    }
+    return expression;
+  }
+
   private generateConditionalRollupFieldCte(field: ConditionalRollupFieldCore): void {
     this.generateConditionalRollupFieldCteForScope(this.table, field);
   }
@@ -1542,6 +1569,10 @@ export class FieldCteVisitor implements IFieldVisitor<ICteResult> {
         foreignTable,
         foreignAliasUsed,
         selectVisitor
+      );
+      const normalizedExpression = this.coerceConditionalLookupTargetExpression(
+        rawExpression,
+        targetField
       );
       const formattingVisitor = new FieldFormattingVisitor(rawExpression, this.dialect);
       const formattedExpression = targetField.accept(formattingVisitor);
@@ -1852,8 +1883,12 @@ export class FieldCteVisitor implements IFieldVisitor<ICteResult> {
 
       joinLinkDependencies(aggregateBase);
 
+      const normalizedExpression = this.coerceConditionalLookupTargetExpression(
+        rawExpression,
+        targetField
+      );
       const targetValueAlias = `__cl_target_${field.id}`;
-      aggregateBase.select(this.qb.client.raw(`${rawExpression} as "${targetValueAlias}"`));
+      aggregateBase.select(this.qb.client.raw(`${normalizedExpression} as "${targetValueAlias}"`));
       const projectedTargetExpr = `"${foreignAliasUsed}"."${targetValueAlias}"`;
 
       let orderByClause: string | undefined;
