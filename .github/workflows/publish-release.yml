@@ -240,7 +240,7 @@ jobs:
             ], { stdio: 'inherit' });
 
             const gifUrl = await uploadGifAsset(outputPath, assetName);
-            return `\n\n![${safeAlt(label, 'video')} preview](${gifUrl})\n\n`;
+            return `\n\n![video preview](${gifUrl})\n\n`;
           }
 
           async function renderUrl(url, label) {
