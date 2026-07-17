@@ -23,7 +23,23 @@ Use these commands before committing Mochi SQLite work:
 pnpm -F @mochi/table-sqlite verify
 pnpm -F @teable/backend typecheck
 pnpm -F @teable/backend mochi:typecheck
+pnpm -F @teable/backend mochi:test
 pnpm --dir apps/nextjs-app typecheck
+```
+
+Default backend tests now run only the Mochi SQLite surface:
+
+```bash
+pnpm -F @teable/backend test
+pnpm -F @teable/backend test-unit
+```
+
+The old Teable test suites are quarantined behind explicit legacy commands:
+
+```bash
+pnpm -F @teable/backend legacy:test-unit
+pnpm -F @teable/backend legacy:test-e2e
+pnpm -F @teable/backend legacy:typecheck
 ```
 
 ## Legacy Spec Groups
@@ -44,7 +60,7 @@ group, not by mass deletion.
 
 ## Cleanup Sequence
 
-1. Keep `mochi:typecheck` green.
+1. Keep `mochi:typecheck` and `mochi:test` green.
 2. Move useful legacy expectations into `packages/mochi-sqlite/examples/verify.mjs`
    or focused Mochi backend specs.
 3. Delete or quarantine tests that only validate removed systems.

@@ -4,7 +4,7 @@ SQLITE_DB ?= ./data/mochi-table.sqlite
 
 .DEFAULT_GOAL := help
 
-.PHONY: help sqlite.init sqlite.smoke sqlite.verify mochi.typecheck sqlite.reset dev.backend dev.app
+.PHONY: help sqlite.init sqlite.smoke sqlite.verify mochi.test mochi.typecheck sqlite.reset dev.backend dev.app
 
 help:
 	@echo "Mochi Table local commands"
@@ -12,6 +12,7 @@ help:
 	@echo "  make sqlite.init    Create or update the local SQLite database"
 	@echo "  make sqlite.smoke   Run the SQLite repository smoke test"
 	@echo "  make sqlite.verify  Run assertions for SQLite local engine"
+	@echo "  make mochi.test     Run Mochi backend tests and SQLite verification"
 	@echo "  make mochi.typecheck Typecheck Mochi SQLite backend and app surfaces"
 	@echo "  make sqlite.reset   Remove and recreate the local SQLite database"
 	@echo "  make dev.backend    Start backend with Mochi local SQLite flags"
@@ -28,6 +29,11 @@ sqlite.verify:
 
 mochi.typecheck:
 	pnpm -F @teable/backend mochi:typecheck
+	pnpm --dir apps/nextjs-app typecheck
+
+mochi.test:
+	pnpm -F @mochi/table-sqlite verify
+	pnpm -F @teable/backend mochi:test
 	pnpm --dir apps/nextjs-app typecheck
 
 sqlite.reset:
