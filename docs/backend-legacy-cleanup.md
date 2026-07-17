@@ -58,6 +58,16 @@ group, not by mass deletion.
 | Field/table lifecycle | `field*.spec.ts`, `table*.spec.ts` | Migrate CRUD and conversion cases to `@mochi/table-sqlite` verify tests. |
 | Computed queue | `computed*.spec.ts`, `computed-outbox*.e2e-spec.ts` | Replace BullMQ/Postgres outbox expectations with SQLite computed jobs. |
 
+## Migrated So Far
+
+- CRUD: `packages/mochi-sqlite/examples/verify/crud.verify.mjs`
+- Search/filter/sort: `packages/mochi-sqlite/examples/verify/search-filter.verify.mjs`
+- Undo/redo/trash: `packages/mochi-sqlite/examples/verify/undo-redo-trash.verify.mjs`
+- Lookup/rollup: `packages/mochi-sqlite/examples/verify/lookup-rollup.verify.mjs`
+- SQLite import: `packages/mochi-sqlite/examples/verify/import-sqlite.verify.mjs`
+- Computed jobs: `packages/mochi-sqlite/examples/verify/computed-job.verify.mjs`
+- Field conversion: `packages/mochi-sqlite/examples/verify/field-conversion.verify.mjs`
+
 ## Cleanup Sequence
 
 1. Keep `mochi:typecheck` and `mochi:test` green.

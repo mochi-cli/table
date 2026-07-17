@@ -83,6 +83,7 @@ const convertValue = (value, type) => {
       return Boolean(value);
     case 'date':
     case 'dateTime': {
+      if (typeof value === 'number' || typeof value === 'boolean') return null;
       const date = new Date(value);
       return Number.isNaN(date.getTime()) ? null : date.toISOString();
     }

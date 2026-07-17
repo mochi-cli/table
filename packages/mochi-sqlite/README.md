@@ -68,4 +68,5 @@ node packages/mochi-sqlite/examples/verify.mjs
 ```
 
 The verification script asserts CRUD, FTS search, undo/redo, lookup resolution,
-trash restore, SQLite import, and computed job state transitions.
+trash restore, SQLite import, computed job state transitions, and field type
+conversion. Individual cases live in `examples/verify/*.verify.mjs`.
