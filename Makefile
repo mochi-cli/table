@@ -4,21 +4,26 @@ SQLITE_DB ?= ./data/mochi-table.sqlite
 
 .DEFAULT_GOAL := help
 
-.PHONY: help sqlite.init sqlite.smoke sqlite.reset dev.backend
+.PHONY: help sqlite.init sqlite.smoke sqlite.verify sqlite.reset dev.backend dev.app
 
 help:
 	@echo "Mochi Table local commands"
 	@echo ""
 	@echo "  make sqlite.init    Create or update the local SQLite database"
 	@echo "  make sqlite.smoke   Run the SQLite repository smoke test"
+	@echo "  make sqlite.verify  Run assertions for SQLite local engine"
 	@echo "  make sqlite.reset   Remove and recreate the local SQLite database"
 	@echo "  make dev.backend    Start backend with Mochi local SQLite flags"
+	@echo "  make dev.app        Start Next.js local workspace UI"
 
 sqlite.init:
 	node packages/mochi-sqlite/init-sqlite.mjs $(SQLITE_DB)
 
 sqlite.smoke:
 	node packages/mochi-sqlite/examples/smoke.mjs $(SQLITE_DB)
+
+sqlite.verify:
+	node packages/mochi-sqlite/examples/verify.mjs
 
 sqlite.reset:
 	rm -f $(SQLITE_DB)
@@ -30,3 +35,7 @@ dev.backend:
 	MOCHI_SQLITE_ENABLED=true \
 	MOCHI_SQLITE_DATABASE_PATH=$(SQLITE_DB) \
 	pnpm -F @teable/backend dev
+
+dev.app:
+	MOCHI_BACKEND_API_URL=http://localhost:3001 \
+	pnpm --dir apps/nextjs-app next dev

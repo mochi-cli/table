@@ -39,6 +39,31 @@ const inferFieldType = (value) => {
   return { type: 'singleLineText', cellValueType: 'string' };
 };
 
+const aggregateValues = (values, aggregate = 'values') => {
+  const compact = values.filter((value) => value !== null && value !== undefined && value !== '');
+  switch (aggregate) {
+    case 'count':
+      return compact.length;
+    case 'sum':
+      return compact.reduce((total, value) => total + Number(value || 0), 0);
+    case 'avg':
+      return compact.length
+        ? compact.reduce((total, value) => total + Number(value || 0), 0) / compact.length
+        : null;
+    case 'min':
+      return compact.length ? Math.min(...compact.map(Number)) : null;
+    case 'max':
+      return compact.length ? Math.max(...compact.map(Number)) : null;
+    case 'first':
+      return compact[0] ?? null;
+    case 'join':
+      return compact.map(String).join(', ');
+    case 'values':
+    default:
+      return compact;
+  }
+};
+
 const compareValues = (left, right) => {
   if (left === right) return 0;
   if (left === null || left === undefined) return -1;
@@ -473,6 +498,59 @@ export class MochiSqliteRepository {
     ];
     this.db.transaction(statements);
     return this.getRecord(id);
+  }
+
+  resolveLookupRollup(tableId, options = {}) {
+    const fields = this.listFields(tableId).filter(
+      (field) => field.is_lookup || field.type === 'lookup' || field.type === 'rollup'
+    );
+    const records = options.recordId ? [this.getRecord(options.recordId)].filter(Boolean) : this.listRecords(tableId, { limit: 100000 });
+    let updatedRecords = 0;
+    const statements = [];
+
+    for (const record of records) {
+      const nextFields = { ...record.fields };
+      let changed = false;
+      for (const field of fields) {
+        const config = {
+          ...(field.options ?? {}),
+          ...(field.meta ?? {}),
+        };
+        const linkFieldId = config.linkFieldId ?? config.sourceRecordFieldId;
+        const valueFieldId = config.valueFieldId ?? config.sourceValueFieldId;
+        if (!linkFieldId || !valueFieldId) continue;
+        const linkedRecordIds = Array.isArray(record.fields[linkFieldId])
+          ? record.fields[linkFieldId]
+          : [record.fields[linkFieldId]].filter(Boolean);
+        const values = linkedRecordIds
+          .map((recordId) => this.getRecord(recordId))
+          .filter(Boolean)
+          .map((linkedRecord) => linkedRecord.fields?.[valueFieldId]);
+        const nextValue =
+          field.type === 'rollup'
+            ? aggregateValues(values, config.aggregate)
+            : values.length <= 1
+              ? values[0] ?? null
+              : values;
+        if (JSON.stringify(nextFields[field.id] ?? null) !== JSON.stringify(nextValue ?? null)) {
+          nextFields[field.id] = nextValue;
+          changed = true;
+        }
+      }
+      if (!changed) continue;
+      updatedRecords += 1;
+      statements.push(
+        `UPDATE mochi_record
+         SET fields_json = ${jsonValue(nextFields)},
+             version = version + 1,
+             last_modified_time = ${nowExpr}
+         WHERE id = ${sqlValue(record.id)};`,
+        ...this.recordSearchStatements(tableId, record.id, nextFields)
+      );
+    }
+
+    if (statements.length > 0) this.db.transaction(statements);
+    return { tableId, fields: fields.length, records: records.length, updatedRecords };
   }
 
   deleteRecord(id, options = {}) {

@@ -1652,6 +1652,8 @@ importers:
         specifier: 5.4.3
         version: 5.4.3
 
+  packages/mochi-sqlite: {}
+
   packages/openapi:
     dependencies:
       '@asteasolutions/zod-to-openapi':

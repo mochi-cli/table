@@ -147,6 +147,11 @@ export class MochiSqliteController {
     return this.mochiSqliteService.rebuildSearchIndex(tableId);
   }
 
+  @Post('tables/:tableId/lookup-rollup/resolve')
+  resolveLookupRollup(@Param('tableId') tableId: string, @Body() body: { recordId?: string }) {
+    return this.mochiSqliteService.resolveLookupRollup(tableId, body);
+  }
+
   @Post('tables/:tableId/records')
   createRecord(
     @Param('tableId') tableId: string,

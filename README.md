@@ -88,6 +88,7 @@ Run the SQLite smoke test:
 
 ```bash
 pnpm -F @mochi/table-sqlite smoke
+pnpm -F @mochi/table-sqlite verify
 ```
 
 Run the existing backend with the SQLite bridge enabled:
@@ -99,6 +100,23 @@ MOCHI_SQLITE_ENABLED=true \
 MOCHI_SQLITE_DATABASE_PATH=./data/mochi-table.sqlite \
 pnpm -F @teable/backend dev
 ```
+
+Run the local workspace UI in another terminal:
+
+```bash
+make dev.app
+```
+
+Then open:
+
+```text
+http://localhost:3000/mochi/local
+```
+
+The local page is a temporary SQLite workbench for exercising the new storage
+adapter without changing the upstream grid route yet. It can create bases,
+tables, fields, records, import SQLite files, search records, rebuild FTS, and
+run undo/redo.
 
 The old Postgres-backed Teable runtime still exists while the API migration is
 in progress. The target is to remove that dependency as the SQLite API adapter
@@ -122,6 +140,7 @@ POST /api/mochi/tables/:tableId/views
 GET  /api/mochi/tables/:tableId/records
 POST /api/mochi/tables/:tableId/records
 POST /api/mochi/tables/:tableId/search/rebuild
+POST /api/mochi/tables/:tableId/lookup-rollup/resolve
 GET  /api/mochi/records/:recordId
 PATCH /api/mochi/records/:recordId
 DELETE /api/mochi/records/:recordId

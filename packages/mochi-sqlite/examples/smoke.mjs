@@ -24,6 +24,37 @@ const undo = repo.undoLastBatch();
 const afterUndo = repo.getRecord(record.id);
 const redo = repo.redoLastBatch();
 const afterRedo = repo.getRecord(record.id);
+const linkedRecord = repo.createRecord({
+  tableId: table.id,
+  fields: {
+    [phone.id]: '+84 555 111',
+  },
+});
+const linkField = repo.createField({
+  tableId: table.id,
+  name: 'Linked customer',
+  type: 'link',
+  cellValueType: 'string',
+});
+const lookupField = repo.createField({
+  tableId: table.id,
+  name: 'Linked phone',
+  type: 'lookup',
+  cellValueType: 'string',
+  isLookup: true,
+  options: {
+    linkFieldId: linkField.id,
+    valueFieldId: phone.id,
+  },
+});
+const recordWithLookup = repo.createRecord({
+  tableId: table.id,
+  fields: {
+    [linkField.id]: linkedRecord.id,
+  },
+});
+const lookupResult = repo.resolveLookupRollup(table.id, { recordId: recordWithLookup.id });
+const afterLookup = repo.getRecord(recordWithLookup.id);
 const searchIndex = repo.rebuildSearchIndex(table.id);
 const attachment = repo.createAttachment({
   path: '/tmp/mochi-table-smoke.txt',
@@ -63,6 +94,12 @@ console.log(
       afterUndo,
       redo,
       afterRedo,
+      linkedRecord,
+      linkField,
+      lookupField,
+      recordWithLookup,
+      lookupResult,
+      afterLookup,
       searchIndex,
       attachment,
       attachmentRef,

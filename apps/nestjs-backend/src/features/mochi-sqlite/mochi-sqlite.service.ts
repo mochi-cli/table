@@ -9,7 +9,13 @@ type MochiRepository = {
   getSpace: (id: string) => unknown;
   listBases: (spaceId?: string) => unknown[];
   getBase: (id: string) => unknown;
-  createBase: (input: { id?: string; name: string; spaceId?: string; icon?: string; order?: number }) => unknown;
+  createBase: (input: {
+    id?: string;
+    name: string;
+    spaceId?: string;
+    icon?: string;
+    order?: number;
+  }) => unknown;
   listTables: (baseId: string) => unknown[];
   getTable: (id: string) => unknown;
   createTable: (input: {
@@ -70,6 +76,7 @@ type MochiRepository = {
   getRecord: (id: string) => unknown;
   updateRecord: (id: string, patch: { fields?: JsonRecord }) => unknown;
   deleteRecord: (id: string) => unknown;
+  resolveLookupRollup: (tableId: string, options?: { recordId?: string }) => unknown;
   listTrash: () => unknown[];
   restoreTrash: (id: string) => unknown;
   createAttachment: (input: {
@@ -143,7 +150,13 @@ export class MochiSqliteService {
     return this.repository.getBase(id);
   }
 
-  createBase(input: { id?: string; name: string; spaceId?: string; icon?: string; order?: number }) {
+  createBase(input: {
+    id?: string;
+    name: string;
+    spaceId?: string;
+    icon?: string;
+    order?: number;
+  }) {
     return this.repository.createBase(input);
   }
 
@@ -255,6 +268,10 @@ export class MochiSqliteService {
     return this.repository.deleteRecord(id);
   }
 
+  resolveLookupRollup(tableId: string, options?: { recordId?: string }) {
+    return this.repository.resolveLookupRollup(tableId, options);
+  }
+
   listTrash() {
     return this.repository.listTrash();
   }
@@ -285,7 +302,12 @@ export class MochiSqliteService {
     return this.repository.listAttachments();
   }
 
-  attachToRecord(input: { attachmentId: string; tableId: string; recordId: string; fieldId: string }) {
+  attachToRecord(input: {
+    attachmentId: string;
+    tableId: string;
+    recordId: string;
+    fieldId: string;
+  }) {
     return this.repository.attachToRecord(input);
   }
 

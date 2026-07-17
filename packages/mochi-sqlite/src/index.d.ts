@@ -76,6 +76,7 @@ export class MochiSqliteRepository {
   getRecord(id: string): unknown | null;
   updateRecord(id: string, patch: { fields?: JsonRecord; order?: unknown; batchId?: string; label?: string; source?: string }): unknown | null;
   deleteRecord(id: string, options?: { batchId?: string; label?: string; source?: string }): unknown | null;
+  resolveLookupRollup(tableId: string, options?: { recordId?: string }): unknown;
   listTrash(): unknown[];
   restoreTrash(id: string): unknown | null;
   createAttachment(input: {
