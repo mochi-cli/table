@@ -140,6 +140,24 @@ interface ICommonOperationProps extends IBaseNodeMoreProps {
   nodeTypeLabel?: string; // Node type label (Dashboard/Workflow/App)
 }
 
+const getMochiLocalNodeUrl = (
+  resourceType: BaseNodeResourceType,
+  resourceId: string,
+  viewId?: string
+) => {
+  if (typeof window === 'undefined' || window.location.pathname !== '/mochi/local') {
+    return null;
+  }
+  if (resourceType !== BaseNodeResourceType.Table) {
+    return '/mochi/local';
+  }
+  const params = new URLSearchParams({ tableId: resourceId });
+  if (viewId) {
+    params.set('viewId', viewId);
+  }
+  return `/mochi/local?${params.toString()}`;
+};
+
 const CommonOperation = (props: ICommonOperationProps) => {
   const {
     resourceId,
@@ -506,18 +524,34 @@ export const TableOperation = (props: IBaseNodeMoreProps) => {
     includeRecords: true,
   });
 
-  const menuPermission = useMemo(
-    () =>
-      getTableOperationMenuPermission({
+  const menuPermission = useMemo(() => {
+    const permission = getTableOperationMenuPermission({
         table,
         nodeExists: Boolean(node),
         basePermission,
         canTableRecordHistoryRead,
         canTableTrashRead,
-      }),
-    [basePermission, canTableRecordHistoryRead, canTableTrashRead, node, table]
-  );
-  const shareNodeId = menuPermission.shareTable && node ? node.id : undefined;
+      });
+
+    if (
+      typeof window !== 'undefined' &&
+      window.location.pathname === '/mochi/local' &&
+      node
+    ) {
+      return {
+        ...permission,
+        duplicateTable: true,
+      };
+    }
+
+    return permission;
+  }, [basePermission, canTableRecordHistoryRead, canTableTrashRead, node, table]);
+  const shareNodeId =
+    typeof window !== 'undefined' && window.location.pathname === '/mochi/local'
+      ? undefined
+      : menuPermission.shareTable && node
+        ? node.id
+        : undefined;
 
   const deleteTable = async (permanent: boolean) => {
     if (!resourceId) return;
@@ -1079,12 +1113,15 @@ export const BaseNodeMore = (props: IBaseNodeMoreProps) => {
       const viewId =
         resourceType === BaseNodeResourceType.Table ? resourceMeta?.defaultViewId : undefined;
 
-      const url = getNodeUrl({
-        baseId,
-        resourceType,
-        resourceId,
-        viewId,
-      });
+      const url =
+        (node as { defaultUrl?: string }).defaultUrl ??
+        getMochiLocalNodeUrl(resourceType, resourceId, viewId ?? undefined) ??
+        getNodeUrl({
+          baseId,
+          resourceType,
+          resourceId,
+          viewId,
+        });
       if (url) {
         if (resourceType === BaseNodeResourceType.Table) {
           router.push(url, undefined, { shallow: Boolean(viewId) });
@@ -1101,12 +1138,15 @@ export const BaseNodeMore = (props: IBaseNodeMoreProps) => {
       const { resourceType, resourceId, resourceMeta } = node;
       const viewId =
         resourceType === BaseNodeResourceType.Table ? resourceMeta?.defaultViewId : undefined;
-      const url = getNodeUrl({
-        baseId,
-        resourceType,
-        resourceId,
-        viewId,
-      });
+      const url =
+        (node as { defaultUrl?: string }).defaultUrl ??
+        getMochiLocalNodeUrl(resourceType, resourceId, viewId ?? undefined) ??
+        getNodeUrl({
+          baseId,
+          resourceType,
+          resourceId,
+          viewId,
+        });
       if (url) {
         if (resourceType === BaseNodeResourceType.Table) {
           router.push(url, undefined, { shallow: Boolean(viewId) });
@@ -1126,7 +1166,13 @@ export const BaseNodeMore = (props: IBaseNodeMoreProps) => {
 
       const adjacentNode = findAdjacentNonFolderNode(treeItems, nodeId);
       if (!adjacentNode) {
-        router.push(`/base/${baseId}`, undefined, { shallow: true });
+        router.push(
+          typeof window !== 'undefined' && window.location.pathname === '/mochi/local'
+            ? '/mochi/local'
+            : `/base/${baseId}`,
+          undefined,
+          { shallow: true }
+        );
         return;
       }
 
@@ -1135,9 +1181,13 @@ export const BaseNodeMore = (props: IBaseNodeMoreProps) => {
         const viewId = tableViewIdsMap[adjResourceId];
         const url = tableHrefMap[adjResourceId];
         if (url) {
-          router.push({ pathname: url }, undefined, {
-            shallow: Boolean(viewId),
-          });
+          if (url.startsWith('/mochi/local?')) {
+            router.push(url, undefined, { shallow: true });
+          } else {
+            router.push({ pathname: url }, undefined, {
+              shallow: Boolean(viewId),
+            });
+          }
           return;
         }
       }

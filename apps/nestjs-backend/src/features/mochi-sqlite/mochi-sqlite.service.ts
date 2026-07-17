@@ -1,7 +1,16 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { Events } from '../../event-emitter/events/event.enum';
+import { publishMochiLocalActionTrigger } from './mochi-local-realtime-publisher';
 import { MOCHI_SQLITE_REPOSITORY } from './mochi-sqlite.constants';
 
 type JsonRecord = Record<string, unknown>;
+
+type LocalRecord = {
+  id: string;
+  table_id?: string;
+  fields?: JsonRecord;
+};
 
 type MochiRepository = {
   listSpaces: () => unknown[];
@@ -18,12 +27,15 @@ type MochiRepository = {
   }) => unknown;
   listTables: (baseId: string) => unknown[];
   getTable: (id: string) => unknown;
+  updateTable: (id: string, patch: JsonRecord) => unknown;
+  deleteTable: (id: string) => unknown;
+  duplicateTable: (id: string, input?: JsonRecord) => unknown;
   createTable: (input: {
     id?: string;
     baseId: string;
     name: string;
     description?: string;
-    icon?: string;
+    icon?: string | null;
     order?: number;
     primaryFieldId?: string;
     primaryFieldName?: string;
@@ -49,6 +61,7 @@ type MochiRepository = {
     order?: number;
   }) => unknown;
   updateField: (id: string, patch: JsonRecord) => unknown;
+  deleteField: (id: string) => unknown;
   listViews: (tableId: string) => unknown[];
   createView: (input: {
     tableId: string;
@@ -61,6 +74,8 @@ type MochiRepository = {
     group?: unknown;
   }) => unknown;
   getView: (id: string) => unknown;
+  updateView: (id: string, patch: JsonRecord) => unknown;
+  deleteView: (id: string) => unknown;
   listRecords: (
     tableId: string,
     options?: {
@@ -72,9 +87,9 @@ type MochiRepository = {
     }
   ) => unknown[];
   rebuildSearchIndex: (tableId: string) => unknown;
-  createRecord: (input: { tableId: string; fields?: JsonRecord }) => unknown;
+  createRecord: (input: { tableId: string; fields?: JsonRecord; order?: unknown }) => unknown;
   getRecord: (id: string) => unknown;
-  updateRecord: (id: string, patch: { fields?: JsonRecord }) => unknown;
+  updateRecord: (id: string, patch: { fields?: JsonRecord; order?: unknown }) => unknown;
   deleteRecord: (id: string) => unknown;
   resolveLookupRollup: (tableId: string, options?: { recordId?: string }) => unknown;
   listTrash: () => unknown[];
@@ -128,7 +143,70 @@ type MochiRepository = {
 
 @Injectable()
 export class MochiSqliteService {
-  constructor(@Inject(MOCHI_SQLITE_REPOSITORY) private readonly repository: MochiRepository) {}
+  constructor(
+    @Inject(MOCHI_SQLITE_REPOSITORY) private readonly repository: MochiRepository,
+    @Optional() private readonly eventEmitter?: EventEmitter2
+  ) {}
+
+  private emitMochiRecordCreate(tableId: string, record: unknown) {
+    publishMochiLocalActionTrigger(tableId, [
+      { actionKey: 'addRecord', payload: { tableId, skipRealtime: true } },
+    ]);
+    void this.eventEmitter?.emitAsync(Events.TABLE_RECORD_CREATE, {
+      name: Events.TABLE_RECORD_CREATE,
+      payload: {
+        tableId,
+        record,
+      },
+      context: {
+        entry: { type: 'mochi-sqlite', id: tableId },
+      },
+    });
+  }
+
+  private emitMochiRecordUpdate(tableId: string, recordId: string, fields: JsonRecord) {
+    publishMochiLocalActionTrigger(tableId, [
+      {
+        actionKey: 'setRecord',
+        payload: { tableId, fieldIds: Object.keys(fields), skipRealtime: true },
+      },
+    ]);
+    void this.eventEmitter?.emitAsync(Events.TABLE_RECORD_UPDATE, {
+      name: Events.TABLE_RECORD_UPDATE,
+      payload: {
+        tableId,
+        record: {
+          id: recordId,
+          fields: Object.fromEntries(
+            Object.entries(fields).map(([fieldId, newValue]) => [
+              fieldId,
+              { oldValue: undefined, newValue },
+            ])
+          ),
+        },
+        oldField: undefined,
+      },
+      context: {
+        entry: { type: 'mochi-sqlite', id: tableId },
+      },
+    });
+  }
+
+  private emitMochiRecordDelete(tableId: string, recordId: string) {
+    publishMochiLocalActionTrigger(tableId, [
+      { actionKey: 'deleteRecord', payload: { tableId, recordIds: [recordId], skipRealtime: true } },
+    ]);
+    void this.eventEmitter?.emitAsync(Events.TABLE_RECORD_DELETE, {
+      name: Events.TABLE_RECORD_DELETE,
+      payload: {
+        tableId,
+        recordId,
+      },
+      context: {
+        entry: { type: 'mochi-sqlite', id: tableId },
+      },
+    });
+  }
 
   listSpaces() {
     return this.repository.listSpaces();
@@ -168,12 +246,24 @@ export class MochiSqliteService {
     return this.repository.getTable(id);
   }
 
+  updateTable(id: string, patch: JsonRecord) {
+    return this.repository.updateTable(id, patch);
+  }
+
+  deleteTable(id: string) {
+    return this.repository.deleteTable(id);
+  }
+
+  duplicateTable(id: string, input?: JsonRecord) {
+    return this.repository.duplicateTable(id, input);
+  }
+
   createTable(input: {
     id?: string;
     baseId: string;
     name: string;
     description?: string;
-    icon?: string;
+    icon?: string | null;
     order?: number;
     primaryFieldId?: string;
     primaryFieldName?: string;
@@ -214,6 +304,10 @@ export class MochiSqliteService {
     return this.repository.updateField(id, patch);
   }
 
+  deleteField(id: string) {
+    return this.repository.deleteField(id);
+  }
+
   listViews(tableId: string) {
     return this.repository.listViews(tableId);
   }
@@ -235,6 +329,14 @@ export class MochiSqliteService {
     return this.repository.getView(id);
   }
 
+  updateView(id: string, patch: JsonRecord) {
+    return this.repository.updateView(id, patch);
+  }
+
+  deleteView(id: string) {
+    return this.repository.deleteView(id);
+  }
+
   listRecords(
     tableId: string,
     options?: {
@@ -252,20 +354,38 @@ export class MochiSqliteService {
     return this.repository.rebuildSearchIndex(tableId);
   }
 
-  createRecord(input: { tableId: string; fields?: JsonRecord }) {
-    return this.repository.createRecord(input);
+  createRecord(input: { tableId: string; fields?: JsonRecord; order?: unknown }) {
+    const created = this.repository.createRecord(input);
+    this.emitMochiRecordCreate(input.tableId, created);
+    return created;
   }
 
   getRecord(id: string) {
     return this.repository.getRecord(id);
   }
 
-  updateRecord(id: string, patch: { fields?: JsonRecord }) {
-    return this.repository.updateRecord(id, patch);
+  updateRecord(
+    id: string,
+    patch: { fields?: JsonRecord; order?: unknown },
+    tableIdOverride?: string
+  ) {
+    const before = this.repository.getRecord(id) as LocalRecord | null;
+    const updated = this.repository.updateRecord(id, patch) as LocalRecord | null;
+    const tableId = tableIdOverride ?? updated?.table_id ?? before?.table_id;
+    if (tableId && patch.fields && Object.keys(patch.fields).length) {
+      this.emitMochiRecordUpdate(tableId, id, patch.fields);
+    }
+    return updated;
   }
 
-  deleteRecord(id: string) {
-    return this.repository.deleteRecord(id);
+  deleteRecord(id: string, tableIdOverride?: string) {
+    const before = this.repository.getRecord(id) as LocalRecord | null;
+    const deleted = this.repository.deleteRecord(id) as LocalRecord | null;
+    const tableId = tableIdOverride ?? before?.table_id ?? deleted?.table_id;
+    if (tableId) {
+      this.emitMochiRecordDelete(tableId, id);
+    }
+    return deleted;
   }
 
   resolveLookupRollup(tableId: string, options?: { recordId?: string }) {

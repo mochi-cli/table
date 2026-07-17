@@ -115,6 +115,8 @@ const makeQueryScopeKey = (collection: string, queryParams: unknown) =>
 const makeQueryKey = (collection: string, queryParams: unknown, refreshToken = 0) =>
   `${makeQueryScopeKey(collection, queryParams)}|refresh:${refreshToken}`;
 
+const localDataMutatedEvent = 'mochi-local-data-mutated';
+
 const acquireQuery = <T>(
   collection: string,
   connection: ReturnType<typeof useConnection>['connection'],
@@ -146,7 +148,12 @@ const releaseQuery = (key?: string, cb?: () => void) => {
 };
 
 const getSchemaRefreshCollectionTableId = (collection: string): string | undefined => {
-  const [prefix, tableId] = collection.split('_');
+  const separator = collection.indexOf('_');
+  if (separator < 0) {
+    return undefined;
+  }
+  const prefix = collection.slice(0, separator);
+  const tableId = collection.slice(separator + 1);
   if (
     (prefix !== IdPrefix.Record && prefix !== IdPrefix.Field && prefix !== IdPrefix.View) ||
     !tableId
@@ -600,6 +607,22 @@ export function useInstances<T, R extends { id: string }>({
     removeProjectedRecordsByIds,
     schemaRefreshCollectionTableId,
   ]);
+
+  useEffect(() => {
+    if (!schemaRefreshCollectionTableId || !isRecordCollection(collection)) {
+      return;
+    }
+
+    const refreshLocalRecordQuery = (event: Event) => {
+      const scope = (event as CustomEvent<{ scope?: string }>).detail?.scope;
+      if (scope && scope !== 'record') {
+        return;
+      }
+      setSchemaRefreshToken((current) => current + 1);
+    };
+    window.addEventListener(localDataMutatedEvent, refreshLocalRecordQuery);
+    return () => window.removeEventListener(localDataMutatedEvent, refreshLocalRecordQuery);
+  }, [collection, schemaRefreshCollectionTableId]);
 
   const handleReady = useCallback((query: Query<T>) => {
     console.log(

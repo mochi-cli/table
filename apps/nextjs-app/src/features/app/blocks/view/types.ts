@@ -5,4 +5,5 @@ export interface IViewBaseProps {
   recordsServerData: { records: IRecord[] };
   recordServerData?: IRecord;
   groupPointsServerDataMap?: { [viewId: string]: IGroupPointsVo | null };
+  onCreatedRecords?: () => void;
 }

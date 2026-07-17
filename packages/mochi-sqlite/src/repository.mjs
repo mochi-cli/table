@@ -20,6 +20,23 @@ const nowExpr = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')";
 
 const normalizeText = (value) => String(value ?? '').toLocaleLowerCase();
 
+const remapJsonIds = (value, idMap) => {
+  if (typeof value === 'string') return idMap.get(value) ?? value;
+  if (Array.isArray(value)) return value.map((item) => remapJsonIds(item, idMap));
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(
+    Object.entries(value).map(([key, item]) => [idMap.get(key) ?? key, remapJsonIds(item, idMap)])
+  );
+};
+
+const remapRecordFields = (fields, fieldIdMap, recordIdMap) =>
+  Object.fromEntries(
+    Object.entries(fields ?? {}).map(([fieldId, value]) => [
+      fieldIdMap.get(fieldId) ?? fieldId,
+      remapJsonIds(value, recordIdMap),
+    ])
+  );
+
 const flattenSearchText = (value) => {
   if (value === null || value === undefined) return '';
   if (Array.isArray(value)) return value.map(flattenSearchText).join(' ');
@@ -210,6 +227,135 @@ export class MochiSqliteRepository {
     return this.db.get(`SELECT * FROM mochi_table WHERE id = ${sqlValue(id)};`);
   }
 
+  updateTable(id, patch = {}) {
+    const updates = [];
+    if (Object.prototype.hasOwnProperty.call(patch, 'name')) {
+      updates.push(`name = ${sqlValue(patch.name)}`);
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, 'description')) {
+      updates.push(`description = ${sqlValue(patch.description)}`);
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, 'icon')) {
+      updates.push(`icon = ${sqlValue(patch.icon)}`);
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, 'order')) {
+      updates.push(`sort_order = ${sqlValue(patch.order)}`);
+    }
+    if (!updates.length) return this.getTable(id);
+    this.db.run(`
+      UPDATE mochi_table
+      SET ${updates.join(', ')}, last_modified_time = ${nowExpr}
+      WHERE id = ${sqlValue(id)} AND deleted_time IS NULL;
+    `);
+    return this.getTable(id);
+  }
+
+  deleteTable(id) {
+    const current = this.getTable(id);
+    if (!current || current.deleted_time) return null;
+    this.db.run(`
+      UPDATE mochi_table
+      SET deleted_time = ${nowExpr},
+          version = version + 1,
+          last_modified_time = ${nowExpr}
+      WHERE id = ${sqlValue(id)} AND deleted_time IS NULL;
+    `);
+    return current;
+  }
+
+  duplicateTable(id, input = {}) {
+    const source = this.getTable(id);
+    if (!source || source.deleted_time) return null;
+    const sourceFields = this.listFields(id);
+    const sourceViews = this.listViews(id);
+    const sourceRecords = this.listRecords(id, { limit: 100000 });
+    const fieldIdMap = new Map(sourceFields.map((field) => [field.id, ids.field()]));
+    const viewIdMap = new Map(sourceViews.map((view) => [view.id, ids.view()]));
+    const recordIdMap = new Map(sourceRecords.map((record) => [record.id, ids.record()]));
+    const primaryField = sourceFields.find((field) => field.is_primary) ?? sourceFields[0];
+
+    const table = this.createTable({
+      id: input.id,
+      baseId: input.baseId ?? source.base_id,
+      name: input.name ?? `${source.name} copy`,
+      description: input.description ?? source.description,
+      icon: input.icon === undefined ? source.icon : input.icon,
+      order: input.order,
+      primaryFieldId: primaryField ? fieldIdMap.get(primaryField.id) : undefined,
+      primaryFieldName: primaryField?.name ?? 'Name',
+      viewId: sourceViews[0] ? viewIdMap.get(sourceViews[0].id) : undefined,
+    });
+
+    if (primaryField) {
+      this.updateField(fieldIdMap.get(primaryField.id), {
+        name: primaryField.name,
+        description: primaryField.description,
+        type: primaryField.type,
+        cellValueType: primaryField.cell_value_type,
+        options: remapJsonIds(primaryField.options, fieldIdMap),
+        meta: remapJsonIds(primaryField.meta, fieldIdMap),
+        aiConfig: remapJsonIds(primaryField.aiConfig, fieldIdMap),
+        notNull: Boolean(primaryField.not_null),
+        unique: Boolean(primaryField.unique_value),
+      });
+    }
+
+    for (const field of sourceFields) {
+      if (field.id === primaryField?.id) continue;
+      this.createField({
+        id: fieldIdMap.get(field.id),
+        tableId: table.id,
+        name: field.name,
+        description: field.description,
+        type: field.type,
+        cellValueType: field.cell_value_type,
+        options: remapJsonIds(field.options, fieldIdMap),
+        meta: remapJsonIds(field.meta, fieldIdMap),
+        aiConfig: remapJsonIds(field.aiConfig, fieldIdMap),
+        isComputed: Boolean(field.is_computed),
+        isLookup: Boolean(field.is_lookup),
+        notNull: Boolean(field.not_null),
+        unique: Boolean(field.unique_value),
+        order: field.sort_order,
+      });
+    }
+
+    for (const view of sourceViews) {
+      const viewInput = {
+        tableId: table.id,
+        name: view.name,
+        type: view.type,
+        order: view.sort_order,
+        options: remapJsonIds(view.options, fieldIdMap),
+        columnMeta: remapJsonIds(view.columnMeta, fieldIdMap),
+        filter: remapJsonIds(view.filter, fieldIdMap),
+        sort: remapJsonIds(view.sort, fieldIdMap),
+        group: remapJsonIds(view.group, fieldIdMap),
+      };
+      if (view.id === sourceViews[0]?.id) {
+        this.updateView(viewIdMap.get(view.id), viewInput);
+      } else {
+        this.createView({ id: viewIdMap.get(view.id), ...viewInput });
+      }
+    }
+
+    const batchId = ids.opBatch();
+    for (const record of sourceRecords) {
+      this.createRecord({
+        id: recordIdMap.get(record.id),
+        tableId: table.id,
+        autoNumber: record.auto_number,
+        fields: remapRecordFields(record.fields, fieldIdMap, recordIdMap),
+        order: remapJsonIds(record.order, recordIdMap),
+        batchId,
+        label: 'Duplicate table records',
+        source: 'duplicate-table',
+      });
+    }
+
+    return this.getTable(table.id);
+  }
+
   listFields(tableId) {
     return this.db
       .all(`
@@ -304,7 +450,9 @@ export class MochiSqliteRepository {
   }
 
   getField(id) {
-    const field = this.db.get(`SELECT * FROM mochi_field WHERE id = ${sqlValue(id)};`);
+    const field = this.db.get(
+      `SELECT * FROM mochi_field WHERE id = ${sqlValue(id)} AND deleted_time IS NULL;`
+    );
     if (!field) return null;
     return {
       ...field,
@@ -312,6 +460,36 @@ export class MochiSqliteRepository {
       meta: parseJson(field.meta_json),
       aiConfig: parseJson(field.ai_config_json),
     };
+  }
+
+  deleteField(id) {
+    const current = this.getField(id);
+    if (!current || current.is_primary) return null;
+    const records = this.listRecords(current.table_id, { limit: 100000 });
+    const statements = [
+      `UPDATE mochi_field
+       SET deleted_time = ${nowExpr},
+           version = version + 1,
+           last_modified_time = ${nowExpr}
+       WHERE id = ${sqlValue(id)};`,
+    ];
+
+    for (const record of records) {
+      if (!(id in record.fields)) continue;
+      const nextFields = { ...record.fields };
+      delete nextFields[id];
+      statements.push(
+        `UPDATE mochi_record
+         SET fields_json = ${jsonValue(nextFields)},
+             version = version + 1,
+             last_modified_time = ${nowExpr}
+         WHERE id = ${sqlValue(record.id)};`
+      );
+      statements.push(...this.recordSearchStatements(current.table_id, record.id, nextFields));
+    }
+
+    this.db.transaction(statements);
+    return current;
   }
 
   listViews(tableId) {
@@ -365,6 +543,36 @@ export class MochiSqliteRepository {
       sort: parseJson(view.sort_json),
       group: parseJson(view.group_json),
     };
+  }
+
+  updateView(id, patch) {
+    const current = this.getView(id);
+    if (!current) return null;
+    this.db.run(`
+      UPDATE mochi_view
+      SET name = ${sqlValue(patch.name ?? current.name)},
+          type = ${sqlValue(patch.type ?? current.type)},
+          options_json = ${patch.options === undefined ? sqlValue(current.options_json) : jsonValue(patch.options)},
+          column_meta_json = ${patch.columnMeta === undefined ? sqlValue(current.column_meta_json) : jsonValue(patch.columnMeta)},
+          filter_json = ${patch.filter === undefined ? sqlValue(current.filter_json) : jsonValue(patch.filter)},
+          sort_json = ${patch.sort === undefined ? sqlValue(current.sort_json) : jsonValue(patch.sort)},
+          group_json = ${patch.group === undefined ? sqlValue(current.group_json) : jsonValue(patch.group)},
+          last_modified_time = ${nowExpr}
+      WHERE id = ${sqlValue(id)};
+    `);
+    return this.getView(id);
+  }
+
+  deleteView(id) {
+    const current = this.getView(id);
+    if (!current) return null;
+    this.db.run(`
+      UPDATE mochi_view
+      SET deleted_time = ${nowExpr},
+          last_modified_time = ${nowExpr}
+      WHERE id = ${sqlValue(id)};
+    `);
+    return current;
   }
 
   listRecords(tableId, options = {}) {

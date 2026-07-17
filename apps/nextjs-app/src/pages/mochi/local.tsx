@@ -1,52 +1,198 @@
-import type { FormEvent, KeyboardEvent } from 'react';
+import type { IFieldVo, IRecord, IViewVo } from '@teable/core';
+import { CellValueType, DbFieldType, FieldType, ViewType } from '@teable/core';
+import { axios as teableAxios } from '@teable/openapi';
+import type { ITableVo, IUserMeVo } from '@teable/openapi';
+import {
+  AnchorContext,
+  AppContext,
+  BaseProvider,
+  ConnectionProvider,
+  SessionContext,
+  TableProvider,
+} from '@teable/sdk/context';
+import { defaultLocale } from '@teable/sdk/context/app/i18n';
+import { MutationCache, QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { GetServerSideProps } from 'next';
+import dynamic from 'next/dynamic';
+import type { NextRouter } from 'next/router';
+import { useRouter } from 'next/router';
+import { RouterContext } from 'next/dist/shared/lib/router-context.shared-runtime';
+import { useTranslation } from 'next-i18next';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { BaseNodeProvider } from '@/features/app/blocks/base/base-node/BaseNodeProvider';
+import { BaseSideBar } from '@/features/app/blocks/base/base-side-bar/BaseSideBar';
+import { Sidebar } from '@/features/app/components/sidebar/Sidebar';
+import { tableConfig } from '@/features/i18n/table.config';
+import { getServerSideTranslations } from '@/lib/i18n/getServerSideTranslations';
 
-type Space = {
+const DynamicTable = dynamic(
+  () => import('@/features/app/blocks/table/Table').then((mod) => mod.Table),
+  {
+    ssr: false,
+  }
+);
+
+type LocalBase = {
   id: string;
   name: string;
 };
 
-type Base = {
+type LocalTable = {
   id: string;
+  base_id: string;
   name: string;
+  description?: string | null;
+  icon?: string | null;
+  sort_order?: number;
+  last_modified_time?: string;
 };
 
-type Table = {
+type LocalField = {
   id: string;
   name: string;
-};
-
-type Field = {
-  id: string;
-  name: string;
+  description?: string | null;
   type: string;
-  is_primary?: number;
-  is_computed?: number;
-  is_lookup?: number;
+  cell_value_type?: CellValueType | string;
+  options?: unknown;
+  meta?: unknown;
+  aiConfig?: unknown;
+  is_primary?: number | boolean;
+  is_computed?: number | boolean;
+  is_lookup?: number | boolean;
+  not_null?: number | boolean;
+  unique_value?: number | boolean;
+  sort_order?: number;
 };
 
-type RecordRow = {
+type LocalView = {
   id: string;
+  name: string;
+  type?: string;
+  description?: string | null;
+  sort_order?: number;
+  options?: unknown;
+  columnMeta?: Record<string, unknown> | null;
+  filter?: IViewVo['filter'];
+  sort?: IViewVo['sort'];
+  group?: IViewVo['group'];
+  created_time?: string;
+  last_modified_time?: string;
+};
+
+type LocalRecord = {
+  id: string;
+  table_id?: string;
   auto_number?: number;
   fields: Record<string, unknown>;
+  created_time?: string;
+  last_modified_time?: string;
 };
-
-type EditingCell = {
-  recordId: string;
-  fieldId: string;
-  value: string;
-};
-
-const fieldTypes = [
-  { label: 'Text', type: 'singleLineText', cellValueType: 'string' },
-  { label: 'Number', type: 'number', cellValueType: 'number' },
-  { label: 'Date', type: 'date', cellValueType: 'dateTime' },
-  { label: 'Checkbox', type: 'checkbox', cellValueType: 'boolean' },
-  { label: 'Single select', type: 'singleSelect', cellValueType: 'string' },
-  { label: 'Multiple select', type: 'multipleSelect', cellValueType: 'string' },
-] as const;
 
 const apiBase = process.env.NEXT_PUBLIC_MOCHI_API_BASE_URL ?? '';
+const localUserId = 'usr_mochi_local';
+const localSpaceId = 'spc_local';
+const localDataMutatedEvent = 'mochi-local-data-mutated';
+type LocalDataMutationScope = 'record' | 'schema';
+type RouterUrl = Parameters<NextRouter['push']>[0];
+type LocalTableVo = ITableVo & { permission: Record<string, boolean> };
+
+const localTablePathPattern = /^\/base\/[^/]+\/table\/([^/?#]+)(?:\/([^/?#]+))?/;
+const localTablePermission = {
+  'table|read': true,
+  'table|create': true,
+  'table|update': true,
+  'table|delete': true,
+  'table|export': true,
+  'table|import': true,
+};
+
+const getLocalTableHref = (tableId: string, viewId?: string) => {
+  const params = new URLSearchParams({ tableId });
+  if (viewId) {
+    params.set('viewId', viewId);
+  }
+  return `/mochi/local?${params.toString()}`;
+};
+
+const rewriteLocalRouterUrl = (url: RouterUrl): RouterUrl => {
+  if (typeof url === 'string') {
+    const match = url.match(localTablePathPattern);
+    return match ? getLocalTableHref(match[1], match[2]) : url;
+  }
+
+  const query = typeof url.query === 'object' && url.query !== null ? url.query : undefined;
+  const slug = query?.slug;
+  if (Array.isArray(slug) && slug[0] === 'table' && typeof slug[1] === 'string') {
+    return getLocalTableHref(slug[1], typeof slug[2] === 'string' ? slug[2] : undefined);
+  }
+
+  const pathname = url.pathname;
+  if (typeof pathname === 'string') {
+    const match = pathname.match(localTablePathPattern);
+    if (match) {
+      return getLocalTableHref(match[1], match[2]);
+    }
+  }
+
+  return url;
+};
+
+const getLocalDataMutationScope = (data: unknown): LocalDataMutationScope | null => {
+  const response = data as {
+    config?: { method?: string; url?: string };
+  };
+  const method = response.config?.method?.toLowerCase();
+  const url = response.config?.url;
+  if (!method || !url || !['post', 'patch', 'put', 'delete'].includes(method)) {
+    return null;
+  }
+  if (!url.includes('/table/') || url.endsWith('/plan') || url.includes('/plan?')) {
+    return null;
+  }
+
+  if (
+    /\/table\/[^/]+\/record(\/[^/]+)?$/.test(url) ||
+    /\/table\/[^/]+\/selection\/(paste|paste-by-id|clear|clear-by-id|delete|delete-by-id)$/.test(
+      url
+    )
+  ) {
+    return 'record';
+  }
+
+  if (
+    /\/table\/[^/]+\/field(\/[^/]+)?(\/convert)?$/.test(url) ||
+    /\/table\/[^/]+\/view(\/[^/]+)?(\/(name|filter|sort|group|column-meta|options))?$/.test(url)
+  ) {
+    return 'schema';
+  }
+
+  return null;
+};
+
+const dispatchLocalDataMutated = (scope: LocalDataMutationScope) => {
+  window.dispatchEvent(new CustomEvent(localDataMutatedEvent, { detail: { scope } }));
+};
+
+const queryClient = new QueryClient({
+  mutationCache: new MutationCache({
+    onSuccess: (data) => {
+      if (typeof window === 'undefined') {
+        return;
+      }
+      const scope = getLocalDataMutationScope(data);
+      if (!scope) {
+        return;
+      }
+      dispatchLocalDataMutated(scope);
+    },
+  }),
+  defaultOptions: {
+    queries: {
+      retry: false,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 
 const api = async <T,>(path: string, init?: RequestInit): Promise<T> => {
   const response = await fetch(`${apiBase}${path}`, {
@@ -62,688 +208,372 @@ const api = async <T,>(path: string, init?: RequestInit): Promise<T> => {
   return response.json() as Promise<T>;
 };
 
-const stringifyCell = (value: unknown) => {
-  if (value === null || value === undefined) return '';
-  if (Array.isArray(value)) return value.join(', ');
-  if (typeof value === 'object') return JSON.stringify(value);
-  return String(value);
+const toBool = (value: unknown) => value === true || value === 1;
+
+const normalizeCellValueType = (cellValueType?: CellValueType | string): CellValueType => {
+  if (Object.values(CellValueType).includes(cellValueType as CellValueType)) {
+    return cellValueType as CellValueType;
+  }
+  return CellValueType.String;
 };
 
-const parseCellInput = (field: Field, value: string): unknown => {
-  const trimmed = value.trim();
-  if (trimmed === '') return null;
-  if (field.type === 'number') {
-    const numberValue = Number(trimmed);
-    return Number.isFinite(numberValue) ? numberValue : null;
+const dbFieldTypeFor = (cellValueType?: CellValueType) => {
+  switch (cellValueType) {
+    case CellValueType.Number:
+      return DbFieldType.Real;
+    case CellValueType.Boolean:
+      return DbFieldType.Boolean;
+    case CellValueType.DateTime:
+      return DbFieldType.DateTime;
+    case CellValueType.String:
+    default:
+      return DbFieldType.Text;
   }
-  if (field.type === 'checkbox') {
-    return ['true', '1', 'yes', 'on', 'checked'].includes(trimmed.toLowerCase());
-  }
-  if (field.type === 'multipleSelect') {
-    return trimmed
-      .split(',')
-      .map((item) => item.trim())
-      .filter(Boolean);
-  }
-  return value;
 };
 
-export default function MochiLocalPage() {
-  const [spaces, setSpaces] = useState<Space[]>([]);
-  const [bases, setBases] = useState<Base[]>([]);
-  const [tables, setTables] = useState<Table[]>([]);
-  const [fields, setFields] = useState<Field[]>([]);
-  const [records, setRecords] = useState<RecordRow[]>([]);
-  const [selectedBaseId, setSelectedBaseId] = useState('');
-  const [selectedTableId, setSelectedTableId] = useState('');
-  const [search, setSearch] = useState('');
-  const [baseName, setBaseName] = useState('Local Base');
-  const [tableName, setTableName] = useState('Customers');
-  const [fieldName, setFieldName] = useState('Phone');
-  const [fieldType, setFieldType] = useState<(typeof fieldTypes)[number]['type']>('singleLineText');
-  const [recordText, setRecordText] = useState('');
-  const [importPath, setImportPath] = useState('');
-  const [status, setStatus] = useState('Ready');
-  const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
+const defaultOptionsFor = (type: string) => {
+  if (type === FieldType.SingleSelect || type === FieldType.MultipleSelect) return { choices: [] };
+  if (type === FieldType.Number) return { formatting: { type: 'decimal', precision: 2 } };
+  if (type === FieldType.Date) return { formatting: { date: 'YYYY-MM-DD', time: 'None' } };
+  return {};
+};
 
-  const selectedSpaceId = spaces[0]?.id ?? 'spc_local';
-  const writableFields = useMemo(
-    () => fields.filter((field) => !field.is_computed && !field.is_lookup),
-    [fields]
-  );
-  const selectedFieldType = useMemo(
-    () => fieldTypes.find((option) => option.type === fieldType) ?? fieldTypes[0],
-    [fieldType]
-  );
+const mapField = (field: LocalField): IFieldVo => {
+  const type = Object.values(FieldType).includes(field.type as FieldType)
+    ? (field.type as FieldType)
+    : FieldType.SingleLineText;
+  const cellValueType = normalizeCellValueType(field.cell_value_type);
 
-  const loadSpaces = useCallback(async () => {
-    const nextSpaces = await api<Space[]>('/api/mochi/spaces');
-    setSpaces(nextSpaces);
-    return nextSpaces;
-  }, []);
+  return {
+    id: field.id,
+    name: field.name,
+    type,
+    description: field.description ?? undefined,
+    options: (field.options ?? defaultOptionsFor(type)) as IFieldVo['options'],
+    meta: (field.meta ?? undefined) as IFieldVo['meta'],
+    aiConfig: (field.aiConfig ?? undefined) as IFieldVo['aiConfig'],
+    isPrimary: toBool(field.is_primary),
+    isComputed: toBool(field.is_computed),
+    isLookup: toBool(field.is_lookup),
+    notNull: toBool(field.not_null),
+    unique: toBool(field.unique_value),
+    cellValueType,
+    isMultipleCellValue: type === FieldType.MultipleSelect || type === FieldType.Attachment,
+    dbFieldType: dbFieldTypeFor(cellValueType),
+    dbFieldName: field.id.replace(/\W/g, '_').slice(0, 63),
+    recordRead: true,
+    recordCreate: true,
+  };
+};
 
-  const loadBases = useCallback(async () => {
-    const nextBases = await api<Base[]>(
-      `/api/mochi/bases?spaceId=${encodeURIComponent(selectedSpaceId)}`
-    );
-    setBases(nextBases);
-    setSelectedBaseId((current) => current || nextBases[0]?.id || '');
-    return nextBases;
-  }, [selectedSpaceId]);
+const normalizeColumnMeta = (
+  columnMeta: LocalView['columnMeta'] | Array<{ fieldId?: string; columnMeta?: unknown }> | null,
+  fields: IFieldVo[]
+): IViewVo['columnMeta'] => {
+  const defaultColumnMeta = fields.reduce<IViewVo['columnMeta']>((acc, field, index) => {
+    acc[field.id] = { order: index, width: 200 };
+    return acc;
+  }, {});
 
-  const loadTables = useCallback(
-    async (baseId = selectedBaseId) => {
-      if (!baseId) {
-        setTables([]);
-        setSelectedTableId('');
-        return [];
+  if (Array.isArray(columnMeta)) {
+    return columnMeta.reduce<IViewVo['columnMeta']>((acc, item) => {
+      if (item.fieldId) {
+        acc[item.fieldId] = {
+          ...(acc[item.fieldId] ?? {}),
+          ...((item.columnMeta ?? {}) as IViewVo['columnMeta'][string]),
+        };
       }
-      const nextTables = await api<Table[]>(`/api/mochi/bases/${baseId}/tables`);
-      setTables(nextTables);
-      setSelectedTableId((current) => current || nextTables[0]?.id || '');
-      return nextTables;
-    },
-    [selectedBaseId]
-  );
+      return acc;
+    }, defaultColumnMeta);
+  }
 
-  const loadTableData = useCallback(
-    async (tableId = selectedTableId) => {
-      if (!tableId) {
-        setFields([]);
-        setRecords([]);
+  const savedColumnMeta = (columnMeta as IViewVo['columnMeta'] | null) ?? {};
+  return fields.reduce<IViewVo['columnMeta']>((acc, field) => {
+    acc[field.id] = {
+      ...(acc[field.id] ?? {}),
+      ...(savedColumnMeta[field.id] ?? {}),
+    };
+    return acc;
+  }, defaultColumnMeta);
+};
+
+const mapView = (view: LocalView, fields: IFieldVo[]): IViewVo => {
+  const columnMeta = normalizeColumnMeta(view.columnMeta, fields);
+
+  return {
+    id: view.id,
+    name: view.name,
+    type: ViewType.Grid,
+    description: view.description ?? undefined,
+    order: view.sort_order ?? 0,
+    options: (view.options ?? {}) as IViewVo['options'],
+    sort: view.sort,
+    filter: view.filter,
+    group: view.group,
+    isLocked: false,
+    createdBy: localUserId,
+    createdTime: view.created_time ?? new Date(0).toISOString(),
+    lastModifiedTime: view.last_modified_time ?? undefined,
+    columnMeta,
+  };
+};
+
+const mapTable = (table: LocalTable, defaultViewId?: string): LocalTableVo => ({
+  id: table.id,
+  name: table.name,
+  dbTableName: table.id.replace(/\W/g, '_').slice(0, 63),
+  description: table.description ?? undefined,
+  icon: table.icon ?? undefined,
+  order: table.sort_order ?? 0,
+  lastModifiedTime: table.last_modified_time,
+  defaultViewId,
+  permission: localTablePermission,
+});
+
+const mapRecord = (record: LocalRecord, primaryFieldId?: string): IRecord => {
+  const mappedRecord: IRecord & { tableId?: string } = {
+    id: record.id,
+    tableId: record.table_id,
+    name: primaryFieldId ? String(record.fields[primaryFieldId] ?? '') : undefined,
+    fields: record.fields ?? {},
+    autoNumber: record.auto_number,
+    createdTime: record.created_time,
+    lastModifiedTime: record.last_modified_time,
+    createdBy: 'Mochi Local',
+    lastModifiedBy: 'Mochi Local',
+  };
+  return mappedRecord;
+};
+
+const localUser: IUserMeVo = {
+  id: localUserId,
+  name: 'Mochi Local',
+  email: 'local@mochi.local',
+  notifyMeta: {},
+  hasPassword: false,
+  isAdmin: true,
+  lang: 'en',
+};
+
+type GridData = {
+  baseId: string;
+  tableId: string;
+  viewId: string;
+  tables: LocalTableVo[];
+  fields: IFieldVo[];
+  views: IViewVo[];
+  records: IRecord[];
+};
+
+function MochiLocalGridPageInner() {
+  const router = useRouter();
+  const [data, setData] = useState<GridData>();
+  const [status, setStatus] = useState('Loading Mochi SQLite table');
+  const selectedTableId =
+    typeof router.query.tableId === 'string' ? router.query.tableId : undefined;
+  const selectedViewId = typeof router.query.viewId === 'string' ? router.query.viewId : undefined;
+
+  const loadData = useCallback(async () => {
+    setStatus('Loading Mochi SQLite table');
+    const bases = await api<LocalBase[]>(`/api/mochi/bases?spaceId=${localSpaceId}`);
+    let base = bases[0];
+    if (!base) {
+      base = await api<LocalBase>('/api/mochi/bases', {
+        method: 'POST',
+        body: JSON.stringify({ name: 'Local Base', spaceId: localSpaceId }),
+      });
+    }
+
+    let tables = await api<LocalTable[]>(`/api/mochi/bases/${base.id}/tables`);
+    let table = tables[0];
+    if (!table) {
+      table = await api<LocalTable>(`/api/mochi/bases/${base.id}/tables`, {
+        method: 'POST',
+        body: JSON.stringify({ name: 'Customers', primaryFieldName: 'Name' }),
+      });
+      tables = [table];
+    }
+    table = tables.find((candidate) => candidate.id === selectedTableId) ?? table;
+
+    const tableViewPairs = await Promise.all(
+      tables.map(async (candidate) => [
+        candidate.id,
+        await api<LocalView[]>(`/api/mochi/tables/${candidate.id}/views`),
+      ])
+    );
+    const viewsByTableId = new Map(tableViewPairs as Array<[string, LocalView[]]>);
+    const localViews = viewsByTableId.get(table.id) ?? [];
+    const selectedView = localViews.find((view) => view.id === selectedViewId) ?? localViews[0];
+
+    const [localFields, localRecords] = await Promise.all([
+      api<LocalField[]>(`/api/mochi/tables/${table.id}/fields`),
+      api<LocalRecord[]>(`/api/mochi/tables/${table.id}/records?limit=1000`),
+    ]);
+    const fields = localFields.map(mapField);
+    const primaryFieldId = fields.find((field) => field.isPrimary)?.id ?? fields[0]?.id;
+    const views = localViews.map((view) => mapView(view, fields));
+    const viewId = selectedView?.id;
+
+    if (!viewId) {
+      throw new Error('Mochi table has no grid view');
+    }
+
+    setData({
+      baseId: base.id,
+      tableId: table.id,
+      viewId,
+      tables: tables.map((candidate) => {
+        const defaultViewId =
+          viewsByTableId.get(candidate.id)?.[0]?.id ?? (candidate.id === table.id ? viewId : undefined);
+        return mapTable(candidate, defaultViewId);
+      }),
+      fields,
+      views,
+      records: localRecords.map((record) => mapRecord(record, primaryFieldId)),
+    });
+    setStatus('Ready');
+  }, [selectedTableId, selectedViewId]);
+
+  useEffect(() => {
+    loadData().catch((error) => setStatus(error instanceof Error ? error.message : String(error)));
+  }, [loadData]);
+
+  useEffect(() => {
+    const refreshLocalData = (event: Event) => {
+      const scope = (event as CustomEvent<{ scope?: LocalDataMutationScope }>).detail?.scope;
+      if (scope === 'record') {
         return;
       }
-      const query = search ? `?search=${encodeURIComponent(search)}` : '';
-      const [nextFields, nextRecords] = await Promise.all([
-        api<Field[]>(`/api/mochi/tables/${tableId}/fields`),
-        api<RecordRow[]>(`/api/mochi/tables/${tableId}/records${query}`),
-      ]);
-      setFields(nextFields);
-      setRecords(nextRecords);
-    },
-    [search, selectedTableId]
-  );
+      loadData().catch((error) => setStatus(error instanceof Error ? error.message : String(error)));
+    };
 
-  const refreshAll = useCallback(async () => {
-    setStatus('Loading local SQLite workspace');
-    const nextSpaces = await loadSpaces();
-    const nextBases = await api<Base[]>(
-      `/api/mochi/bases?spaceId=${encodeURIComponent(nextSpaces[0]?.id ?? selectedSpaceId)}`
+    window.addEventListener(localDataMutatedEvent, refreshLocalData);
+    return () => window.removeEventListener(localDataMutatedEvent, refreshLocalData);
+  }, [loadData]);
+
+  useEffect(() => {
+    const interceptor = teableAxios.interceptors.response.use((response) => {
+      const scope = getLocalDataMutationScope(response);
+      if (scope) {
+        dispatchLocalDataMutated(scope);
+      }
+      return response;
+    });
+
+    return () => teableAxios.interceptors.response.eject(interceptor);
+  }, []);
+
+  if (!data) {
+    return (
+      <main className="flex h-screen items-center justify-center bg-background text-sm text-muted-foreground">
+        {status}
+      </main>
     );
-    setBases(nextBases);
-    const baseId = selectedBaseId || nextBases[0]?.id || '';
-    setSelectedBaseId(baseId);
-    const nextTables = baseId ? await loadTables(baseId) : [];
-    const tableId = selectedTableId || nextTables[0]?.id || '';
-    setSelectedTableId(tableId);
-    if (tableId) await loadTableData(tableId);
-    setStatus('Ready');
-  }, [loadSpaces, loadTableData, loadTables, selectedBaseId, selectedSpaceId, selectedTableId]);
+  }
 
-  useEffect(() => {
-    refreshAll().catch((error) => setStatus(error.message));
-  }, [refreshAll]);
-
-  useEffect(() => {
-    loadTables().catch((error) => setStatus(error.message));
-  }, [loadTables]);
-
-  useEffect(() => {
-    loadTableData().catch((error) => setStatus(error.message));
-  }, [loadTableData]);
-
-  const createBase = async (event: FormEvent) => {
-    event.preventDefault();
-    const created = await api<Base>('/api/mochi/bases', {
-      method: 'POST',
-      body: JSON.stringify({ name: baseName, spaceId: selectedSpaceId }),
-    });
-    setSelectedBaseId(created.id);
-    setStatus(`Created base ${created.name}`);
-    await loadBases();
-  };
-
-  const createTable = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!selectedBaseId) return;
-    const created = await api<Table>(`/api/mochi/bases/${selectedBaseId}/tables`, {
-      method: 'POST',
-      body: JSON.stringify({ name: tableName, primaryFieldName: 'Name' }),
-    });
-    setSelectedTableId(created.id);
-    setStatus(`Created table ${created.name}`);
-    await loadTables(selectedBaseId);
-    await loadTableData(created.id);
-  };
-
-  const createField = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!selectedTableId) return;
-    await api<Field>(`/api/mochi/tables/${selectedTableId}/fields`, {
-      method: 'POST',
-      body: JSON.stringify({
-        name: fieldName,
-        type: selectedFieldType.type,
-        cellValueType: selectedFieldType.cellValueType,
-      }),
-    });
-    setStatus(`Created field ${fieldName}`);
-    await loadTableData(selectedTableId);
-  };
-
-  const createRecord = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!selectedTableId) return;
-    const targetField = writableFields[0] ?? fields[0];
-    if (!targetField) return;
-    await api<RecordRow>(`/api/mochi/tables/${selectedTableId}/records`, {
-      method: 'POST',
-      body: JSON.stringify({ fields: { [targetField.id]: recordText || 'New local row' } }),
-    });
-    setRecordText('');
-    setStatus('Created record');
-    await loadTableData(selectedTableId);
-  };
-
-  const saveCell = async (record: RecordRow, field: Field, value: string) => {
-    if (!selectedTableId || field.is_computed || field.is_lookup) return;
-    const nextValue = parseCellInput(field, value);
-    await api<RecordRow>(`/api/mochi/records/${record.id}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ fields: { [field.id]: nextValue } }),
-    });
-    setEditingCell(null);
-    setStatus(`Saved ${field.name}`);
-    await loadTableData(selectedTableId);
-  };
-
-  const handleCellKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === 'Escape') {
-      setEditingCell(null);
-      return;
-    }
-    if (event.key === 'Enter') {
-      event.currentTarget.blur();
-    }
-  };
-
-  const deleteRecord = async (recordId: string) => {
-    if (!selectedTableId) return;
-    await api(`/api/mochi/records/${recordId}`, { method: 'DELETE' });
-    setStatus('Deleted record');
-    await loadTableData(selectedTableId);
-  };
-
-  const importSqlite = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!importPath) return;
-    await api('/api/mochi/imports/sqlite', {
-      method: 'POST',
-      body: JSON.stringify({ path: importPath, baseName: 'Imported SQLite', limit: 10000 }),
-    });
-    setStatus('Imported SQLite database');
-    await refreshAll();
-  };
-
-  const postAction = async (path: string, label: string) => {
-    await api(path, { method: 'POST', body: JSON.stringify({}) });
-    setStatus(label);
-    await loadTableData(selectedTableId);
-  };
+  const tableDataKey = data.tables
+    .map((table) => `${table.id}:${table.name}:${table.lastModifiedTime ?? ''}`)
+    .join('|');
+  const fieldDataKey = data.fields
+    .map((field) => `${field.id}:${field.name}:${field.type}:${field.isPrimary ? '1' : '0'}`)
+    .join('|');
+  const viewDataKey = data.views
+    .map(
+      (view) =>
+        `${view.id}:${view.name}:${JSON.stringify(view.filter)}:${JSON.stringify(view.sort)}:${JSON.stringify(view.group)}:${JSON.stringify(view.columnMeta)}`
+    )
+    .join('|');
+  const gridDataKey = data.records
+    .map((record) => `${record.id}:${record.lastModifiedTime ?? record.createdTime ?? ''}`)
+    .join('|');
+  const tableRoute = `/base/${data.baseId}/table/${data.tableId}/${data.viewId}`;
+  const localRouter = {
+    ...router,
+    route: '/base/[baseId]/[[...slug]]',
+    pathname: '/base/[baseId]/[[...slug]]',
+    asPath: tableRoute,
+    query: {
+      ...router.query,
+      baseId: data.baseId,
+      slug: ['table', data.tableId, data.viewId],
+    },
+    push: (url, as, options) =>
+      router.push(
+        rewriteLocalRouterUrl(url),
+        as === undefined ? as : rewriteLocalRouterUrl(as),
+        options
+      ),
+    replace: (url, as, options) =>
+      router.replace(
+        rewriteLocalRouterUrl(url),
+        as === undefined ? as : rewriteLocalRouterUrl(as),
+        options
+      ),
+  } as NextRouter;
 
   return (
-    <main className="mochiLocal">
-      <aside className="rail">
-        <div>
-          <p className="eyebrow">Mochi Table</p>
-          <h1>Local Workspace</h1>
-        </div>
-
-        <label>
-          Base
-          <select
-            value={selectedBaseId}
-            onChange={(event) => setSelectedBaseId(event.target.value)}
+    <RouterContext.Provider value={localRouter}>
+      <SessionContext.Provider
+        value={{ user: localUser, refresh: () => undefined, refreshAvatar: () => undefined }}
+      >
+        <ConnectionProvider>
+          <AnchorContext.Provider
+            value={{ baseId: data.baseId, tableId: data.tableId, viewId: data.viewId }}
           >
-            {bases.map((base) => (
-              <option key={base.id} value={base.id}>
-                {base.name}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label>
-          Table
-          <select
-            value={selectedTableId}
-            onChange={(event) => setSelectedTableId(event.target.value)}
-          >
-            {tables.map((table) => (
-              <option key={table.id} value={table.id}>
-                {table.name}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <form onSubmit={createBase}>
-          <input value={baseName} onChange={(event) => setBaseName(event.target.value)} />
-          <button type="submit">Create base</button>
-        </form>
-
-        <form onSubmit={createTable}>
-          <input value={tableName} onChange={(event) => setTableName(event.target.value)} />
-          <button type="submit">Create table</button>
-        </form>
-
-        <form onSubmit={importSqlite}>
-          <input
-            value={importPath}
-            onChange={(event) => setImportPath(event.target.value)}
-            placeholder="/absolute/path/profile.sqlite"
-          />
-          <button type="submit">Import SQLite</button>
-        </form>
-      </aside>
-
-      <section className="workspace">
-        <header className="bar">
-          <div>
-            <strong>
-              {tables.find((table) => table.id === selectedTableId)?.name ?? 'No table'}
-            </strong>
-            <span>{status}</span>
-          </div>
-          <div className="actions">
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search records"
-            />
-            <button type="button" onClick={() => loadTableData()}>
-              Refresh
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                selectedTableId &&
-                postAction(`/api/mochi/tables/${selectedTableId}/search/rebuild`, 'Rebuilt search')
-              }
-            >
-              Reindex
-            </button>
-            <button type="button" onClick={() => postAction('/api/mochi/undo', 'Undo complete')}>
-              Undo
-            </button>
-            <button type="button" onClick={() => postAction('/api/mochi/redo', 'Redo complete')}>
-              Redo
-            </button>
-          </div>
-        </header>
-
-        <div className="toolbar">
-          <form onSubmit={createField}>
-            <input value={fieldName} onChange={(event) => setFieldName(event.target.value)} />
-            <select
-              aria-label="Field type"
-              value={fieldType}
-              onChange={(event) =>
-                setFieldType(event.target.value as (typeof fieldTypes)[number]['type'])
-              }
-            >
-              {fieldTypes.map((option) => (
-                <option key={option.type} value={option.type}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-            <button type="submit">Add field</button>
-          </form>
-          <form onSubmit={createRecord}>
-            <input
-              value={recordText}
-              onChange={(event) => setRecordText(event.target.value)}
-              placeholder="Value for first editable field"
-            />
-            <button type="submit">Add record</button>
-          </form>
-        </div>
-
-        <div className="gridWrap">
-          <table>
-            <thead>
-              <tr>
-                <th>#</th>
-                {fields.map((field) => (
-                  <th key={field.id}>
-                    <span>{field.name}</span>
-                    <small>{field.type}</small>
-                  </th>
-                ))}
-                <th className="rowActionHead"> </th>
-              </tr>
-            </thead>
-            <tbody>
-              {records.map((record) => (
-                <tr key={record.id}>
-                  <td>{record.auto_number ?? record.id.slice(-4)}</td>
-                  {fields.map((field) => {
-                    const isEditing =
-                      editingCell?.recordId === record.id && editingCell.fieldId === field.id;
-                    const rawValue = record.fields?.[field.id];
-                    const value = stringifyCell(rawValue);
-                    const checked =
-                      rawValue === true ||
-                      rawValue === 1 ||
-                      (typeof rawValue === 'string' && rawValue.toLowerCase() === 'true');
-                    const readOnly = Boolean(field.is_computed || field.is_lookup);
-                    return (
-                      <td key={field.id} className={readOnly ? 'readOnlyCell' : undefined}>
-                        {isEditing ? (
-                          <input
-                            autoFocus
-                            className="cellInput"
-                            defaultValue={editingCell.value}
-                            onBlur={(event) =>
-                              saveCell(record, field, event.currentTarget.value).catch((error) =>
-                                setStatus(error.message)
-                              )
-                            }
-                            onKeyDown={handleCellKeyDown}
-                          />
-                        ) : (
-                          <button
-                            className="cellButton"
-                            disabled={readOnly}
-                            type="button"
-                            onDoubleClick={() =>
-                              setEditingCell({ recordId: record.id, fieldId: field.id, value })
-                            }
-                            title={readOnly ? 'Computed field' : 'Double click to edit'}
-                          >
-                            {field.type === 'checkbox' ? (checked ? 'Checked' : '') : value}
-                          </button>
-                        )}
-                      </td>
-                    );
-                  })}
-                  <td className="rowAction">
-                    <button type="button" onClick={() => deleteRecord(record.id)}>
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {records.length === 0 && (
-                <tr>
-                  <td colSpan={fields.length + 2}>No records yet</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <style jsx>{`
-        .mochiLocal {
-          display: grid;
-          grid-template-columns: 300px minmax(0, 1fr);
-          min-height: 100vh;
-          overflow: hidden;
-          background: #f5f3ee;
-          color: #181714;
-          font-family:
-            ui-sans-serif,
-            system-ui,
-            -apple-system,
-            BlinkMacSystemFont,
-            sans-serif;
-        }
-
-        .rail {
-          display: flex;
-          flex-direction: column;
-          gap: 18px;
-          border-right: 1px solid #d9d2c3;
-          background: #ebe5d8;
-          padding: 24px;
-        }
-
-        .eyebrow {
-          margin: 0 0 6px;
-          color: #776b57;
-          font-size: 12px;
-          font-weight: 700;
-          letter-spacing: 0;
-          text-transform: uppercase;
-        }
-
-        h1 {
-          margin: 0;
-          font-size: 28px;
-          line-height: 1.05;
-        }
-
-        label,
-        form {
-          display: grid;
-          gap: 8px;
-          font-size: 13px;
-          font-weight: 700;
-        }
-
-        input,
-        select,
-        button {
-          min-height: 36px;
-          border: 1px solid #c9c1b1;
-          border-radius: 6px;
-          background: #fffdf8;
-          color: inherit;
-          font: inherit;
-        }
-
-        input,
-        select {
-          min-width: 0;
-          padding: 0 10px;
-        }
-
-        button {
-          cursor: pointer;
-          background: #1f4c45;
-          color: #fffdf8;
-          font-weight: 800;
-        }
-
-        button:hover {
-          background: #153b36;
-        }
-
-        .workspace {
-          display: grid;
-          grid-template-rows: auto auto minmax(0, 1fr);
-          min-width: 0;
-        }
-
-        .bar,
-        .toolbar {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 12px;
-          border-bottom: 1px solid #d9d2c3;
-          padding: 14px 18px;
-        }
-
-        .bar strong {
-          display: block;
-          font-size: 18px;
-        }
-
-        .bar span {
-          color: #776b57;
-          font-size: 12px;
-        }
-
-        .actions,
-        .toolbar form {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-
-        .actions input {
-          width: 220px;
-        }
-
-        .toolbar {
-          justify-content: flex-start;
-          background: #fffaf0;
-        }
-
-        .gridWrap {
-          overflow: auto;
-          background:
-            linear-gradient(#d9d2c3 1px, transparent 1px),
-            linear-gradient(90deg, #d9d2c3 1px, transparent 1px);
-          background-color: #fffdf8;
-          background-size: 42px 42px;
-        }
-
-        table {
-          width: 100%;
-          min-width: 680px;
-          border-collapse: collapse;
-          background: #fffdf8;
-        }
-
-        th,
-        td {
-          max-width: 280px;
-          border-right: 1px solid #e4ddcf;
-          border-bottom: 1px solid #e4ddcf;
-          padding: 10px 12px;
-          overflow: hidden;
-          text-align: left;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-        }
-
-        th {
-          position: sticky;
-          top: 0;
-          z-index: 1;
-          background: #efe7d8;
-          color: #4d4537;
-          font-size: 12px;
-          font-weight: 800;
-        }
-
-        th span,
-        th small {
-          display: block;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-
-        th small {
-          margin-top: 2px;
-          color: #8c806c;
-          font-size: 10px;
-          font-weight: 700;
-        }
-
-        td:first-child,
-        th:first-child {
-          width: 64px;
-          color: #776b57;
-        }
-
-        .cellButton {
-          display: block;
-          width: 100%;
-          min-height: 24px;
-          border: 0;
-          border-radius: 0;
-          background: transparent;
-          color: inherit;
-          font-weight: 500;
-          overflow: hidden;
-          padding: 0;
-          text-align: left;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-        }
-
-        .cellButton:hover:not(:disabled) {
-          background: transparent;
-          color: #1f4c45;
-          text-decoration: underline;
-          text-underline-offset: 3px;
-        }
-
-        .cellButton:disabled {
-          cursor: default;
-          color: #776b57;
-        }
-
-        .cellInput {
-          width: 100%;
-          min-height: 28px;
-          border-color: #1f4c45;
-          background: #ffffff;
-          box-shadow: inset 0 0 0 1px #1f4c45;
-        }
-
-        .readOnlyCell {
-          background: #faf6ed;
-        }
-
-        .rowActionHead,
-        .rowAction {
-          width: 92px;
-          min-width: 92px;
-          text-align: right;
-        }
-
-        .rowAction button {
-          min-height: 28px;
-          border-color: #d7a79b;
-          background: #fff7f4;
-          color: #8f2f20;
-          padding: 0 10px;
-        }
-
-        .rowAction button:hover {
-          background: #f7dfd8;
-        }
-
-        @media (max-width: 820px) {
-          .mochiLocal {
-            grid-template-columns: 1fr;
-            grid-template-rows: auto minmax(0, 1fr);
-          }
-
-          .rail {
-            border-right: 0;
-            border-bottom: 1px solid #d9d2c3;
-          }
-
-          .bar,
-          .toolbar,
-          .actions {
-            align-items: stretch;
-            flex-direction: column;
-          }
-
-          .actions input,
-          .toolbar form {
-            width: 100%;
-          }
-        }
-      `}</style>
-    </main>
+            <BaseProvider fallback={null}>
+              <BaseNodeProvider>
+                <TableProvider key={tableDataKey} serverData={data.tables}>
+                  <main className="flex h-screen w-full overflow-hidden bg-background">
+                    <Sidebar
+                      headerLeft={
+                        <div className="min-w-0 truncate px-2 text-sm font-medium">Mochi Local</div>
+                      }
+                    >
+                      <div className="flex h-full flex-col gap-2 divide-y divide-solid overflow-auto py-2">
+                        <BaseSideBar />
+                      </div>
+                    </Sidebar>
+                    <section className="min-w-80 flex-1 overflow-hidden">
+                      <DynamicTable
+                        key={`${fieldDataKey}:${viewDataKey}:${gridDataKey}`}
+                        fieldServerData={data.fields}
+                        viewServerData={data.views}
+                        recordsServerData={{ records: data.records }}
+                      />
+                    </section>
+                  </main>
+                </TableProvider>
+              </BaseNodeProvider>
+            </BaseProvider>
+          </AnchorContext.Provider>
+        </ConnectionProvider>
+      </SessionContext.Provider>
+    </RouterContext.Provider>
   );
 }
+
+export default function MochiLocalGridPage() {
+  const { i18n } = useTranslation();
+
+  useEffect(() => {
+    if (i18n.language !== 'en') {
+      void i18n.changeLanguage('en');
+    }
+  }, [i18n]);
+
+  return (
+    <AppContext.Provider value={{ locale: defaultLocale, lang: 'en' }}>
+      <QueryClientProvider client={queryClient}>
+        <MochiLocalGridPageInner />
+      </QueryClientProvider>
+    </AppContext.Provider>
+  );
+}
+
+export const getServerSideProps: GetServerSideProps = async () => {
+  return {
+    props: {
+      ...(await getServerSideTranslations('en', tableConfig.i18nNamespaces)),
+    },
+  };
+};

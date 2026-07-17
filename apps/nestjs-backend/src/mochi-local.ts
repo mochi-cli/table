@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { json, urlencoded } from 'express';
-import { MochiSqliteModule } from './features/mochi-sqlite/mochi-sqlite.module';
+import { MochiLocalRealtimeModule } from './features/mochi-sqlite/mochi-local-realtime.module';
 
 @Module({
-  imports: [MochiSqliteModule],
+  imports: [MochiLocalRealtimeModule],
 })
 class MochiLocalModule {}
 

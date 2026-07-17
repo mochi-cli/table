@@ -14,6 +14,7 @@ export const useTableHref = (): {
   const tables = useTables();
   const isReadOnlyPreview = useIsReadOnlyPreview();
   const shareUrlPrefix = useShareUrlPrefix();
+  const isMochiLocal = typeof window !== 'undefined' && window.location.pathname === '/mochi/local';
   const { data: userLastVisitMap } = useQuery({
     queryKey: ReactQueryKeys.userLastVisitMap(baseId as string),
     queryFn: ({ queryKey }) =>
@@ -30,9 +31,17 @@ export const useTableHref = (): {
     tables.forEach((table) => {
       const viewId = userLastVisitMap?.[table.id]?.resourceId || table.defaultViewId;
       viewIdMap[table.id] = viewId;
+      if (isMochiLocal) {
+        const params = new URLSearchParams({ tableId: table.id });
+        if (viewId) {
+          params.set('viewId', viewId);
+        }
+        hrefMap[table.id] = `/mochi/local?${params.toString()}`;
+        return;
+      }
       // Add share URL prefix if present
       hrefMap[table.id] = `${shareUrlPrefix}/base/${baseId}/table/${table.id}/${viewId}`;
     });
     return { hrefMap, viewIdMap };
-  }, [baseId, tables, userLastVisitMap, shareUrlPrefix]);
+  }, [baseId, tables, userLastVisitMap, shareUrlPrefix, isMochiLocal]);
 };

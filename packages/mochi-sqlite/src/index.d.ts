@@ -37,6 +37,9 @@ export class MochiSqliteRepository {
     viewId?: string;
   }): unknown;
   getTable(id: string): unknown | null;
+  updateTable(id: string, patch: { name?: string; description?: string | null; icon?: string | null; order?: number }): unknown | null;
+  deleteTable(id: string): unknown | null;
+  duplicateTable(id: string, input?: { id?: string; baseId?: string; name?: string; description?: string | null; icon?: string | null; order?: number }): unknown | null;
   listFields(tableId: string): unknown[];
   createField(input: {
     id?: string;
@@ -57,9 +60,12 @@ export class MochiSqliteRepository {
   }): unknown;
   getField(id: string): unknown | null;
   updateField(id: string, patch: Record<string, unknown>): unknown | null;
+  deleteField(id: string): unknown | null;
   listViews(tableId: string): unknown[];
   createView(input: Record<string, unknown>): unknown;
   getView(id: string): unknown | null;
+  updateView(id: string, patch: Record<string, unknown>): unknown | null;
+  deleteView(id: string): unknown | null;
   listRecords(tableId: string, options?: RecordQueryOptions): unknown[];
   searchRecordIds(tableId: string, search: string): string[];
   rebuildSearchIndex(tableId: string): { tableId: string; indexedRecords: number };

@@ -103,7 +103,7 @@ export const BasePageRouter = () => {
     [baseId, basePermission, t]
   );
 
-  if (isReadOnlyPreview) {
+  if (isReadOnlyPreview || (typeof window !== 'undefined' && window.location.pathname === '/mochi/local')) {
     return null;
   }
 

@@ -51,6 +51,7 @@ const RightActions = ({ setIsEditing }: { setIsEditing?: (isEditing: boolean) =>
   const isHydrated = useIsHydrated();
   const router = useRouter();
   const url = router.asPath;
+  const isMochiLocal = typeof window !== 'undefined' && window.location.pathname === '/mochi/local';
 
   const collapsedTrigger = (
     <Button
@@ -76,23 +77,27 @@ const RightActions = ({ setIsEditing }: { setIsEditing?: (isEditing: boolean) =>
           {t('common:actions.more')}
         </SheetHeader>
         <div className="pb-safe flex flex-col">
-          <Collaborators className="flex border-b p-3" />
-          <ShareBasePopover
-            base={{
-              name: base.name,
-              role: base.role,
-              id: base.id,
-              enabledAuthority: base.enabledAuthority,
-            }}
-          >
-            <Button
-              variant="ghost"
-              className="flex w-full items-center justify-start gap-3 border-b p-3"
-            >
-              <UserPlus className="size-4" />
-              <span>{t('space:action.invite')}</span>
-            </Button>
-          </ShareBasePopover>
+          {!isMochiLocal && (
+            <>
+              <Collaborators className="flex border-b p-3" />
+              <ShareBasePopover
+                base={{
+                  name: base.name,
+                  role: base.role,
+                  id: base.id,
+                  enabledAuthority: base.enabledAuthority,
+                }}
+              >
+                <Button
+                  variant="ghost"
+                  className="flex w-full items-center justify-start gap-3 border-b p-3"
+                >
+                  <UserPlus className="size-4" />
+                  <span>{t('space:action.invite')}</span>
+                </Button>
+              </ShareBasePopover>
+            </>
+          )}
           <Button
             asChild
             variant="ghost"
@@ -127,19 +132,23 @@ const RightActions = ({ setIsEditing }: { setIsEditing?: (isEditing: boolean) =>
       <PopoverTrigger asChild>{collapsedTrigger}</PopoverTrigger>
       <PopoverContent side="bottom" align="start" className="w-40 p-0">
         <div className="flex flex-col">
-          <Collaborators className="flex p-2" />
-          <ShareBasePopover
-            base={{
-              name: base.name,
-              role: base.role,
-              id: base.id,
-              enabledAuthority: base.enabledAuthority,
-            }}
-          >
-            <Button variant="ghost" size="xs" className="flex justify-start">
-              <UserPlus className="size-4" /> {t('space:action.invite')}
-            </Button>
-          </ShareBasePopover>
+          {!isMochiLocal && (
+            <>
+              <Collaborators className="flex p-2" />
+              <ShareBasePopover
+                base={{
+                  name: base.name,
+                  role: base.role,
+                  id: base.id,
+                  enabledAuthority: base.enabledAuthority,
+                }}
+              >
+                <Button variant="ghost" size="xs" className="flex justify-start">
+                  <UserPlus className="size-4" /> {t('space:action.invite')}
+                </Button>
+              </ShareBasePopover>
+            </>
+          )}
           <Button asChild variant="ghost" size="xs" className="flex justify-start">
             <a href={t('help.mainLink')} title={t('help.title')} target="_blank" rel="noreferrer">
               <HelpCircle className="size-4" /> {t('help.title')}
@@ -166,21 +175,23 @@ const RightActions = ({ setIsEditing }: { setIsEditing?: (isEditing: boolean) =>
     <>
       {/* Expanded layout for large screens (always visible on non-touch devices) */}
       <div className={cn('gap-2 md:gap-3', isTouchDevice ? 'hidden @md/view-header:flex' : 'flex')}>
-        {isHydrated && <Collaborators className="flex" />}
+        {isHydrated && !isMochiLocal && <Collaborators className="flex" />}
         <div className="flex items-center gap-1">
-          <ShareBasePopover
-            base={{
-              name: base.name,
-              role: base.role,
-              id: base.id,
-              enabledAuthority: base.enabledAuthority,
-            }}
-          >
-            <Button variant="default" className="mr-1 px-2 @md/view-header:px-3" size="sm">
-              <UserPlus className="size-4" />
-              <span className="hidden @md/view-header:inline">{t('space:action.invite')}</span>
-            </Button>
-          </ShareBasePopover>
+          {!isMochiLocal && (
+            <ShareBasePopover
+              base={{
+                name: base.name,
+                role: base.role,
+                id: base.id,
+                enabledAuthority: base.enabledAuthority,
+              }}
+            >
+              <Button variant="default" className="mr-1 px-2 @md/view-header:px-3" size="sm">
+                <UserPlus className="size-4" />
+                <span className="hidden @md/view-header:inline">{t('space:action.invite')}</span>
+              </Button>
+            </ShareBasePopover>
+          )}
           <Button asChild variant="ghost" size="icon-xs">
             <Link
               href={t('help.mainLink')}

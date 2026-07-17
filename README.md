@@ -100,6 +100,8 @@ MOCHI_LOCAL_AUTH_DISABLED=true \
 NEXT_PUBLIC_MOCHI_LOCAL_AUTH_DISABLED=true \
 MOCHI_SQLITE_ENABLED=true \
 MOCHI_SQLITE_DATABASE_PATH=./data/mochi-table.sqlite \
+BACKEND_CACHE_PROVIDER=redis \
+BACKEND_CACHE_REDIS_URI=redis://127.0.0.1:6379/0 \
 pnpm -F @teable/backend dev
 ```
 
@@ -116,9 +118,11 @@ http://localhost:3000/mochi/local
 ```
 
 The local page is a temporary SQLite workbench for exercising the new storage
-adapter without changing the upstream grid route yet. It can create bases,
-tables, fields, records, import SQLite files, search records, rebuild FTS, and
-run undo/redo.
+adapter without changing the upstream grid route yet. SQLite stores the table
+data, while Redis is kept for Teable-style realtime/cache/pubsub so grid edits
+can refresh through the existing socket path. It can create bases, tables,
+fields, records, import SQLite files, search records, rebuild FTS, and run
+undo/redo.
 
 The old Postgres-backed Teable runtime still exists while the API migration is
 in progress. The target is to remove that dependency as the SQLite API adapter

@@ -9,10 +9,11 @@ import { GridViewBaseInner } from './GridViewBaseInner';
 interface IGridViewProps {
   groupPointsServerDataMap?: { [viewId: string]: IGroupPointsVo | null };
   onRowExpand?: (recordId: string) => void;
+  onCreatedRecords?: () => void;
 }
 
 export const GridViewBase: React.FC<IGridViewProps> = (props: IGridViewProps) => {
-  const { groupPointsServerDataMap, onRowExpand } = props;
+  const { groupPointsServerDataMap, onRowExpand, onCreatedRecords } = props;
   const activeViewId = useViewId();
   const view = useView(activeViewId) as GridView | undefined;
   const { columns } = useGridColumns();
@@ -25,6 +26,7 @@ export const GridViewBase: React.FC<IGridViewProps> = (props: IGridViewProps) =>
         <GridViewBaseInner
           groupPointsServerData={groupPointsServerDataMap?.[activeViewId as string]}
           onRowExpand={onRowExpand}
+          onCreatedRecords={onCreatedRecords}
         />
       ) : (
         <div className="relative size-full overflow-hidden">

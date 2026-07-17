@@ -49,6 +49,19 @@ export const getNodeUrl = (props: {
   urlPrefix?: string;
 }): UrlObject | null => {
   const { baseId, resourceId, resourceType, viewId, urlPrefix = '' } = props;
+  if (
+    typeof window !== 'undefined' &&
+    window.location.pathname === '/mochi/local' &&
+    resourceType === ResourceType.Table
+  ) {
+    return {
+      pathname: '/mochi/local',
+      query: {
+        tableId: resourceId,
+        ...(viewId ? { viewId } : {}),
+      },
+    };
+  }
   switch (resourceType) {
     case ResourceType.Table:
       if (viewId) {

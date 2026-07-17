@@ -11,7 +11,8 @@ import type { IViewBaseProps } from '../types';
 import { GridViewBase } from './GridViewBase';
 
 export const GridView = (props: IViewBaseProps) => {
-  const { recordServerData, recordsServerData, groupPointsServerDataMap } = props;
+  const { recordServerData, recordsServerData, groupPointsServerDataMap, onCreatedRecords } =
+    props;
   const { personalViewCommonQuery, personalViewAggregationQuery } = usePersonalView();
 
   return (
@@ -20,9 +21,12 @@ export const GridView = (props: IViewBaseProps) => {
         <AggregationProvider query={personalViewAggregationQuery}>
           <TaskStatusCollectionProvider>
             <RowCountProvider query={personalViewCommonQuery}>
-              <GridToolBar />
+              <GridToolBar onCreatedRecords={onCreatedRecords} />
               <div className="w-full grow overflow-hidden sm:pl-2">
-                <GridViewBase groupPointsServerDataMap={groupPointsServerDataMap} />
+                <GridViewBase
+                  groupPointsServerDataMap={groupPointsServerDataMap}
+                  onCreatedRecords={onCreatedRecords}
+                />
               </div>
             </RowCountProvider>
           </TaskStatusCollectionProvider>

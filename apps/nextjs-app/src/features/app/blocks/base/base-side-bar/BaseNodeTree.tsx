@@ -73,6 +73,20 @@ const GROUP_ACTIVE_HIDDEN_CLS =
 const SCROLL_EDGE_THRESHOLD = 60; // pixels from edge to trigger scroll
 const SCROLL_MAX_SPEED = 15; // max pixels per frame
 
+const getMochiLocalNodeUrl = (resourceType: BaseNodeResourceType, resourceId: string, viewId?: string) => {
+  if (typeof window === 'undefined' || window.location.pathname !== '/mochi/local') {
+    return null;
+  }
+  if (resourceType !== BaseNodeResourceType.Table) {
+    return '/mochi/local';
+  }
+  const params = new URLSearchParams({ tableId: resourceId });
+  if (viewId) {
+    params.set('viewId', viewId);
+  }
+  return `/mochi/local?${params.toString()}`;
+};
+
 // Custom hook for auto-scroll during drag
 const useDragAutoScroll = (viewportRef: React.RefObject<HTMLDivElement | null>) => {
   const rafRef = useRef<number | null>(null);
@@ -207,6 +221,9 @@ export const BaseNodeTree = (props: IBaseNodeTreeProps) => {
     (item: ItemInstance<TreeItemData>): string | null => {
       const node = item.getItemData();
       const { resourceType, resourceId } = node;
+      if (node.defaultUrl) {
+        return node.defaultUrl;
+      }
 
       if (resourceType === BaseNodeResourceType.Table) {
         const url = tableHrefMap[resourceId];
@@ -246,6 +263,10 @@ export const BaseNodeTree = (props: IBaseNodeTreeProps) => {
         return;
       }
       const node = item.getItemData();
+      if (node.defaultUrl) {
+        router.push(node.defaultUrl, undefined, { shallow: true });
+        return;
+      }
       const { resourceType, resourceId } = node;
       // Share pages need full navigation (no shallow) so getServerSideProps runs
       const isSharePage = Boolean(shareUrlPrefix);
@@ -253,9 +274,13 @@ export const BaseNodeTree = (props: IBaseNodeTreeProps) => {
         const viewId = tableViewIdsMap[resourceId];
         const url = tableHrefMap[resourceId];
         if (url) {
-          router.push({ pathname: url }, undefined, {
-            shallow: !isSharePage && Boolean(viewId),
-          });
+          if (url.startsWith('/mochi/local?')) {
+            router.push(url, undefined, { shallow: true });
+          } else {
+            router.push({ pathname: url }, undefined, {
+              shallow: !isSharePage && Boolean(viewId),
+            });
+          }
           return;
         }
       }
@@ -374,14 +399,43 @@ export const BaseNodeTree = (props: IBaseNodeTreeProps) => {
       const viewId =
         resourceType === BaseNodeResourceType.Table ? resourceMeta?.defaultViewId : undefined;
       const parentItem = parentId ? treeItemsRef.current[parentId] : null;
+      const localDefaultUrl =
+        (node as { defaultUrl?: string }).defaultUrl ??
+        getMochiLocalNodeUrl(resourceType, resourceId, viewId ?? undefined);
+      const treeNode: TreeItemData = {
+        ...node,
+        children: (node.children ?? []).map((child) => child.id),
+      };
 
-      const url = getNodeUrl({
-        baseId,
-        resourceType,
-        resourceId,
-        viewId,
-        urlPrefix: shareUrlPrefix,
+      setTreeItems((prevItems) => {
+        if (prevItems[node.id]) {
+          return prevItems;
+        }
+        const parentKey = parentId ?? ROOT_ID;
+        const parent = prevItems[parentKey];
+        return {
+          ...prevItems,
+          [node.id]: treeNode,
+          ...(parent
+            ? {
+                [parentKey]: {
+                  ...parent,
+                  children: [...parent.children, node.id],
+                },
+              }
+            : {}),
+        };
       });
+
+      const url =
+        localDefaultUrl ??
+        getNodeUrl({
+          baseId,
+          resourceType,
+          resourceId,
+          viewId,
+          urlPrefix: shareUrlPrefix,
+        });
       if (url) {
         if (resourceType === BaseNodeResourceType.Table) {
           router.push(url, undefined, { shallow: Boolean(viewId) });
@@ -395,7 +449,7 @@ export const BaseNodeTree = (props: IBaseNodeTreeProps) => {
       }
       setSelectedItems([node.id]);
     },
-    [baseId, router, setExpandedItems, setSelectedItems, shareUrlPrefix]
+    [baseId, router, setExpandedItems, setSelectedItems, setTreeItems, shareUrlPrefix]
   );
 
   const updateSuccefulyCallback = useCallback(

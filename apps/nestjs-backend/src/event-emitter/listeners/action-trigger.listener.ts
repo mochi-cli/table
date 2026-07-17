@@ -147,19 +147,42 @@ export class ActionTriggerListener {
 
   private async handleTableRecordEvent(event: IRecordEvent): Promise<void> {
     const { tableId } = event.payload;
+    const isMochiSqliteEvent = event.context.entry?.type === 'mochi-sqlite';
 
     const buffer = match(event)
       .returnType<IActionTriggerData[]>()
-      .with({ name: Events.TABLE_RECORD_CREATE }, () => [{ actionKey: 'addRecord' as const }])
+      .with({ name: Events.TABLE_RECORD_CREATE }, () => [
+        {
+          actionKey: 'addRecord' as const,
+          payload: isMochiSqliteEvent ? { tableId, skipRealtime: true } : undefined,
+        },
+      ])
       .with({ name: Events.TABLE_RECORD_UPDATE }, (updateEvent) => [
         {
           actionKey: 'setRecord' as const,
           // changed cell field ids, letting field-aware listeners skip
           // refreshes for irrelevant edits (same contract as the v2 emitter)
-          payload: { fieldIds: collectChangedRecordFieldIds(updateEvent.payload.record) },
+          payload: {
+            tableId,
+            fieldIds: collectChangedRecordFieldIds(updateEvent.payload.record),
+            ...(isMochiSqliteEvent ? { skipRealtime: true } : {}),
+          },
         },
       ])
-      .with({ name: Events.TABLE_RECORD_DELETE }, () => [{ actionKey: 'deleteRecord' as const }])
+      .with({ name: Events.TABLE_RECORD_DELETE }, (deleteEvent) => [
+        {
+          actionKey: 'deleteRecord' as const,
+          payload: isMochiSqliteEvent
+            ? {
+                tableId,
+                recordIds: Array.isArray(deleteEvent.payload.recordId)
+                  ? deleteEvent.payload.recordId
+                  : [deleteEvent.payload.recordId],
+                skipRealtime: true,
+              }
+            : undefined,
+        },
+      ])
       .otherwise(() => []);
 
     if (!isEmpty(buffer)) {

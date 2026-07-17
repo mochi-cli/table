@@ -229,8 +229,38 @@ const nextConfig = {
       source: '/api/mochi/:path*',
       destination: `${MOCHI_BACKEND_API_URL}/api/mochi/:path*`,
     };
+    const mochiTeableApiProxy = {
+      source: '/api/table/:path*',
+      destination: `${MOCHI_BACKEND_API_URL}/api/table/:path*`,
+    };
+    const mochiBaseApiProxy = {
+      source: '/api/base/:path*',
+      destination: `${MOCHI_BACKEND_API_URL}/api/base/:path*`,
+    };
+    const mochiCommentApiProxy = {
+      source: '/api/comment/:path*',
+      destination: `${MOCHI_BACKEND_API_URL}/api/comment/:path*`,
+    };
+    const mochiUserApiProxy = {
+      source: '/api/user/:path*',
+      destination: `${MOCHI_BACKEND_API_URL}/api/user/:path*`,
+    };
+    const mochiAiApiProxy = {
+      source: '/api/:baseId/ai/:path*',
+      destination: `${MOCHI_BACKEND_API_URL}/api/:baseId/ai/:path*`,
+    };
 
-    return isProd ? [] : [mochiApiProxy, socketProxy];
+    return isProd
+      ? []
+      : [
+          mochiApiProxy,
+          mochiTeableApiProxy,
+          mochiBaseApiProxy,
+          mochiCommentApiProxy,
+          mochiUserApiProxy,
+          mochiAiApiProxy,
+          socketProxy,
+        ];
   },
 
   // @link https://nextjs.org/docs/api-reference/next.config.js/headers

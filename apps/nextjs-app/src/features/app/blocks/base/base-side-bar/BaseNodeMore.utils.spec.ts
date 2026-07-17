@@ -63,4 +63,17 @@ describe('getTableOperationMenuPermission', () => {
       apiTable: true,
     });
   });
+
+  it('allows duplicate from base fallback read permission when table model is not hydrated', () => {
+    const permission = getTableOperationMenuPermission({
+      table: undefined,
+      nodeExists: true,
+      basePermission: {
+        'table|read': true,
+        'table|create': true,
+      },
+    });
+
+    expect(permission.duplicateTable).toBe(true);
+  });
 });

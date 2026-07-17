@@ -141,6 +141,7 @@ import {
 interface IGridViewBaseInnerProps {
   groupPointsServerData?: IGroupPointsVo | null;
   onRowExpand?: (recordId: string) => void;
+  onCreatedRecords?: () => void;
 }
 
 const { scrollBuffer, columnAppendBtnWidth } = GRID_DEFAULT;
@@ -149,7 +150,7 @@ export const GridViewBaseInner: React.FC<IGridViewBaseInnerProps> = (
   props: IGridViewBaseInnerProps
   // eslint-disable-next-line sonarjs/cognitive-complexity
 ) => {
-  const { groupPointsServerData, onRowExpand } = props;
+  const { groupPointsServerData, onRowExpand, onCreatedRecords } = props;
   const { t, i18n } = useTranslation(tableConfig.i18nNamespaces);
   const queryClient = useQueryClient();
   const { updateRecord, duplicateRecord } = useRecordOperations();
@@ -514,6 +515,7 @@ export const GridViewBaseInner: React.FC<IGridViewBaseInnerProps> = (
     },
     onSuccess: () => {
       resetNewRecords();
+      onCreatedRecords?.();
     },
   });
 

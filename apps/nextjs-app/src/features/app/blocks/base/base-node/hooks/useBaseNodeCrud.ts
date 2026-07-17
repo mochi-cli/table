@@ -18,7 +18,8 @@ import {
 import { useBaseId } from '@teable/sdk/hooks';
 import { useTranslation } from 'next-i18next';
 import { useCallback, useMemo } from 'react';
-import { cleanParentId, getNodeName } from './helper';
+import type { TreeItemData } from './useBaseNode';
+import { cleanParentId, getNodeName, ROOT_ID } from './helper';
 import { useBaseNodeContext } from './useBaseNodeContext';
 
 interface IUseBaseNodeCrudOptions {
@@ -35,11 +36,42 @@ export const useBaseNodeCrud = (props?: IUseBaseNodeCrudOptions) => {
   const baseId = useBaseId() as string;
   const { t } = useTranslation(['table', 'common']);
 
-  const { treeItems, invalidateMenu } = useBaseNodeContext();
+  const { treeItems, setTreeItems, invalidateMenu } = useBaseNodeContext();
+
+  const insertNodeIntoTree = useCallback(
+    (node: IBaseNodeVo) => {
+      const treeNode: TreeItemData = {
+        ...node,
+        children: (node.children ?? []).map((child) => child.id),
+      };
+      setTreeItems((prevItems) => {
+        if (prevItems[node.id]) {
+          return prevItems;
+        }
+        const parentKey = node.parentId ?? ROOT_ID;
+        const parent = prevItems[parentKey];
+        return {
+          ...prevItems,
+          [node.id]: treeNode,
+          ...(parent
+            ? {
+                [parentKey]: {
+                  ...parent,
+                  children: [...parent.children, node.id],
+                },
+              }
+            : {}),
+        };
+      });
+    },
+    [setTreeItems]
+  );
 
   const { mutateAsync: createNodeFn } = useMutation({
     mutationFn: (ro: ICreateBaseNodeRo) => createBaseNode(baseId, ro).then((res) => res.data),
     onSuccess: (node) => {
+      insertNodeIntoTree(node);
+      invalidateMenu();
       props?.onCreateSuccess?.(node);
     },
   });
@@ -60,6 +92,7 @@ export const useBaseNodeCrud = (props?: IUseBaseNodeCrudOptions) => {
     mutationFn: ({ nodeId, ro }: { nodeId: string; ro: IDuplicateBaseNodeRo }) =>
       duplicateBaseNode(baseId, nodeId, ro).then((res) => res.data),
     onSuccess: (node) => {
+      insertNodeIntoTree(node);
       invalidateMenu();
       props?.onDuplicateSuccess?.(node);
     },

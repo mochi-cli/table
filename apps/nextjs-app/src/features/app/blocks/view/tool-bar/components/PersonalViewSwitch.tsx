@@ -8,6 +8,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@teable/ui-lib/shadcn';
+import { useRouter } from 'next/router';
 import { useTranslation } from 'next-i18next';
 import { Fragment, useState } from 'react';
 import { tableConfig } from '@/features/i18n/table.config';
@@ -19,9 +20,27 @@ interface IPersonalViewSwitchProps {
 
 export const PersonalViewSwitch = (props: IPersonalViewSwitchProps) => {
   const { textClassName, buttonClassName } = props;
+  const router = useRouter();
   const view = useView();
   const permission = useTablePermission();
   const { t } = useTranslation(tableConfig.i18nNamespaces);
+  const isMochiLocal = router.pathname === '/mochi/local';
+  const personalText = isMochiLocal ? 'Personal' : t('table:toolbar.others.personalView.personal');
+  const tipText = isMochiLocal
+    ? 'After enabling, the view settings will only take effect for you personally'
+    : t('table:toolbar.others.personalView.tip');
+  const dialogTitle = isMochiLocal
+    ? 'Exit personal mode'
+    : t('table:toolbar.others.personalView.dialog.title');
+  const dialogDescription = isMochiLocal
+    ? 'The personal view configuration will be restored to the real-time collaboration state'
+    : t('table:toolbar.others.personalView.dialog.description');
+  const dialogCancelText = isMochiLocal
+    ? 'Exit and sync'
+    : t('table:toolbar.others.personalView.dialog.cancelText');
+  const dialogConfirmText = isMochiLocal
+    ? 'Confirm exit'
+    : t('table:toolbar.others.personalView.dialog.confirmText');
   const { isPersonalView, openPersonalView, closePersonalView, syncViewProperties } =
     usePersonalView();
   const [isConfirmOpen, setIsConfirmOpen] = useState<boolean>(false);
@@ -48,7 +67,7 @@ export const PersonalViewSwitch = (props: IPersonalViewSwitchProps) => {
             <div
               className={`${buttonClassName ?? ''} flex h-7 cursor-pointer items-center gap-2 whitespace-nowrap pl-1 text-xs`}
             >
-              <span>{t('table:toolbar.others.personalView.personal')}</span>
+              <span>{personalText}</span>
               <Switch
                 id="personal-view-switch"
                 checked={Boolean(isPersonalView)}
@@ -58,7 +77,7 @@ export const PersonalViewSwitch = (props: IPersonalViewSwitchProps) => {
           </TooltipTrigger>
           <TooltipPortal>
             <TooltipContent>
-              {<span>{t('table:toolbar.others.personalView.tip')}</span>}
+              {<span>{tipText}</span>}
             </TooltipContent>
           </TooltipPortal>
         </Tooltip>
@@ -71,10 +90,10 @@ export const PersonalViewSwitch = (props: IPersonalViewSwitchProps) => {
             setIsConfirmOpen(false);
           }
         }}
-        title={t('table:toolbar.others.personalView.dialog.title')}
-        description={t('table:toolbar.others.personalView.dialog.description')}
-        cancelText={t('table:toolbar.others.personalView.dialog.cancelText')}
-        confirmText={t('table:toolbar.others.personalView.dialog.confirmText')}
+        title={dialogTitle}
+        description={dialogDescription}
+        cancelText={dialogCancelText}
+        confirmText={dialogConfirmText}
         onConfirm={() => {
           closePersonalView?.();
           setIsConfirmOpen(false);

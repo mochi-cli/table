@@ -1,6 +1,7 @@
 import { MoreHorizontal, Share2 } from '@teable/icons';
 import { useIsReadOnlyPreview, useTableId, useTablePermission, useView } from '@teable/sdk/hooks';
 import { Button, cn, Popover, PopoverContent, PopoverTrigger } from '@teable/ui-lib/shadcn';
+import { useRouter } from 'next/router';
 import { useTranslation } from 'next-i18next';
 import { useMemo, useState } from 'react';
 import { useBaseNodeContext } from '@/features/app/blocks/base/base-node/hooks/useBaseNodeContext';
@@ -22,6 +23,7 @@ const ShareButton = ({
   buttonClassName?: string;
   foldButton?: boolean;
 }) => {
+  const router = useRouter();
   const { t } = useTranslation(tableConfig.i18nNamespaces);
   const permission = useTablePermission();
   const view = useView();
@@ -39,7 +41,10 @@ const ShareButton = ({
   }, [tableId, treeItems, sharedNodeIds]);
 
   const isActive = !!view?.enableShare || isNodeShared;
-  const text = t('table:toolbar.others.share.label');
+  const isMochiLocal = router.pathname === '/mochi/local';
+  const text = isMochiLocal ? 'Share' : t('table:toolbar.others.share.label');
+  const shareTableText = isMochiLocal ? 'Share table' : t('table:baseShare.shareTableTab');
+  const shareViewText = isMochiLocal ? 'Share view' : t('table:baseShare.shareViewTab');
 
   const openDialog = (tab: 'table' | 'view') => {
     setDefaultTab(tab);
@@ -68,7 +73,7 @@ const ShareButton = ({
             size="sm"
             onClick={() => openDialog('table')}
           >
-            <span>{t('table:baseShare.shareTableTab')}</span>
+            <span>{shareTableText}</span>
             <span
               className={cn(
                 'size-1.5 shrink-0 rounded-full',
@@ -82,7 +87,7 @@ const ShareButton = ({
             size="sm"
             onClick={() => openDialog('view')}
           >
-            <span>{t('table:baseShare.shareViewTab')}</span>
+            <span>{shareViewText}</span>
             <span
               className={cn(
                 'size-1.5 shrink-0 rounded-full',
@@ -156,6 +161,7 @@ export const Others: React.FC = () => {
   const isReadOnlyPreview = useIsReadOnlyPreview();
   const isShareEditor = useShareEffectiveEdit();
   const showControls = !isReadOnlyPreview || isShareEditor;
+  const isMochiLocal = typeof window !== 'undefined' && window.location.pathname === '/mochi/local';
   return (
     <div
       className={cn(
@@ -174,11 +180,17 @@ export const Others: React.FC = () => {
             <PersonalViewSwitch />
           ) : (
             <>
-              <OthersList
-                className="hidden @md/toolbar:flex"
-                classNames={{ textClassName: '@2xl/toolbar:inline' }}
-              />
-              <OthersMenu className="@md/toolbar:hidden" />
+              {isMochiLocal ? (
+                <PersonalViewSwitch />
+              ) : (
+                <>
+                  <OthersList
+                    className="hidden @md/toolbar:flex"
+                    classNames={{ textClassName: '@2xl/toolbar:inline' }}
+                  />
+                  <OthersMenu className="@md/toolbar:hidden" />
+                </>
+              )}
             </>
           )}
         </>

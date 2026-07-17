@@ -90,6 +90,13 @@ import { useSyncSelectionStore } from './useSelectionStore';
 
 const clearToastId = 'clearToastId';
 const deleteToastId = 'deleteToastId';
+const localDataMutatedEvent = 'mochi-local-data-mutated';
+
+const notifyLocalDataMutated = () => {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent(localDataMutatedEvent, { detail: { scope: 'record' } }));
+};
+
 const getPasteContentColumnCount = (content: IPasteByIdRo['content']) => {
   if (Array.isArray(content)) {
     return content.reduce((max, row) => Math.max(max, row.length), 0);
@@ -1316,6 +1323,7 @@ export const useSelectionOperation = (props?: {
 
       setDeleteSummary(streamResult.done);
       setDeleteProgressStatus(streamResult.errors.length ? 'partial' : 'success');
+      notifyLocalDataMutated();
 
       if (streamResult.errors.length) {
         return true;
@@ -1365,6 +1373,7 @@ export const useSelectionOperation = (props?: {
 
       setClearSummary(streamResult.done);
       setClearProgressStatus(streamResult.errors.length ? 'partial' : 'success');
+      notifyLocalDataMutated();
 
       return streamResult.errors.length > 0;
     },
@@ -1503,6 +1512,7 @@ export const useSelectionOperation = (props?: {
 
       setPasteSummary(streamResult.done);
       setPasteProgressStatus(streamResult.errors.length ? 'partial' : 'success');
+      notifyLocalDataMutated();
 
       return streamResult.errors.length > 0;
     },

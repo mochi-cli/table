@@ -16,6 +16,9 @@ export const getTableOperationMenuPermission = ({
   canTableTrashRead,
 }: ITableOperationPermissionInput) => {
   const hasReadyTable = Boolean(table);
+  const canReadTable = Boolean(
+    table?.permission?.['table|read'] ?? (nodeExists && basePermission?.['table|read'])
+  );
 
   return {
     deleteTable: Boolean(
@@ -24,7 +27,7 @@ export const getTableOperationMenuPermission = ({
     updateTable: Boolean(
       table?.permission?.['table|update'] ?? (nodeExists && basePermission?.['table|update'])
     ),
-    duplicateTable: Boolean(table?.permission?.['table|read'] && basePermission?.['table|create']),
+    duplicateTable: Boolean(canReadTable && basePermission?.['table|create']),
     exportTable: Boolean(table?.permission?.['table|export']),
     importTable: Boolean(table?.permission?.['table|import']),
     tableRecordHistory: Boolean(hasReadyTable && canTableRecordHistoryRead),

@@ -324,7 +324,7 @@ export const SearchButton = (props: ISearchButtonProps) => {
                 className="flex shrink-0 items-center justify-center overflow-hidden truncate rounded-none border-r px-2"
                 ref={commandTrigger}
               >
-                <TooltipTrigger>
+                <TooltipTrigger asChild>
                   <div className="flex items-center gap-1">
                     {showAlert && <AlertCircle className="size-3 shrink-0" />}
 
