@@ -1,9 +1,9 @@
 # Backend Legacy Cleanup
 
-Mochi Table now has a focused backend typecheck for the SQLite local surface:
+Mochi Table now uses a focused backend typecheck for the SQLite local surface:
 
 ```bash
-pnpm -F @teable/backend mochi:typecheck
+pnpm -F @teable/backend typecheck
 ```
 
 The original backend typecheck is kept as a legacy signal:
@@ -21,6 +21,7 @@ Use these commands before committing Mochi SQLite work:
 
 ```bash
 pnpm -F @mochi/table-sqlite verify
+pnpm -F @teable/backend typecheck
 pnpm -F @teable/backend mochi:typecheck
 pnpm --dir apps/nextjs-app typecheck
 ```

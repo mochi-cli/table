@@ -89,7 +89,7 @@ Run the SQLite smoke test:
 ```bash
 pnpm -F @mochi/table-sqlite smoke
 pnpm -F @mochi/table-sqlite verify
-pnpm -F @teable/backend mochi:typecheck
+pnpm -F @teable/backend typecheck
 ```
 
 Run the existing backend with the SQLite bridge enabled:
