@@ -9,6 +9,11 @@ export const ids = {
   field: () => createId('fld'),
   view: () => createId('viw'),
   record: () => createId('rec'),
+  attachment: () => createId('att'),
+  attachmentRef: () => createId('arf'),
+  trash: () => createId('trh'),
+  importSource: () => createId('ims'),
+  computedJob: () => createId('job'),
   opBatch: () => createId('opb'),
   op: () => createId('op'),
 };

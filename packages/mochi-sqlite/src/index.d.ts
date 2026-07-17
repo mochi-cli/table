@@ -61,6 +61,8 @@ export class MochiSqliteRepository {
   createView(input: Record<string, unknown>): unknown;
   getView(id: string): unknown | null;
   listRecords(tableId: string, options?: RecordQueryOptions): unknown[];
+  searchRecordIds(tableId: string, search: string): string[];
+  rebuildSearchIndex(tableId: string): { tableId: string; indexedRecords: number };
   createRecord(input: {
     id?: string;
     tableId: string;
@@ -74,6 +76,62 @@ export class MochiSqliteRepository {
   getRecord(id: string): unknown | null;
   updateRecord(id: string, patch: { fields?: JsonRecord; order?: unknown; batchId?: string; label?: string; source?: string }): unknown | null;
   deleteRecord(id: string, options?: { batchId?: string; label?: string; source?: string }): unknown | null;
+  listTrash(): unknown[];
+  restoreTrash(id: string): unknown | null;
+  createAttachment(input: {
+    id?: string;
+    token?: string;
+    name?: string;
+    hash?: string;
+    size?: number;
+    mimetype?: string;
+    path: string;
+    width?: number;
+    height?: number;
+    thumbnailPath?: string;
+  }): unknown;
+  getAttachment(id: string): unknown | null;
+  listAttachments(): unknown[];
+  attachToRecord(input: {
+    id?: string;
+    attachmentId: string;
+    tableId: string;
+    recordId: string;
+    fieldId: string;
+  }): unknown;
+  listRecordAttachments(recordId: string): unknown[];
+  deleteAttachment(id: string): unknown | null;
+  listImportSources(): unknown[];
+  createImportSource(input: {
+    id?: string;
+    kind?: string;
+    path: string;
+    profileId?: string;
+    tableId?: string;
+    state?: unknown;
+  }): unknown;
+  importSqliteDatabase(input: {
+    path: string;
+    baseId?: string;
+    baseName?: string;
+    spaceId?: string;
+    profileId?: string;
+    tables?: string[];
+    tableNamePrefix?: string;
+    limit?: number;
+  }): unknown;
+  enqueueComputedJob(input: {
+    id?: string;
+    tableId: string;
+    recordId?: string;
+    fieldId?: string;
+    jobType?: string;
+    payload?: unknown;
+  }): unknown;
+  listComputedJobs(status?: string): unknown[];
+  claimNextComputedJob(): unknown | null;
+  completeComputedJob(id: string): unknown | null;
+  failComputedJob(id: string, error?: string): unknown | null;
   undoLastBatch(): unknown | null;
   redoLastBatch(): unknown | null;
 }

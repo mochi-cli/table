@@ -26,13 +26,18 @@ Implemented:
 - record operation log with undo/redo
 - conditional Nest bridge module for SQLite
 - local REST endpoints under `/api/mochi`
+- FTS5-backed record search index with rebuild endpoint
+- SQLite database import into Mochi bases/tables
+- attachment metadata and record attachment references
+- trash/restore for deleted records
+- SQLite-backed computed job queue scaffold
 
 Not finished yet:
 
 - mapping the existing Teable API/controllers fully to SQLite
 - connecting the existing grid UI directly to the SQLite repository
-- Mochi profile/workspace import
-- lookup/rollup resolver
+- polished Mochi profile/workspace picker UI
+- lookup/rollup resolver execution
 - advanced formulas
 
 ## Repository Shape
@@ -116,10 +121,26 @@ GET  /api/mochi/tables/:tableId/views
 POST /api/mochi/tables/:tableId/views
 GET  /api/mochi/tables/:tableId/records
 POST /api/mochi/tables/:tableId/records
+POST /api/mochi/tables/:tableId/search/rebuild
 GET  /api/mochi/records/:recordId
 PATCH /api/mochi/records/:recordId
 DELETE /api/mochi/records/:recordId
 POST /api/mochi/records/:recordId/delete
+GET  /api/mochi/records/:recordId/attachments
+POST /api/mochi/records/:recordId/attachments
+GET  /api/mochi/attachments
+POST /api/mochi/attachments
+GET  /api/mochi/attachments/:attachmentId
+DELETE /api/mochi/attachments/:attachmentId
+GET  /api/mochi/trash
+POST /api/mochi/trash/:trashId/restore
+GET  /api/mochi/imports
+POST /api/mochi/imports/sqlite
+GET  /api/mochi/computed/jobs
+POST /api/mochi/computed/jobs
+POST /api/mochi/computed/jobs/claim
+POST /api/mochi/computed/jobs/:jobId/complete
+POST /api/mochi/computed/jobs/:jobId/fail
 POST /api/mochi/undo
 POST /api/mochi/redo
 ```
@@ -132,6 +153,18 @@ limit=100
 offset=0
 filters=[{"fieldId":"fld_x","operator":"contains","value":"abc"}]
 sorts=[{"fieldId":"fld_x","direction":"asc"}]
+```
+
+SQLite import accepts:
+
+```json
+{
+  "path": "/absolute/path/to/profile.sqlite",
+  "profileId": "optional-profile-id",
+  "baseName": "Imported Profile",
+  "tables": ["customers"],
+  "limit": 10000
+}
 ```
 
 ## Useful Files

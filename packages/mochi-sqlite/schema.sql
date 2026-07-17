@@ -2,6 +2,12 @@ PRAGMA foreign_keys = ON;
 PRAGMA journal_mode = WAL;
 PRAGMA synchronous = NORMAL;
 
+CREATE TABLE IF NOT EXISTS mochi_migration (
+  version TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  applied_time TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
 CREATE TABLE IF NOT EXISTS mochi_space (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -105,6 +111,12 @@ CREATE TABLE IF NOT EXISTS mochi_record (
 CREATE INDEX IF NOT EXISTS idx_mochi_record_table_id ON mochi_record(table_id);
 CREATE INDEX IF NOT EXISTS idx_mochi_record_deleted_time ON mochi_record(table_id, deleted_time);
 
+CREATE VIRTUAL TABLE IF NOT EXISTS mochi_record_fts USING fts5(
+  table_id UNINDEXED,
+  record_id UNINDEXED,
+  content
+);
+
 CREATE TABLE IF NOT EXISTS mochi_record_history (
   id TEXT PRIMARY KEY,
   table_id TEXT NOT NULL,
@@ -206,3 +218,22 @@ CREATE TABLE IF NOT EXISTS mochi_import_source (
 
 CREATE INDEX IF NOT EXISTS idx_mochi_import_source_profile
   ON mochi_import_source(profile_id);
+
+CREATE TABLE IF NOT EXISTS mochi_computed_job (
+  id TEXT PRIMARY KEY,
+  table_id TEXT NOT NULL,
+  record_id TEXT,
+  field_id TEXT,
+  job_type TEXT NOT NULL,
+  payload_json TEXT,
+  status TEXT NOT NULL DEFAULT 'pending',
+  attempts INTEGER NOT NULL DEFAULT 0,
+  error TEXT,
+  created_time TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  claimed_time TEXT,
+  completed_time TEXT,
+  FOREIGN KEY (table_id) REFERENCES mochi_table(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_mochi_computed_job_status
+  ON mochi_computed_job(status, created_time);

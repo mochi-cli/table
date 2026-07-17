@@ -45,3 +45,18 @@ mochi_record.order_json -> optional per-view order metadata
 
 This avoids generating SQLite DDL for every field operation and makes it easier
 for Mochi/AI to import arbitrary profile/workspace data.
+
+## Implemented local engine pieces
+
+- idempotent schema bootstrap with a `mochi_migration` marker table
+- CRUD repository for spaces, bases, tables, fields, views, and records
+- FTS5 record search through `mochi_record_fts`
+- SQLite database import into generated Mochi tables
+- record operation log with undo/redo
+- trash/restore for deleted records
+- attachment metadata and record attachment references
+- local computed job queue scaffold
+
+The formula SQL engine is intentionally not implemented here yet. Computed jobs
+can already be queued and claimed, but formula execution still needs a dedicated
+TypeScript evaluator or a later SQLite expression adapter.

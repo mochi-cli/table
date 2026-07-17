@@ -20,6 +20,25 @@ const nowExpr = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')";
 
 const normalizeText = (value) => String(value ?? '').toLocaleLowerCase();
 
+const flattenSearchText = (value) => {
+  if (value === null || value === undefined) return '';
+  if (Array.isArray(value)) return value.map(flattenSearchText).join(' ');
+  if (typeof value === 'object') return Object.values(value).map(flattenSearchText).join(' ');
+  return String(value);
+};
+
+const inferFieldType = (value) => {
+  if (typeof value === 'number') return { type: 'number', cellValueType: 'number' };
+  if (typeof value === 'boolean') return { type: 'checkbox', cellValueType: 'boolean' };
+  if (typeof value === 'string') {
+    const date = new Date(value);
+    if (/^\d{4}-\d{2}-\d{2}/.test(value) && !Number.isNaN(date.getTime())) {
+      return { type: 'date', cellValueType: 'dateTime' };
+    }
+  }
+  return { type: 'singleLineText', cellValueType: 'string' };
+};
+
 const compareValues = (left, right) => {
   if (left === right) return 0;
   if (left === null || left === undefined) return -1;
@@ -64,7 +83,8 @@ export class MochiSqliteRepository {
     fs.mkdirSync(path.dirname(this.dbPath), { recursive: true });
     this.db.run(`.read ${JSON.stringify(schemaPath)}`);
     this.db.run(
-      `INSERT OR IGNORE INTO mochi_space (id, name) VALUES ('spc_local', 'Mochi Local');`
+      `INSERT OR IGNORE INTO mochi_space (id, name) VALUES ('spc_local', 'Mochi Local');
+       INSERT OR IGNORE INTO mochi_migration (version, name) VALUES ('000_schema_sql', 'schema.sql baseline');`
     );
   }
 
@@ -330,10 +350,16 @@ export class MochiSqliteRepository {
       }));
 
     if (options.search) {
-      const needle = normalizeText(options.search);
-      records = records.filter((record) =>
-        Object.values(record.fields).some((value) => normalizeText(value).includes(needle))
-      );
+      const indexedIds = this.searchRecordIds(tableId, options.search);
+      if (indexedIds.length > 0) {
+        const indexedIdSet = new Set(indexedIds);
+        records = records.filter((record) => indexedIdSet.has(record.id));
+      } else {
+        const needle = normalizeText(options.search);
+        records = records.filter((record) =>
+          Object.values(record.fields).some((value) => normalizeText(value).includes(needle))
+        );
+      }
     }
 
     for (const filter of options.filters ?? []) {
@@ -401,6 +427,7 @@ export class MochiSqliteRepository {
          NULL,
          ${jsonValue({ fields: input.fields ?? {}, order: input.order ?? null })}
        );`,
+      ...this.recordSearchStatements(input.tableId, id, input.fields ?? {}),
     ];
     this.db.transaction(statements);
     return this.getRecord(id);
@@ -442,6 +469,7 @@ export class MochiSqliteRepository {
          ${jsonValue({ fields: current.fields, order: current.order ?? null })},
          ${jsonValue({ fields: nextFields, order: nextOrder ?? null })}
        );`,
+      ...this.recordSearchStatements(current.table_id, id, nextFields),
     ];
     this.db.transaction(statements);
     return this.getRecord(id);
@@ -455,6 +483,14 @@ export class MochiSqliteRepository {
       `UPDATE mochi_record
        SET deleted_time = ${nowExpr}, version = version + 1
        WHERE id = ${sqlValue(id)};`,
+      `INSERT INTO mochi_trash (id, resource_type, resource_id, parent_resource_id, snapshot_json)
+       VALUES (
+         ${sqlValue(ids.trash())},
+         'record',
+         ${sqlValue(id)},
+         ${sqlValue(current.table_id)},
+         ${jsonValue(current)}
+       );`,
       `INSERT INTO mochi_op_batch (id, label, source)
        VALUES (${sqlValue(batchId)}, ${sqlValue(options.label ?? 'Delete record')}, ${sqlValue(options.source ?? 'user')})
        ON CONFLICT(id) DO NOTHING;`,
@@ -468,9 +504,284 @@ export class MochiSqliteRepository {
          ${jsonValue({ fields: current.fields, order: current.order ?? null })},
          NULL
        );`,
+      `DELETE FROM mochi_record_fts WHERE record_id = ${sqlValue(id)};`,
     ];
     this.db.transaction(statements);
     return current;
+  }
+
+  recordSearchStatements(tableId, recordId, fields) {
+    return [
+      `DELETE FROM mochi_record_fts WHERE record_id = ${sqlValue(recordId)};`,
+      `INSERT INTO mochi_record_fts (table_id, record_id, content)
+       VALUES (${sqlValue(tableId)}, ${sqlValue(recordId)}, ${sqlValue(flattenSearchText(fields))});`,
+    ];
+  }
+
+  searchRecordIds(tableId, search) {
+    const query = String(search ?? '')
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((token) => `${token.replaceAll('"', '""')}*`)
+      .join(' ');
+    if (!query) return [];
+    try {
+      return this.db
+        .all(`
+          SELECT record_id
+          FROM mochi_record_fts
+          WHERE table_id = ${sqlValue(tableId)} AND mochi_record_fts MATCH ${sqlValue(query)}
+          LIMIT 10000;
+        `)
+        .map((row) => row.record_id);
+    } catch {
+      return [];
+    }
+  }
+
+  rebuildSearchIndex(tableId) {
+    const records = this.listRecords(tableId, { limit: 100000 });
+    const statements = [`DELETE FROM mochi_record_fts WHERE table_id = ${sqlValue(tableId)};`];
+    for (const record of records) {
+      statements.push(...this.recordSearchStatements(tableId, record.id, record.fields));
+    }
+    this.db.transaction(statements);
+    return { tableId, indexedRecords: records.length };
+  }
+
+  listTrash() {
+    return this.db
+      .all(`SELECT * FROM mochi_trash ORDER BY created_time DESC;`)
+      .map((item) => ({ ...item, snapshot: parseJson(item.snapshot_json, {}) }));
+  }
+
+  restoreTrash(id) {
+    const item = this.db.get(`SELECT * FROM mochi_trash WHERE id = ${sqlValue(id)};`);
+    if (!item) return null;
+    const snapshot = parseJson(item.snapshot_json, {});
+    if (item.resource_type === 'record' && snapshot.id) {
+      const fields = snapshot.fields ?? parseJson(snapshot.fields_json, {});
+      const statements = [
+        `UPDATE mochi_record
+         SET deleted_time = NULL,
+             fields_json = ${jsonValue(fields)},
+             order_json = ${snapshot.order === undefined || snapshot.order === null ? 'NULL' : jsonValue(snapshot.order)},
+             version = version + 1,
+             last_modified_time = ${nowExpr}
+         WHERE id = ${sqlValue(snapshot.id)};`,
+        ...this.recordSearchStatements(snapshot.table_id, snapshot.id, fields),
+        `DELETE FROM mochi_trash WHERE id = ${sqlValue(id)};`,
+      ];
+      this.db.transaction(statements);
+      return this.getRecord(snapshot.id);
+    }
+    return null;
+  }
+
+  createAttachment(input) {
+    const id = input.id ?? ids.attachment();
+    this.db.run(`
+      INSERT INTO mochi_attachment (
+        id, token, name, hash, size, mimetype, path, width, height, thumbnail_path
+      )
+      VALUES (
+        ${sqlValue(id)},
+        ${sqlValue(input.token ?? id)},
+        ${sqlValue(input.name)},
+        ${sqlValue(input.hash)},
+        ${sqlValue(input.size)},
+        ${sqlValue(input.mimetype)},
+        ${sqlValue(input.path)},
+        ${sqlValue(input.width)},
+        ${sqlValue(input.height)},
+        ${sqlValue(input.thumbnailPath)}
+      );
+    `);
+    return this.getAttachment(id);
+  }
+
+  getAttachment(id) {
+    return this.db.get(`SELECT * FROM mochi_attachment WHERE id = ${sqlValue(id)};`);
+  }
+
+  listAttachments() {
+    return this.db.all(`SELECT * FROM mochi_attachment WHERE deleted_time IS NULL ORDER BY created_time DESC;`);
+  }
+
+  attachToRecord(input) {
+    const id = input.id ?? ids.attachmentRef();
+    this.db.run(`
+      INSERT INTO mochi_attachment_ref (id, attachment_id, table_id, record_id, field_id)
+      VALUES (
+        ${sqlValue(id)},
+        ${sqlValue(input.attachmentId)},
+        ${sqlValue(input.tableId)},
+        ${sqlValue(input.recordId)},
+        ${sqlValue(input.fieldId)}
+      );
+    `);
+    return this.db.get(`SELECT * FROM mochi_attachment_ref WHERE id = ${sqlValue(id)};`);
+  }
+
+  listRecordAttachments(recordId) {
+    return this.db.all(`
+      SELECT r.*, a.name, a.token, a.path, a.mimetype, a.size, a.width, a.height, a.thumbnail_path
+      FROM mochi_attachment_ref r
+      JOIN mochi_attachment a ON a.id = r.attachment_id
+      WHERE r.record_id = ${sqlValue(recordId)} AND a.deleted_time IS NULL
+      ORDER BY r.created_time;
+    `);
+  }
+
+  deleteAttachment(id) {
+    const attachment = this.getAttachment(id);
+    if (!attachment) return null;
+    this.db.run(`UPDATE mochi_attachment SET deleted_time = ${nowExpr} WHERE id = ${sqlValue(id)};`);
+    return attachment;
+  }
+
+  listImportSources() {
+    return this.db
+      .all(`SELECT * FROM mochi_import_source ORDER BY created_time DESC;`)
+      .map((source) => ({ ...source, state: parseJson(source.state_json, {}) }));
+  }
+
+  createImportSource(input) {
+    const id = input.id ?? ids.importSource();
+    this.db.run(`
+      INSERT INTO mochi_import_source (id, kind, path, profile_id, table_id, state_json)
+      VALUES (
+        ${sqlValue(id)},
+        ${sqlValue(input.kind ?? 'sqlite')},
+        ${sqlValue(input.path)},
+        ${sqlValue(input.profileId)},
+        ${sqlValue(input.tableId)},
+        ${input.state === undefined ? 'NULL' : jsonValue(input.state)}
+      );
+    `);
+    return this.db.get(`SELECT * FROM mochi_import_source WHERE id = ${sqlValue(id)};`);
+  }
+
+  importSqliteDatabase(input) {
+    const sourceDb = new SqliteCli(input.path);
+    const sourceTables = sourceDb
+      .all(`
+        SELECT name
+        FROM sqlite_master
+        WHERE type = 'table'
+          AND name NOT LIKE 'sqlite_%'
+          AND name NOT LIKE '%_fts%'
+        ORDER BY name;
+      `)
+      .map((row) => row.name)
+      .filter((name) => !input.tables || input.tables.includes(name));
+    const base =
+      input.baseId && this.getBase(input.baseId)
+        ? this.getBase(input.baseId)
+        : this.createBase({
+            name: input.baseName ?? path.basename(input.path, path.extname(input.path)),
+            spaceId: input.spaceId,
+          });
+    const importedTables = [];
+
+    for (const sourceTable of sourceTables) {
+      const rows = sourceDb.all(`SELECT * FROM "${sourceTable.replaceAll('"', '""')}" LIMIT ${Number(input.limit ?? 10000)};`);
+      const table = this.createTable({
+        baseId: base.id,
+        name: input.tableNamePrefix ? `${input.tableNamePrefix}${sourceTable}` : sourceTable,
+      });
+      const columnNames = Object.keys(rows[0] ?? {});
+      const fields = new Map();
+      for (const columnName of columnNames) {
+        const sample = rows.find((row) => row[columnName] !== null && row[columnName] !== undefined)?.[columnName];
+        const inferred = inferFieldType(sample);
+        const field = this.createField({
+          tableId: table.id,
+          name: columnName,
+          type: inferred.type,
+          cellValueType: inferred.cellValueType,
+        });
+        fields.set(columnName, field.id);
+      }
+      for (const row of rows) {
+        const recordFields = {};
+        for (const [columnName, value] of Object.entries(row)) {
+          recordFields[fields.get(columnName)] = value;
+        }
+        this.createRecord({ tableId: table.id, fields: recordFields, label: 'Import SQLite row', source: 'import' });
+      }
+      const importSource = this.createImportSource({
+        kind: 'sqlite',
+        path: input.path,
+        profileId: input.profileId,
+        tableId: table.id,
+        state: { sourceTable, importedRows: rows.length },
+      });
+      importedTables.push({ sourceTable, table, fields: [...fields.values()], rows: rows.length, importSource });
+    }
+
+    return { base, importedTables };
+  }
+
+  enqueueComputedJob(input) {
+    const id = input.id ?? ids.computedJob();
+    this.db.run(`
+      INSERT INTO mochi_computed_job (id, table_id, record_id, field_id, job_type, payload_json)
+      VALUES (
+        ${sqlValue(id)},
+        ${sqlValue(input.tableId)},
+        ${sqlValue(input.recordId)},
+        ${sqlValue(input.fieldId)},
+        ${sqlValue(input.jobType ?? 'computed.refresh')},
+        ${input.payload === undefined ? 'NULL' : jsonValue(input.payload)}
+      );
+    `);
+    return this.db.get(`SELECT * FROM mochi_computed_job WHERE id = ${sqlValue(id)};`);
+  }
+
+  listComputedJobs(status = 'pending') {
+    return this.db
+      .all(`
+        SELECT * FROM mochi_computed_job
+        WHERE status = ${sqlValue(status)}
+        ORDER BY created_time;
+      `)
+      .map((job) => ({ ...job, payload: parseJson(job.payload_json, {}) }));
+  }
+
+  claimNextComputedJob() {
+    const job = this.db.get(`
+      SELECT * FROM mochi_computed_job
+      WHERE status = 'pending'
+      ORDER BY created_time
+      LIMIT 1;
+    `);
+    if (!job) return null;
+    this.db.run(`
+      UPDATE mochi_computed_job
+      SET status = 'running', attempts = attempts + 1, claimed_time = ${nowExpr}
+      WHERE id = ${sqlValue(job.id)};
+    `);
+    return this.db.get(`SELECT * FROM mochi_computed_job WHERE id = ${sqlValue(job.id)};`);
+  }
+
+  completeComputedJob(id) {
+    this.db.run(`
+      UPDATE mochi_computed_job
+      SET status = 'completed', completed_time = ${nowExpr}, error = NULL
+      WHERE id = ${sqlValue(id)};
+    `);
+    return this.db.get(`SELECT * FROM mochi_computed_job WHERE id = ${sqlValue(id)};`);
+  }
+
+  failComputedJob(id, error) {
+    this.db.run(`
+      UPDATE mochi_computed_job
+      SET status = 'failed', error = ${sqlValue(error)}, completed_time = ${nowExpr}
+      WHERE id = ${sqlValue(id)};
+    `);
+    return this.db.get(`SELECT * FROM mochi_computed_job WHERE id = ${sqlValue(id)};`);
   }
 
   getLastUndoableBatch() {
@@ -504,7 +815,8 @@ export class MochiSqliteRepository {
       const before = parseJson(op.before_json);
       if (op.op_type === 'record.create') {
         statements.push(
-          `UPDATE mochi_record SET deleted_time = ${nowExpr}, version = version + 1 WHERE id = ${sqlValue(op.record_id)};`
+          `UPDATE mochi_record SET deleted_time = ${nowExpr}, version = version + 1 WHERE id = ${sqlValue(op.record_id)};`,
+          `DELETE FROM mochi_record_fts WHERE record_id = ${sqlValue(op.record_id)};`
         );
       }
       if (op.op_type === 'record.update' || op.op_type === 'record.delete') {
@@ -517,6 +829,7 @@ export class MochiSqliteRepository {
                last_modified_time = ${nowExpr}
            WHERE id = ${sqlValue(op.record_id)};`
         );
+        statements.push(...this.recordSearchStatements(op.table_id, op.record_id, before?.fields ?? {}));
       }
     }
     statements.push(
@@ -547,10 +860,12 @@ export class MochiSqliteRepository {
                last_modified_time = ${nowExpr}
            WHERE id = ${sqlValue(op.record_id)};`
         );
+        statements.push(...this.recordSearchStatements(op.table_id, op.record_id, after?.fields ?? {}));
       }
       if (op.op_type === 'record.delete') {
         statements.push(
-          `UPDATE mochi_record SET deleted_time = ${nowExpr}, version = version + 1 WHERE id = ${sqlValue(op.record_id)};`
+          `UPDATE mochi_record SET deleted_time = ${nowExpr}, version = version + 1 WHERE id = ${sqlValue(op.record_id)};`,
+          `DELETE FROM mochi_record_fts WHERE record_id = ${sqlValue(op.record_id)};`
         );
       }
     }

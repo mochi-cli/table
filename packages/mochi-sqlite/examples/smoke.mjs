@@ -24,6 +24,27 @@ const undo = repo.undoLastBatch();
 const afterUndo = repo.getRecord(record.id);
 const redo = repo.redoLastBatch();
 const afterRedo = repo.getRecord(record.id);
+const searchIndex = repo.rebuildSearchIndex(table.id);
+const attachment = repo.createAttachment({
+  path: '/tmp/mochi-table-smoke.txt',
+  name: 'mochi-table-smoke.txt',
+  mimetype: 'text/plain',
+  size: 0,
+});
+const attachmentRef = repo.attachToRecord({
+  attachmentId: attachment.id,
+  tableId: table.id,
+  recordId: record.id,
+  fieldId: phone.id,
+});
+const computedJob = repo.enqueueComputedJob({
+  tableId: table.id,
+  recordId: record.id,
+  fieldId: phone.id,
+  payload: { reason: 'smoke' },
+});
+const claimedJob = repo.claimNextComputedJob();
+const completedJob = repo.completeComputedJob(claimedJob.id);
 
 console.log(
   JSON.stringify(
@@ -42,6 +63,13 @@ console.log(
       afterUndo,
       redo,
       afterRedo,
+      searchIndex,
+      attachment,
+      attachmentRef,
+      recordAttachments: repo.listRecordAttachments(record.id),
+      computedJob,
+      claimedJob,
+      completedJob,
     },
     null,
     2

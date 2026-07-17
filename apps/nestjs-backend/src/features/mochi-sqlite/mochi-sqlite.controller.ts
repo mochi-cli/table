@@ -142,6 +142,11 @@ export class MochiSqliteController {
     });
   }
 
+  @Post('tables/:tableId/search/rebuild')
+  rebuildSearchIndex(@Param('tableId') tableId: string) {
+    return this.mochiSqliteService.rebuildSearchIndex(tableId);
+  }
+
   @Post('tables/:tableId/records')
   createRecord(
     @Param('tableId') tableId: string,
@@ -171,6 +176,118 @@ export class MochiSqliteController {
   @Post('records/:recordId/delete')
   deleteRecord(@Param('recordId') recordId: string) {
     return this.mochiSqliteService.deleteRecord(recordId);
+  }
+
+  @Get('records/:recordId/attachments')
+  listRecordAttachments(@Param('recordId') recordId: string) {
+    return this.mochiSqliteService.listRecordAttachments(recordId);
+  }
+
+  @Post('records/:recordId/attachments')
+  attachToRecord(
+    @Param('recordId') recordId: string,
+    @Body() body: { attachmentId: string; tableId: string; fieldId: string }
+  ) {
+    return this.mochiSqliteService.attachToRecord({ ...body, recordId });
+  }
+
+  @Get('trash')
+  listTrash() {
+    return this.mochiSqliteService.listTrash();
+  }
+
+  @Post('trash/:trashId/restore')
+  restoreTrash(@Param('trashId') trashId: string) {
+    return this.mochiSqliteService.restoreTrash(trashId);
+  }
+
+  @Get('attachments')
+  listAttachments() {
+    return this.mochiSqliteService.listAttachments();
+  }
+
+  @Post('attachments')
+  createAttachment(
+    @Body()
+    body: {
+      token?: string;
+      name?: string;
+      hash?: string;
+      size?: number;
+      mimetype?: string;
+      path: string;
+      width?: number;
+      height?: number;
+      thumbnailPath?: string;
+    }
+  ) {
+    return this.mochiSqliteService.createAttachment(body);
+  }
+
+  @Get('attachments/:attachmentId')
+  getAttachment(@Param('attachmentId') attachmentId: string) {
+    return this.mochiSqliteService.getAttachment(attachmentId);
+  }
+
+  @Delete('attachments/:attachmentId')
+  deleteAttachment(@Param('attachmentId') attachmentId: string) {
+    return this.mochiSqliteService.deleteAttachment(attachmentId);
+  }
+
+  @Get('imports')
+  listImportSources() {
+    return this.mochiSqliteService.listImportSources();
+  }
+
+  @Post('imports/sqlite')
+  importSqliteDatabase(
+    @Body()
+    body: {
+      path: string;
+      baseId?: string;
+      baseName?: string;
+      spaceId?: string;
+      profileId?: string;
+      tables?: string[];
+      tableNamePrefix?: string;
+      limit?: number;
+    }
+  ) {
+    return this.mochiSqliteService.importSqliteDatabase(body);
+  }
+
+  @Get('computed/jobs')
+  listComputedJobs(@Query('status') status?: string) {
+    return this.mochiSqliteService.listComputedJobs(status);
+  }
+
+  @Post('computed/jobs')
+  enqueueComputedJob(
+    @Body()
+    body: {
+      tableId: string;
+      recordId?: string;
+      fieldId?: string;
+      jobType?: string;
+      payload?: unknown;
+    }
+  ) {
+    return this.mochiSqliteService.enqueueComputedJob(body);
+  }
+
+  @Post('computed/jobs/claim')
+  claimNextComputedJob() {
+    return this.mochiSqliteService.claimNextComputedJob();
+  }
+
+  @Post('computed/jobs/:jobId/complete')
+  completeComputedJob(@Param('jobId') jobId: string) {
+    return this.mochiSqliteService.completeComputedJob(jobId);
+  }
+
+  @Post('computed/jobs/:jobId/fail')
+  failComputedJob(@Param('jobId') jobId: string, @Body() body: { error?: string }) {
+    return this.mochiSqliteService.failComputedJob(jobId, body?.error);
   }
 
   @Post('undo')

@@ -65,10 +65,56 @@ type MochiRepository = {
       sorts?: unknown[];
     }
   ) => unknown[];
+  rebuildSearchIndex: (tableId: string) => unknown;
   createRecord: (input: { tableId: string; fields?: JsonRecord }) => unknown;
   getRecord: (id: string) => unknown;
   updateRecord: (id: string, patch: { fields?: JsonRecord }) => unknown;
   deleteRecord: (id: string) => unknown;
+  listTrash: () => unknown[];
+  restoreTrash: (id: string) => unknown;
+  createAttachment: (input: {
+    token?: string;
+    name?: string;
+    hash?: string;
+    size?: number;
+    mimetype?: string;
+    path: string;
+    width?: number;
+    height?: number;
+    thumbnailPath?: string;
+  }) => unknown;
+  getAttachment: (id: string) => unknown;
+  listAttachments: () => unknown[];
+  attachToRecord: (input: {
+    attachmentId: string;
+    tableId: string;
+    recordId: string;
+    fieldId: string;
+  }) => unknown;
+  listRecordAttachments: (recordId: string) => unknown[];
+  deleteAttachment: (id: string) => unknown;
+  listImportSources: () => unknown[];
+  importSqliteDatabase: (input: {
+    path: string;
+    baseId?: string;
+    baseName?: string;
+    spaceId?: string;
+    profileId?: string;
+    tables?: string[];
+    tableNamePrefix?: string;
+    limit?: number;
+  }) => unknown;
+  enqueueComputedJob: (input: {
+    tableId: string;
+    recordId?: string;
+    fieldId?: string;
+    jobType?: string;
+    payload?: unknown;
+  }) => unknown;
+  listComputedJobs: (status?: string) => unknown[];
+  claimNextComputedJob: () => unknown;
+  completeComputedJob: (id: string) => unknown;
+  failComputedJob: (id: string, error?: string) => unknown;
   undoLastBatch: () => unknown;
   redoLastBatch: () => unknown;
 };
@@ -189,6 +235,10 @@ export class MochiSqliteService {
     return this.repository.listRecords(tableId, options);
   }
 
+  rebuildSearchIndex(tableId: string) {
+    return this.repository.rebuildSearchIndex(tableId);
+  }
+
   createRecord(input: { tableId: string; fields?: JsonRecord }) {
     return this.repository.createRecord(input);
   }
@@ -203,6 +253,91 @@ export class MochiSqliteService {
 
   deleteRecord(id: string) {
     return this.repository.deleteRecord(id);
+  }
+
+  listTrash() {
+    return this.repository.listTrash();
+  }
+
+  restoreTrash(id: string) {
+    return this.repository.restoreTrash(id);
+  }
+
+  createAttachment(input: {
+    token?: string;
+    name?: string;
+    hash?: string;
+    size?: number;
+    mimetype?: string;
+    path: string;
+    width?: number;
+    height?: number;
+    thumbnailPath?: string;
+  }) {
+    return this.repository.createAttachment(input);
+  }
+
+  getAttachment(id: string) {
+    return this.repository.getAttachment(id);
+  }
+
+  listAttachments() {
+    return this.repository.listAttachments();
+  }
+
+  attachToRecord(input: { attachmentId: string; tableId: string; recordId: string; fieldId: string }) {
+    return this.repository.attachToRecord(input);
+  }
+
+  listRecordAttachments(recordId: string) {
+    return this.repository.listRecordAttachments(recordId);
+  }
+
+  deleteAttachment(id: string) {
+    return this.repository.deleteAttachment(id);
+  }
+
+  listImportSources() {
+    return this.repository.listImportSources();
+  }
+
+  importSqliteDatabase(input: {
+    path: string;
+    baseId?: string;
+    baseName?: string;
+    spaceId?: string;
+    profileId?: string;
+    tables?: string[];
+    tableNamePrefix?: string;
+    limit?: number;
+  }) {
+    return this.repository.importSqliteDatabase(input);
+  }
+
+  enqueueComputedJob(input: {
+    tableId: string;
+    recordId?: string;
+    fieldId?: string;
+    jobType?: string;
+    payload?: unknown;
+  }) {
+    return this.repository.enqueueComputedJob(input);
+  }
+
+  listComputedJobs(status?: string) {
+    return this.repository.listComputedJobs(status);
+  }
+
+  claimNextComputedJob() {
+    return this.repository.claimNextComputedJob();
+  }
+
+  completeComputedJob(id: string) {
+    return this.repository.completeComputedJob(id);
+  }
+
+  failComputedJob(id: string, error?: string) {
+    return this.repository.failComputedJob(id, error);
   }
 
   undo() {
