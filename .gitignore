@@ -79,3 +79,6 @@ pnpm-debug.log*
 # LocalStorage assets
 
 **/.assets
+
+# Mochi local SQLite runtime data
+apps/nestjs-backend/data/

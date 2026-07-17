@@ -35,6 +35,7 @@
     "clean": "rimraf ./out ./coverage ./main ./dist ./tsconfig.tsbuildinfo ./node_modules/.cache .webpack-cache",
     "dev": "nest start --webpackPath ./webpack.dev.js -w",
     "dev:swc": "nest start --webpackPath ./webpack.swc.js -w",
+    "mochi:dev": "nest start --webpackPath ./webpack.mochi-local.js --entryFile mochi-local -w",
     "start": "nest start",
     "check-dist": "es-check -v",
     "start-debug": "nest start --webpackPath ./webpack.dev.js --debug -w",

@@ -7,6 +7,7 @@
     "declarationMap": false
   },
   "include": [
+    "src/mochi-local.ts",
     "src/features/auth/decorators/public.decorator.ts",
     "src/features/mochi-sqlite/**/*.ts",
     "../../packages/mochi-sqlite/src/index.d.ts"
