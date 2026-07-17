@@ -23,18 +23,24 @@ When enabled:
 This is intentionally a local-only bypass. The upstream auth flow still exists
 and remains the default when the flags are not set.
 
-## SQLite profile data
+## SQLite storage direction
 
-Teable's primary table engine is still PostgreSQL. SQLite should be treated as an
-external Mochi profile/workspace source at this stage, not as a drop-in
-replacement for Teable's meta/data databases.
+Teable's primary table engine is still PostgreSQL in the current running app.
+The target SQLite schema for the local-first fork now lives in:
+
+```text
+packages/mochi-sqlite/schema.sql
+```
+
+That schema removes auth/collaboration/OAuth/token persistence and stores table
+records as JSON rows in `mochi_record`.
 
 Recommended next step:
 
-1. Add a small Mochi profile adapter that scans configured SQLite files.
-2. Map each profile/workspace to a Teable base/table.
-3. Import or sync rows into Teable records.
+1. Add a Nest SQLite module.
+2. Route local-mode table APIs to the SQLite module.
+3. Map Mochi profile/workspace SQLite files into `mochi_space`, `mochi_base`,
+   `mochi_table`, `mochi_field`, and `mochi_record`.
 4. Keep the current table UI unchanged.
 
-This path lets Mochi load profile data on demand without rewriting Teable's
-database engine first.
+See `docs/sqlite-port.md` for the migration sequence.
