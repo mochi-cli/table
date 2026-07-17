@@ -15,6 +15,10 @@ interface ITx {
 
 type ITxStoreKey = 'tx' | 'dataTx';
 
+const MOCHI_LOCAL_USER_ID = 'mochi_local_owner';
+const MOCHI_LOCAL_USER_EMAIL = 'local@mochi.table';
+const MOCHI_LOCAL_USER_NAME = 'Mochi Local';
+
 function proxyClient(tx: Prisma.TransactionClient) {
   return new Proxy(tx, {
     get(target, p) {
@@ -161,6 +165,28 @@ class NamedPrismaService
 
   async onModuleInit() {
     await this.$connect();
+
+    if (this.target === 'meta' && process.env.MOCHI_LOCAL_AUTH_DISABLED === 'true') {
+      await this.user.upsert({
+        where: { id: MOCHI_LOCAL_USER_ID },
+        update: {
+          email: MOCHI_LOCAL_USER_EMAIL,
+          name: MOCHI_LOCAL_USER_NAME,
+          isAdmin: true,
+          notifyMeta: '{}',
+          deactivatedTime: null,
+          deletedTime: null,
+          permanentDeletedTime: null,
+        },
+        create: {
+          id: MOCHI_LOCAL_USER_ID,
+          email: MOCHI_LOCAL_USER_EMAIL,
+          name: MOCHI_LOCAL_USER_NAME,
+          isAdmin: true,
+          notifyMeta: '{}',
+        },
+      });
+    }
 
     if (process.env.NODE_ENV === 'production') return;
 

@@ -30,6 +30,10 @@ export const UserNav: React.FC<React.PropsWithChildren> = (props) => {
 
   const loginOutClick = async () => {
     await loginOut();
+    if (process.env.NEXT_PUBLIC_MOCHI_LOCAL_AUTH_DISABLED === 'true') {
+      router.push('/space');
+      return;
+    }
     router.push('/auth/login');
   };
 

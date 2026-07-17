@@ -1,7 +1,14 @@
 import type { ExecutionContext } from '@nestjs/common';
 import { ForbiddenException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { ANONYMOUS_USER_ID, HttpErrorCode, IdPrefix, isAnonymous, type Action } from '@teable/core';
+import {
+  ANONYMOUS_USER_ID,
+  HttpErrorCode,
+  IdPrefix,
+  MOCHI_LOCAL_AUTH_DISABLED,
+  isAnonymous,
+  type Action,
+} from '@teable/core';
 import cookie from 'cookie';
 import { ClsService } from 'nestjs-cls';
 import { CustomHttpException } from '../../../custom.exception';
@@ -660,6 +667,10 @@ export class PermissionGuard {
    *    5.2. by access token if exists
    */
   async canActivate(context: ExecutionContext) {
+    if (MOCHI_LOCAL_AUTH_DISABLED) {
+      return true;
+    }
+
     // public check
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),

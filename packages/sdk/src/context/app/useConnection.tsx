@@ -16,6 +16,9 @@ const shareDbErrorHandler = (error: unknown) => {
   const httpError = new HttpError(error as string, 500);
   const { code, message } = httpError;
   if (code === HttpErrorCode.UNAUTHORIZED) {
+    if (process.env.NEXT_PUBLIC_MOCHI_LOCAL_AUTH_DISABLED === 'true') {
+      return;
+    }
     window.location.href = `/auth/login?redirect=${encodeURIComponent(window.location.href)}`;
     return;
   }

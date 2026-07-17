@@ -137,6 +137,9 @@ const dedupeValidationError = (message: string): boolean => {
 
 const handleStatusRedirect = (status: number): boolean => {
   if (status === 401) {
+    if (process.env.NEXT_PUBLIC_MOCHI_LOCAL_AUTH_DISABLED === 'true') {
+      return false;
+    }
     window.location.href = `/auth/login?redirect=${encodeURIComponent(window.location.href)}`;
     return true;
   }
