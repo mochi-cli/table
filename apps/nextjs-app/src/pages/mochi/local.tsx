@@ -1,4 +1,4 @@
-import type { FormEvent } from 'react';
+import type { FormEvent, KeyboardEvent } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 type Space = {
@@ -21,6 +21,8 @@ type Field = {
   name: string;
   type: string;
   is_primary?: number;
+  is_computed?: number;
+  is_lookup?: number;
 };
 
 type RecordRow = {
@@ -28,6 +30,21 @@ type RecordRow = {
   auto_number?: number;
   fields: Record<string, unknown>;
 };
+
+type EditingCell = {
+  recordId: string;
+  fieldId: string;
+  value: string;
+};
+
+const fieldTypes = [
+  { label: 'Text', type: 'singleLineText', cellValueType: 'string' },
+  { label: 'Number', type: 'number', cellValueType: 'number' },
+  { label: 'Date', type: 'date', cellValueType: 'dateTime' },
+  { label: 'Checkbox', type: 'checkbox', cellValueType: 'boolean' },
+  { label: 'Single select', type: 'singleSelect', cellValueType: 'string' },
+  { label: 'Multiple select', type: 'multipleSelect', cellValueType: 'string' },
+] as const;
 
 const apiBase = process.env.NEXT_PUBLIC_MOCHI_API_BASE_URL ?? '';
 
@@ -52,6 +69,25 @@ const stringifyCell = (value: unknown) => {
   return String(value);
 };
 
+const parseCellInput = (field: Field, value: string): unknown => {
+  const trimmed = value.trim();
+  if (trimmed === '') return null;
+  if (field.type === 'number') {
+    const numberValue = Number(trimmed);
+    return Number.isFinite(numberValue) ? numberValue : null;
+  }
+  if (field.type === 'checkbox') {
+    return ['true', '1', 'yes', 'on', 'checked'].includes(trimmed.toLowerCase());
+  }
+  if (field.type === 'multipleSelect') {
+    return trimmed
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+  return value;
+};
+
 export default function MochiLocalPage() {
   const [spaces, setSpaces] = useState<Space[]>([]);
   const [bases, setBases] = useState<Base[]>([]);
@@ -64,12 +100,21 @@ export default function MochiLocalPage() {
   const [baseName, setBaseName] = useState('Local Base');
   const [tableName, setTableName] = useState('Customers');
   const [fieldName, setFieldName] = useState('Phone');
+  const [fieldType, setFieldType] = useState<(typeof fieldTypes)[number]['type']>('singleLineText');
   const [recordText, setRecordText] = useState('');
   const [importPath, setImportPath] = useState('');
   const [status, setStatus] = useState('Ready');
+  const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
 
   const selectedSpaceId = spaces[0]?.id ?? 'spc_local';
-  const writableFields = useMemo(() => fields.filter((field) => !field.is_primary), [fields]);
+  const writableFields = useMemo(
+    () => fields.filter((field) => !field.is_computed && !field.is_lookup),
+    [fields]
+  );
+  const selectedFieldType = useMemo(
+    () => fieldTypes.find((option) => option.type === fieldType) ?? fieldTypes[0],
+    [fieldType]
+  );
 
   const loadSpaces = useCallback(async () => {
     const nextSpaces = await api<Space[]>('/api/mochi/spaces');
@@ -176,7 +221,11 @@ export default function MochiLocalPage() {
     if (!selectedTableId) return;
     await api<Field>(`/api/mochi/tables/${selectedTableId}/fields`, {
       method: 'POST',
-      body: JSON.stringify({ name: fieldName, type: 'singleLineText', cellValueType: 'string' }),
+      body: JSON.stringify({
+        name: fieldName,
+        type: selectedFieldType.type,
+        cellValueType: selectedFieldType.cellValueType,
+      }),
     });
     setStatus(`Created field ${fieldName}`);
     await loadTableData(selectedTableId);
@@ -193,6 +242,35 @@ export default function MochiLocalPage() {
     });
     setRecordText('');
     setStatus('Created record');
+    await loadTableData(selectedTableId);
+  };
+
+  const saveCell = async (record: RecordRow, field: Field, value: string) => {
+    if (!selectedTableId || field.is_computed || field.is_lookup) return;
+    const nextValue = parseCellInput(field, value);
+    await api<RecordRow>(`/api/mochi/records/${record.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ fields: { [field.id]: nextValue } }),
+    });
+    setEditingCell(null);
+    setStatus(`Saved ${field.name}`);
+    await loadTableData(selectedTableId);
+  };
+
+  const handleCellKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Escape') {
+      setEditingCell(null);
+      return;
+    }
+    if (event.key === 'Enter') {
+      event.currentTarget.blur();
+    }
+  };
+
+  const deleteRecord = async (recordId: string) => {
+    if (!selectedTableId) return;
+    await api(`/api/mochi/records/${recordId}`, { method: 'DELETE' });
+    setStatus('Deleted record');
     await loadTableData(selectedTableId);
   };
 
@@ -307,6 +385,19 @@ export default function MochiLocalPage() {
         <div className="toolbar">
           <form onSubmit={createField}>
             <input value={fieldName} onChange={(event) => setFieldName(event.target.value)} />
+            <select
+              aria-label="Field type"
+              value={fieldType}
+              onChange={(event) =>
+                setFieldType(event.target.value as (typeof fieldTypes)[number]['type'])
+              }
+            >
+              {fieldTypes.map((option) => (
+                <option key={option.type} value={option.type}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
             <button type="submit">Add field</button>
           </form>
           <form onSubmit={createRecord}>
@@ -325,22 +416,68 @@ export default function MochiLocalPage() {
               <tr>
                 <th>#</th>
                 {fields.map((field) => (
-                  <th key={field.id}>{field.name}</th>
+                  <th key={field.id}>
+                    <span>{field.name}</span>
+                    <small>{field.type}</small>
+                  </th>
                 ))}
+                <th className="rowActionHead"> </th>
               </tr>
             </thead>
             <tbody>
               {records.map((record) => (
                 <tr key={record.id}>
                   <td>{record.auto_number ?? record.id.slice(-4)}</td>
-                  {fields.map((field) => (
-                    <td key={field.id}>{stringifyCell(record.fields?.[field.id])}</td>
-                  ))}
+                  {fields.map((field) => {
+                    const isEditing =
+                      editingCell?.recordId === record.id && editingCell.fieldId === field.id;
+                    const rawValue = record.fields?.[field.id];
+                    const value = stringifyCell(rawValue);
+                    const checked =
+                      rawValue === true ||
+                      rawValue === 1 ||
+                      (typeof rawValue === 'string' && rawValue.toLowerCase() === 'true');
+                    const readOnly = Boolean(field.is_computed || field.is_lookup);
+                    return (
+                      <td key={field.id} className={readOnly ? 'readOnlyCell' : undefined}>
+                        {isEditing ? (
+                          <input
+                            autoFocus
+                            className="cellInput"
+                            defaultValue={editingCell.value}
+                            onBlur={(event) =>
+                              saveCell(record, field, event.currentTarget.value).catch((error) =>
+                                setStatus(error.message)
+                              )
+                            }
+                            onKeyDown={handleCellKeyDown}
+                          />
+                        ) : (
+                          <button
+                            className="cellButton"
+                            disabled={readOnly}
+                            type="button"
+                            onDoubleClick={() =>
+                              setEditingCell({ recordId: record.id, fieldId: field.id, value })
+                            }
+                            title={readOnly ? 'Computed field' : 'Double click to edit'}
+                          >
+                            {field.type === 'checkbox' ? (checked ? 'Checked' : '') : value}
+                          </button>
+                        )}
+                      </td>
+                    );
+                  })}
+                  <td className="rowAction">
+                    <button type="button" onClick={() => deleteRecord(record.id)}>
+                      Delete
+                    </button>
+                  </td>
                 </tr>
               ))}
               {records.length === 0 && (
                 <tr>
-                  <td colSpan={fields.length + 1}>No records yet</td>
+                  <td colSpan={fields.length + 2}>No records yet</td>
                 </tr>
               )}
             </tbody>
@@ -505,10 +642,83 @@ export default function MochiLocalPage() {
           font-weight: 800;
         }
 
+        th span,
+        th small {
+          display: block;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        th small {
+          margin-top: 2px;
+          color: #8c806c;
+          font-size: 10px;
+          font-weight: 700;
+        }
+
         td:first-child,
         th:first-child {
           width: 64px;
           color: #776b57;
+        }
+
+        .cellButton {
+          display: block;
+          width: 100%;
+          min-height: 24px;
+          border: 0;
+          border-radius: 0;
+          background: transparent;
+          color: inherit;
+          font-weight: 500;
+          overflow: hidden;
+          padding: 0;
+          text-align: left;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .cellButton:hover:not(:disabled) {
+          background: transparent;
+          color: #1f4c45;
+          text-decoration: underline;
+          text-underline-offset: 3px;
+        }
+
+        .cellButton:disabled {
+          cursor: default;
+          color: #776b57;
+        }
+
+        .cellInput {
+          width: 100%;
+          min-height: 28px;
+          border-color: #1f4c45;
+          background: #ffffff;
+          box-shadow: inset 0 0 0 1px #1f4c45;
+        }
+
+        .readOnlyCell {
+          background: #faf6ed;
+        }
+
+        .rowActionHead,
+        .rowAction {
+          width: 92px;
+          min-width: 92px;
+          text-align: right;
+        }
+
+        .rowAction button {
+          min-height: 28px;
+          border-color: #d7a79b;
+          background: #fff7f4;
+          color: #8f2f20;
+          padding: 0 10px;
+        }
+
+        .rowAction button:hover {
+          background: #f7dfd8;
         }
 
         @media (max-width: 820px) {
