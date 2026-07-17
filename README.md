@@ -89,6 +89,7 @@ Run the SQLite smoke test:
 ```bash
 pnpm -F @mochi/table-sqlite smoke
 pnpm -F @mochi/table-sqlite verify
+pnpm -F @teable/backend mochi:typecheck
 ```
 
 Run the existing backend with the SQLite bridge enabled:
@@ -190,6 +191,7 @@ SQLite import accepts:
 
 - [MOCHI_LOCAL.md](./MOCHI_LOCAL.md)
 - [docs/sqlite-port.md](./docs/sqlite-port.md)
+- [docs/backend-legacy-cleanup.md](./docs/backend-legacy-cleanup.md)
 - [packages/mochi-sqlite/schema.sql](./packages/mochi-sqlite/schema.sql)
 - [packages/mochi-sqlite/src/repository.mjs](./packages/mochi-sqlite/src/repository.mjs)
 
