@@ -1,8 +1,10 @@
 import { Module } from '@nestjs/common';
 import { getMochiSqliteDatabasePath, MOCHI_SQLITE_REPOSITORY } from './mochi-sqlite.constants';
+import { MochiSqliteController } from './mochi-sqlite.controller';
 import { MochiSqliteService } from './mochi-sqlite.service';
 
 @Module({
+  controllers: [MochiSqliteController],
   providers: [
     {
       provide: MOCHI_SQLITE_REPOSITORY,

@@ -25,10 +25,11 @@ Implemented:
 - basic field type conversion
 - record operation log with undo/redo
 - conditional Nest bridge module for SQLite
+- local REST endpoints under `/api/mochi`
 
 Not finished yet:
 
-- routing the existing Teable API/controllers fully to SQLite
+- mapping the existing Teable API/controllers fully to SQLite
 - connecting the existing grid UI directly to the SQLite repository
 - Mochi profile/workspace import
 - lookup/rollup resolver
@@ -97,6 +98,41 @@ pnpm -F @teable/backend dev
 The old Postgres-backed Teable runtime still exists while the API migration is
 in progress. The target is to remove that dependency as the SQLite API adapter
 replaces the remaining paths.
+
+## Local SQLite API
+
+When `MOCHI_SQLITE_ENABLED=true`, the backend exposes a local no-auth API:
+
+```text
+GET  /api/mochi/spaces
+POST /api/mochi/spaces
+GET  /api/mochi/bases?spaceId=spc_local
+POST /api/mochi/bases
+GET  /api/mochi/bases/:baseId/tables
+POST /api/mochi/bases/:baseId/tables
+GET  /api/mochi/tables/:tableId/fields
+POST /api/mochi/tables/:tableId/fields
+GET  /api/mochi/tables/:tableId/views
+POST /api/mochi/tables/:tableId/views
+GET  /api/mochi/tables/:tableId/records
+POST /api/mochi/tables/:tableId/records
+GET  /api/mochi/records/:recordId
+PATCH /api/mochi/records/:recordId
+DELETE /api/mochi/records/:recordId
+POST /api/mochi/records/:recordId/delete
+POST /api/mochi/undo
+POST /api/mochi/redo
+```
+
+Record list supports query params:
+
+```text
+search=...
+limit=100
+offset=0
+filters=[{"fieldId":"fld_x","operator":"contains","value":"abc"}]
+sorts=[{"fieldId":"fld_x","direction":"asc"}]
+```
 
 ## Useful Files
 
