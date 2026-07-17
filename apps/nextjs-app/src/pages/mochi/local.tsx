@@ -485,7 +485,7 @@ export default function MochiLocalPage() {
         </div>
       </section>
 
-      <style>{`
+      <style jsx>{`
         .mochiLocal {
           display: grid;
           grid-template-columns: 300px minmax(0, 1fr);
@@ -498,7 +498,6 @@ export default function MochiLocalPage() {
             system-ui,
             -apple-system,
             BlinkMacSystemFont,
-            'Segoe UI',
             sans-serif;
         }
 
