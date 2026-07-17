@@ -1,20 +1,22 @@
 {
-  "name": "@teable/teable",
+  "name": "@mochi/table",
   "version": "1.10.0",
   "license": "AGPL-3.0",
   "private": true,
-  "homepage": "https://github.com/teableio/teable",
+  "homepage": "https://github.com/mochi-cli/table",
   "repository": {
     "type": "git",
-    "url": "https://github.com/teableio/teable"
+    "url": "https://github.com/mochi-cli/table"
   },
   "author": {
     "name": "tea artist",
     "url": "https://github.com/tea-artist"
   },
   "keywords": [
-    "teable",
-    "database"
+    "mochi",
+    "sqlite",
+    "table",
+    "local-first"
   ],
   "workspaces": [
     "apps/*",
