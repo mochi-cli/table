@@ -30,6 +30,7 @@ import { IntegrityModule } from './features/integrity/integrity.module';
 import { InvitationModule } from './features/invitation/invitation.module';
 import { MailSenderOpenApiModule } from './features/mail-sender/open-api/mail-sender-open-api.module';
 import { MailSenderMergeModule } from './features/mail-sender/open-api/mail-sender.merge.module';
+import { MochiSqliteModule } from './features/mochi-sqlite/mochi-sqlite.module';
 import { NextModule } from './features/next/next.module';
 import { NotificationModule } from './features/notification/notification.module';
 import { OAuthModule } from './features/oauth/oauth.module';
@@ -64,6 +65,7 @@ export const appModules = {
     MailSenderOpenApiModule,
     MailSenderMergeModule,
     HealthModule,
+    ...(process.env.MOCHI_SQLITE_ENABLED === 'true' ? [MochiSqliteModule] : []),
     NextModule,
     FieldOpenApiModule,
     TemplateOpenApiModule,

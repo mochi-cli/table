@@ -48,8 +48,8 @@ Kept:
 
 ## Adapter migration steps
 
-1. Add a `MochiSqliteModule` to the Nest backend.
-2. Implement services for:
+1. Add a `MochiSqliteModule` to the Nest backend. (started)
+2. Implement services for: (started in `@mochi/table-sqlite`)
    - spaces
    - bases
    - tables
@@ -75,6 +75,17 @@ The first SQLite version should support:
 - grid view
 - create/read/update/delete record
 - import records from Mochi profile SQLite files
+
+Implemented foundation:
+
+- SQLite schema without auth/collaboration tables
+- local repository package: `@mochi/table-sqlite`
+- init script and smoke test
+- CRUD foundation for spaces, bases, tables, fields, views, records
+- application-layer search/filter/sort for records
+- basic field type conversion
+- operation log tables and undo/redo for record create/update/delete
+- conditional Nest bridge module: `MochiSqliteModule`
 
 Later:
 

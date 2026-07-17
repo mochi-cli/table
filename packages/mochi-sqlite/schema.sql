@@ -119,6 +119,32 @@ CREATE TABLE IF NOT EXISTS mochi_record_history (
 CREATE INDEX IF NOT EXISTS idx_mochi_record_history_record
   ON mochi_record_history(table_id, record_id, created_time);
 
+CREATE TABLE IF NOT EXISTS mochi_op_batch (
+  id TEXT PRIMARY KEY,
+  label TEXT NOT NULL,
+  source TEXT NOT NULL DEFAULT 'user',
+  created_time TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  undone_time TEXT,
+  redone_time TEXT
+);
+
+CREATE TABLE IF NOT EXISTS mochi_op (
+  id TEXT PRIMARY KEY,
+  batch_id TEXT NOT NULL,
+  table_id TEXT NOT NULL,
+  record_id TEXT,
+  field_id TEXT,
+  op_type TEXT NOT NULL,
+  before_json TEXT,
+  after_json TEXT,
+  created_time TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  FOREIGN KEY (batch_id) REFERENCES mochi_op_batch(id) ON DELETE CASCADE,
+  FOREIGN KEY (table_id) REFERENCES mochi_table(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_mochi_op_batch_time ON mochi_op_batch(created_time);
+CREATE INDEX IF NOT EXISTS idx_mochi_op_batch_id ON mochi_op(batch_id);
+
 CREATE TABLE IF NOT EXISTS mochi_trash (
   id TEXT PRIMARY KEY,
   resource_type TEXT NOT NULL,
