@@ -80,10 +80,16 @@ const convertValue = (value, type) => {
       return Number.isFinite(numberValue) ? numberValue : null;
     }
     case 'checkbox':
+      if (typeof value === 'string') {
+        const normalized = value.trim().toLocaleLowerCase();
+        if (['false', '0', 'no', 'off'].includes(normalized)) return false;
+        if (['true', '1', 'yes', 'on'].includes(normalized)) return true;
+      }
       return Boolean(value);
     case 'date':
     case 'dateTime': {
       if (typeof value === 'number' || typeof value === 'boolean') return null;
+      if (typeof value === 'string' && !/^\d{4}-\d{2}-\d{2}(?:[T ].*)?$/.test(value.trim())) return null;
       const date = new Date(value);
       return Number.isNaN(date.getTime()) ? null : date.toISOString();
     }
@@ -255,6 +261,7 @@ export class MochiSqliteRepository {
                last_modified_time = ${nowExpr}
            WHERE id = ${sqlValue(record.id)};`
         );
+        statements.push(...this.recordSearchStatements(current.table_id, record.id, fields));
       }
     }
 
@@ -403,8 +410,10 @@ export class MochiSqliteRepository {
           case 'isNotEmpty':
             return value !== null && value !== undefined && value !== '';
           case 'gt':
+            if (value === null || value === undefined || value === '') return false;
             return Number(value) > Number(filter.value);
           case 'lt':
+            if (value === null || value === undefined || value === '') return false;
             return Number(value) < Number(filter.value);
           default:
             return true;

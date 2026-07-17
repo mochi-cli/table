@@ -62,11 +62,15 @@ group, not by mass deletion.
 
 - CRUD: `packages/mochi-sqlite/examples/verify/crud.verify.mjs`
 - Search/filter/sort: `packages/mochi-sqlite/examples/verify/search-filter.verify.mjs`
+  covers FTS updates, empty/not-empty filters, numeric comparisons, combined
+  filters, sort order, pagination, delete, and restore.
 - Undo/redo/trash: `packages/mochi-sqlite/examples/verify/undo-redo-trash.verify.mjs`
 - Lookup/rollup: `packages/mochi-sqlite/examples/verify/lookup-rollup.verify.mjs`
 - SQLite import: `packages/mochi-sqlite/examples/verify/import-sqlite.verify.mjs`
 - Computed jobs: `packages/mochi-sqlite/examples/verify/computed-job.verify.mjs`
 - Field conversion: `packages/mochi-sqlite/examples/verify/field-conversion.verify.mjs`
+  covers text/number/date/select/checkbox conversion and FTS refresh after type
+  changes.
 
 ## Cleanup Sequence
 

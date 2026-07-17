@@ -67,6 +67,7 @@ TypeScript evaluator or a later SQLite expression adapter.
 node packages/mochi-sqlite/examples/verify.mjs
 ```
 
-The verification script asserts CRUD, FTS search, undo/redo, lookup resolution,
-trash restore, SQLite import, computed job state transitions, and field type
-conversion. Individual cases live in `examples/verify/*.verify.mjs`.
+The verification script asserts CRUD, FTS search, JSON-backed filters, sort and
+pagination, undo/redo, lookup resolution, trash restore, SQLite import, computed
+job state transitions, and field type conversion. Individual cases live in
+`examples/verify/*.verify.mjs`.
