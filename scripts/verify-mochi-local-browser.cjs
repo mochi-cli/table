@@ -54,10 +54,12 @@ async function discoverTarget(origin) {
     getJson(`${origin}/api/table/${table.id}/view`),
     getJson(`${origin}/api/table/${table.id}/field`),
   ]);
+  const records = await getJson(`${origin}/api/table/${table.id}/record?take=1`);
   const view = views[0];
   const field = fields[0];
-  if (!view?.id || !field?.id) {
-    throw new Error(`Table ${table.id} needs at least one view and one field.`);
+  const record = records.records?.[0];
+  if (!view?.id || !field?.id || !record?.id) {
+    throw new Error(`Table ${table.id} needs at least one view, field, and record.`);
   }
 
   return {
@@ -65,6 +67,7 @@ async function discoverTarget(origin) {
     tableId: table.id,
     viewId: view.id,
     fieldId: field.id,
+    recordId: record.id,
   };
 }
 
@@ -125,6 +128,7 @@ async function main() {
   const appOrigin = process.env.MOCHI_APP_ORIGIN ?? 'http://127.0.0.1:3000';
   const target = await discoverTarget(backendOrigin);
   const { tableId, viewId, fieldId } = target;
+  const { recordId } = target;
   const marker = `browser-${Date.now()}`;
   let browser;
   let smokeField;
@@ -234,6 +238,41 @@ async function main() {
       ok:
         page.url().includes(`/mochi/local`) &&
         (await page.getByRole('button', { name: /Filter by/ }).isVisible()),
+    });
+
+    await page.goto(
+      `${appOrigin}/mochi/local?tableId=${tableId}&viewId=${viewId}&recordId=${recordId}`,
+      {
+        waitUntil: 'domcontentloaded',
+      }
+    );
+    await page.getByRole('dialog').waitFor();
+    await wait(1000);
+    const expandedRecordState = await page.getByRole('dialog').evaluate((dialog) => ({
+      inputCount: dialog.querySelectorAll('input,textarea,[contenteditable="true"]').length,
+      text: dialog.textContent ?? '',
+    }));
+    results.push({
+      name: 'record-expand-modal-inputs',
+      ok:
+        page.url().includes(`recordId=${recordId}`) &&
+        expandedRecordState.inputCount > 0 &&
+        expandedRecordState.text.length > 0,
+      inputCount: expandedRecordState.inputCount,
+    });
+
+    const beforeCloseTitle = await page.title();
+    await page.evaluate(() => {
+      window.__mochiRecordExpandMarker = 'alive';
+    });
+    await page.getByRole('dialog').getByRole('button').last().click();
+    await page.getByRole('dialog').waitFor({ state: 'hidden', timeout: 5000 });
+    const closeSamePage =
+      (await page.title()) === beforeCloseTitle &&
+      (await page.evaluate(() => window.__mochiRecordExpandMarker)) === 'alive';
+    results.push({
+      name: 'record-expand-close-no-reload',
+      ok: closeSamePage && !page.url().includes('recordId='),
     });
 
     const result = {

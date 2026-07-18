@@ -83,8 +83,9 @@ Kept:
   Playwright while `make dev.backend` and `make dev.app` are running. It opens
   `/mochi/local`, verifies Filter/Sort/Group popovers do not navigate or reload
   the page, opens the field header menu, resizes a column, reorders a temporary
-  column, checks persistence through the local Teable-compatible API, and then
-  deletes the temporary field.
+  column, checks record expand modal inputs and close-without-reload behavior,
+  checks persistence through the local Teable-compatible API, and then deletes
+  the temporary field.
 - `make mochi.browser-workflows.verify` checks browser-backed local workflows
   for view create/rename/duplicate/delete, cell selection copy/paste/clear,
   selected-row duplicate/delete, record history panel rendering, table history
