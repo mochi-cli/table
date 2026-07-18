@@ -15,6 +15,8 @@ const createRepository = () => ({
     fields: patch.fields,
   })),
   deleteRecord: vi.fn((id) => ({ id, table_id: 'tbl_1' })),
+  getView: vi.fn((id) => ({ id, table_id: 'tbl_1' })),
+  updateView: vi.fn((id, patch) => ({ id, table_id: 'tbl_1', ...patch })),
 });
 
 describe('MochiSqliteService realtime events', () => {
@@ -57,5 +59,27 @@ describe('MochiSqliteService realtime events', () => {
         payload: { tableId: 'tbl_1', recordId: 'rec_1' },
       })
     );
+  });
+
+  it('updates view metadata with the table scope used by local realtime', () => {
+    const repository = createRepository();
+    const service = new MochiSqliteService(repository as never);
+
+    expect(
+      service.updateView(
+        'viw_1',
+        {
+          filter: { filterSet: [{ fieldId: 'fld_1', operator: 'contains', value: 'A' }] },
+        },
+        'tbl_1'
+      )
+    ).toMatchObject({
+      id: 'viw_1',
+      table_id: 'tbl_1',
+    });
+
+    expect(repository.updateView).toHaveBeenCalledWith('viw_1', {
+      filter: { filterSet: [{ fieldId: 'fld_1', operator: 'contains', value: 'A' }] },
+    });
   });
 });

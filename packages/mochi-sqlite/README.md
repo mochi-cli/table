@@ -56,10 +56,12 @@ for Mochi/AI to import arbitrary profile/workspace data.
 - trash/restore for deleted records
 - attachment metadata and record attachment references
 - local computed job queue scaffold
+- local formula resolver for arithmetic, string literals, field references, and
+  `CONCATENATE`/`LOWER`/`UPPER`/`LEN`
 
-The formula SQL engine is intentionally not implemented here yet. Computed jobs
-can already be queued and claimed, but formula execution still needs a dedicated
-TypeScript evaluator or a later SQLite expression adapter.
+The formula SQL engine is intentionally not implemented here yet. Formula fields
+can be refreshed through `resolveFormulas`, while computed jobs can already be
+queued and claimed for later worker integration.
 
 ## Verification
 
@@ -68,6 +70,6 @@ node packages/mochi-sqlite/examples/verify.mjs
 ```
 
 The verification script asserts CRUD, FTS search, JSON-backed filters, sort and
-pagination, undo/redo, lookup resolution, trash restore, SQLite import, computed
-job state transitions, and field type conversion. Individual cases live in
+pagination, undo/redo, lookup resolution, formula resolution, trash restore,
+SQLite import, computed job state transitions, and field type conversion. Individual cases live in
 `examples/verify/*.verify.mjs`.

@@ -325,6 +325,17 @@ const normalizeColumnMeta = (columnMeta: unknown): IViewVo['columnMeta'] => {
   }, {});
 };
 
+const normalizeSort = (sort: unknown): IViewVo['sort'] => {
+  if (!sort) return undefined;
+  if (Array.isArray(sort)) return { sortObjs: sort } as IViewVo['sort'];
+  const sortValue = sort as { sortObjs?: unknown };
+  if (Array.isArray(sortValue.sortObjs)) return sort as IViewVo['sort'];
+  return undefined;
+};
+
+const normalizeGroup = (group: unknown): IViewVo['group'] =>
+  Array.isArray(group) ? (group as IViewVo['group']) : undefined;
+
 const toTeableView = (view: LocalView | null | undefined): IViewVo | null => {
   if (!view) return null;
   return {
@@ -336,8 +347,8 @@ const toTeableView = (view: LocalView | null | undefined): IViewVo | null => {
     options: (view.options ?? {}) as IViewVo['options'],
     columnMeta: normalizeColumnMeta(view.columnMeta),
     filter: view.filter as IViewVo['filter'],
-    sort: view.sort as IViewVo['sort'],
-    group: view.group as IViewVo['group'],
+    sort: normalizeSort(view.sort),
+    group: normalizeGroup(view.group),
     isLocked: false,
     createdBy: 'usr_mochi_local',
     createdTime: view.created_time ?? new Date(0).toISOString(),
@@ -568,50 +579,98 @@ export class MochiTeableApiController {
   }
 
   @Put(':tableId/view/:viewId/name')
-  updateViewName(@Param('viewId') viewId: string, @Body() body: ViewBody): IViewVo | null {
-    const updated = this.mochiSqliteService.updateView(viewId, {
-      name: body.name,
-    }) as LocalView | null;
+  updateViewName(
+    @Param('tableId') tableId: string,
+    @Param('viewId') viewId: string,
+    @Body() body: ViewBody
+  ): IViewVo | null {
+    const updated = this.mochiSqliteService.updateView(
+      viewId,
+      {
+        name: body.name,
+      },
+      tableId
+    ) as LocalView | null;
     return toTeableView(updated);
   }
 
   @Put(':tableId/view/:viewId/filter')
-  updateViewFilter(@Param('viewId') viewId: string, @Body() body: ViewBody): IViewVo | null {
-    const updated = this.mochiSqliteService.updateView(viewId, {
-      filter: body.filter ?? null,
-    }) as LocalView | null;
+  updateViewFilter(
+    @Param('tableId') tableId: string,
+    @Param('viewId') viewId: string,
+    @Body() body: ViewBody
+  ): IViewVo | null {
+    const updated = this.mochiSqliteService.updateView(
+      viewId,
+      {
+        filter: body.filter ?? null,
+      },
+      tableId
+    ) as LocalView | null;
     return toTeableView(updated);
   }
 
   @Put(':tableId/view/:viewId/sort')
-  updateViewSort(@Param('viewId') viewId: string, @Body() body: ViewBody): IViewVo | null {
-    const updated = this.mochiSqliteService.updateView(viewId, {
-      sort: body.sort ?? null,
-    }) as LocalView | null;
+  updateViewSort(
+    @Param('tableId') tableId: string,
+    @Param('viewId') viewId: string,
+    @Body() body: ViewBody
+  ): IViewVo | null {
+    const updated = this.mochiSqliteService.updateView(
+      viewId,
+      {
+        sort: body.sort ?? null,
+      },
+      tableId
+    ) as LocalView | null;
     return toTeableView(updated);
   }
 
   @Put(':tableId/view/:viewId/group')
-  updateViewGroup(@Param('viewId') viewId: string, @Body() body: ViewBody): IViewVo | null {
-    const updated = this.mochiSqliteService.updateView(viewId, {
-      group: body.group ?? null,
-    }) as LocalView | null;
+  updateViewGroup(
+    @Param('tableId') tableId: string,
+    @Param('viewId') viewId: string,
+    @Body() body: ViewBody
+  ): IViewVo | null {
+    const updated = this.mochiSqliteService.updateView(
+      viewId,
+      {
+        group: body.group ?? null,
+      },
+      tableId
+    ) as LocalView | null;
     return toTeableView(updated);
   }
 
   @Put(':tableId/view/:viewId/column-meta')
-  updateViewColumnMeta(@Param('viewId') viewId: string, @Body() body: ViewBody): IViewVo | null {
-    const updated = this.mochiSqliteService.updateView(viewId, {
-      columnMeta: body.columnMeta ?? body,
-    }) as LocalView | null;
+  updateViewColumnMeta(
+    @Param('tableId') tableId: string,
+    @Param('viewId') viewId: string,
+    @Body() body: ViewBody
+  ): IViewVo | null {
+    const updated = this.mochiSqliteService.updateView(
+      viewId,
+      {
+        columnMeta: body.columnMeta ?? body,
+      },
+      tableId
+    ) as LocalView | null;
     return toTeableView(updated);
   }
 
   @Patch(':tableId/view/:viewId/options')
-  updateViewOptions(@Param('viewId') viewId: string, @Body() body: ViewBody): IViewVo | null {
-    const updated = this.mochiSqliteService.updateView(viewId, {
-      options: body.options ?? {},
-    }) as LocalView | null;
+  updateViewOptions(
+    @Param('tableId') tableId: string,
+    @Param('viewId') viewId: string,
+    @Body() body: ViewBody
+  ): IViewVo | null {
+    const updated = this.mochiSqliteService.updateView(
+      viewId,
+      {
+        options: body.options ?? {},
+      },
+      tableId
+    ) as LocalView | null;
     return toTeableView(updated);
   }
 

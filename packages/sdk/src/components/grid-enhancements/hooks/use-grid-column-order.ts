@@ -26,7 +26,7 @@ export function useGridColumnOrder() {
 
       const newOrders = reorder(colIndexCollection.length, newColIndex, fields.length, (index) => {
         const fieldId = fields[index]?.id;
-        return view?.columnMeta[fieldId].order;
+        return view?.columnMeta?.[fieldId]?.order ?? index;
       });
 
       view.updateColumnMeta(

@@ -92,6 +92,7 @@ type MochiRepository = {
   updateRecord: (id: string, patch: { fields?: JsonRecord; order?: unknown }) => unknown;
   deleteRecord: (id: string) => unknown;
   resolveLookupRollup: (tableId: string, options?: { recordId?: string }) => unknown;
+  resolveFormulas: (tableId: string, options?: { recordId?: string }) => unknown;
   listTrash: () => unknown[];
   restoreTrash: (id: string) => unknown;
   createAttachment: (input: {
@@ -194,7 +195,10 @@ export class MochiSqliteService {
 
   private emitMochiRecordDelete(tableId: string, recordId: string) {
     publishMochiLocalActionTrigger(tableId, [
-      { actionKey: 'deleteRecord', payload: { tableId, recordIds: [recordId], skipRealtime: true } },
+      {
+        actionKey: 'deleteRecord',
+        payload: { tableId, recordIds: [recordId], skipRealtime: true },
+      },
     ]);
     void this.eventEmitter?.emitAsync(Events.TABLE_RECORD_DELETE, {
       name: Events.TABLE_RECORD_DELETE,
@@ -206,6 +210,20 @@ export class MochiSqliteService {
         entry: { type: 'mochi-sqlite', id: tableId },
       },
     });
+  }
+
+  private emitMochiViewUpdate(tableId: string, viewId: string, updatedProperties: string[]) {
+    publishMochiLocalActionTrigger(tableId, [
+      {
+        actionKey: 'setView',
+        payload: {
+          tableId,
+          viewId,
+          updatedProperties,
+          skipRealtime: true,
+        },
+      },
+    ]);
   }
 
   listSpaces() {
@@ -329,8 +347,14 @@ export class MochiSqliteService {
     return this.repository.getView(id);
   }
 
-  updateView(id: string, patch: JsonRecord) {
-    return this.repository.updateView(id, patch);
+  updateView(id: string, patch: JsonRecord, tableIdOverride?: string) {
+    const before = this.repository.getView(id) as { table_id?: string } | null;
+    const updated = this.repository.updateView(id, patch) as { table_id?: string } | null;
+    const tableId = tableIdOverride ?? updated?.table_id ?? before?.table_id;
+    if (tableId && Object.keys(patch).length) {
+      this.emitMochiViewUpdate(tableId, id, Object.keys(patch));
+    }
+    return updated;
   }
 
   deleteView(id: string) {
@@ -390,6 +414,10 @@ export class MochiSqliteService {
 
   resolveLookupRollup(tableId: string, options?: { recordId?: string }) {
     return this.repository.resolveLookupRollup(tableId, options);
+  }
+
+  resolveFormulas(tableId: string, options?: { recordId?: string }) {
+    return this.repository.resolveFormulas(tableId, options);
   }
 
   listTrash() {

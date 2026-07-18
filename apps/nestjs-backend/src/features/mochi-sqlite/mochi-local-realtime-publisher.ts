@@ -1,5 +1,5 @@
 type ActionTriggerData = {
-  actionKey: 'addRecord' | 'setRecord' | 'deleteRecord';
+  actionKey: 'addRecord' | 'setRecord' | 'deleteRecord' | 'setView';
   payload?: Record<string, unknown>;
 };
 

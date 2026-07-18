@@ -23,6 +23,7 @@ const createService = () =>
     listRecords: vi.fn(() => []),
     rebuildSearchIndex: vi.fn((tableId) => ({ tableId })),
     resolveLookupRollup: vi.fn((tableId, options) => ({ tableId, ...options })),
+    resolveFormulas: vi.fn((tableId, options) => ({ tableId, ...options })),
     createRecord: vi.fn((input) => ({ id: 'rec_test', ...input })),
     getRecord: vi.fn((id) => ({ id })),
     updateRecord: vi.fn((id, patch) => ({ id, ...patch })),
@@ -103,6 +104,10 @@ describe('MochiSqliteController', () => {
     const controller = new MochiSqliteController(service);
 
     expect(controller.resolveLookupRollup('tbl_1', { recordId: 'rec_1' })).toMatchObject({
+      tableId: 'tbl_1',
+      recordId: 'rec_1',
+    });
+    expect(controller.resolveFormulas('tbl_1', { recordId: 'rec_1' })).toMatchObject({
       tableId: 'tbl_1',
       recordId: 'rec_1',
     });

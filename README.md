@@ -32,16 +32,19 @@ Implemented:
 - trash/restore for deleted records
 - SQLite-backed computed job queue scaffold
 - lookup/rollup resolver foundation
+- basic formula resolver foundation
 - local grid compatibility endpoints for field/view/record/table duplication
 - local grid copy/paste/clear/delete/duplicate selection helpers
+- local SockJS/ShareDB realtime bridge for record updates and view filter/sort/group/options updates
+- SQLite-only local backend entrypoint through `make dev.backend`
 
 Not finished yet:
 
 - mapping the existing Teable API/controllers fully to SQLite
-- connecting the existing grid UI directly to the SQLite repository
+- full parity with every upstream Teable collaboration/comment/share/admin path
 - polished Mochi profile/workspace picker UI
 - replacing the legacy CSV/Excel import UI with a local SQLite-friendly import flow
-- advanced formulas
+- advanced formulas beyond the current local evaluator
 
 ## Repository Shape
 
@@ -96,17 +99,18 @@ pnpm -F @teable/backend typecheck
 pnpm -F @teable/backend test
 ```
 
-Run the existing backend with the SQLite bridge enabled:
+Run the local SQLite backend:
 
 ```bash
-MOCHI_LOCAL_AUTH_DISABLED=true \
-NEXT_PUBLIC_MOCHI_LOCAL_AUTH_DISABLED=true \
-MOCHI_SQLITE_ENABLED=true \
-MOCHI_SQLITE_DATABASE_PATH=./data/mochi-table.sqlite \
-BACKEND_CACHE_PROVIDER=redis \
-BACKEND_CACHE_REDIS_URI=redis://127.0.0.1:6379/0 \
-pnpm -F @teable/backend dev
+make sqlite.init
+make dev.backend
 ```
+
+`make dev.backend` uses the backend's `mochi:dev` entrypoint. This is the
+SQLite-only local server; it does not require a local Postgres or Redis service.
+The default SQLite path is absolute from the repository root
+(`data/mochi-table.sqlite`) so `make sqlite.init`, `make dev.backend`, and the
+verify scripts all use the same database.
 
 Run the local workspace UI in another terminal:
 
@@ -126,15 +130,117 @@ bridge is kept so grid edits can refresh through the existing socket path. It
 can create bases, tables, fields, views, and records; edit grid cells; run
 copy/paste/clear/delete/duplicate selection helpers; duplicate fields, views,
 records, and tables; search records; rebuild FTS; resolve lookup/rollup values;
-import SQLite files through the local API; and run undo/redo.
+resolve basic formulas; import SQLite files through the local API; and run
+undo/redo.
+
+Verify the local view/header realtime path while `make dev.backend` is running:
+
+```bash
+make mochi.realtime.verify
+```
+
+The command discovers a local table/view/field, updates view name, filter, sort,
+group, column meta, and options through the Teable-compatible API, and asserts
+that the socket receives `setView` action triggers with the matching
+`updatedProperties`. This is the local equivalent of Teable's action-trigger
+refresh path and avoids the old browser event refetch fallback for view header
+updates.
+
+With the backend still running, table metadata can be checked separately:
+
+```bash
+make mochi.table-metadata.verify
+```
+
+The script updates table name, icon, and description through the
+Teable-compatible metadata endpoints, confirms the table API and sidebar node
+tree reflect the new name/icon, then restores the original metadata.
+
+Field header actions can be checked with:
+
+```bash
+make mochi.field-header.verify
+```
+
+That verifier creates a temporary field, renames it, runs the convert endpoint,
+duplicates it, deletes both temporary fields, and confirms they are gone.
+
+View lifecycle actions can be checked with:
+
+```bash
+make mochi.view-lifecycle.verify
+```
+
+That verifier creates a temporary grid view, duplicates it, deletes both
+temporary views, and confirms they are gone.
+
+Selection actions can be checked with:
+
+```bash
+make mochi.selection.verify
+```
+
+That verifier creates a temporary record and covers preview/copy, paste,
+clear, stream paste, stream duplicate, stream delete, and delete-by-id before
+cleaning the temporary records.
+
+To run the full non-browser local check suite while `make dev.backend` is
+running:
+
+```bash
+make mochi.local.verify
+```
+
+To remove known smoke-test tables/views from the local DB:
+
+```bash
+make mochi.cleanup
+```
 
 The legacy Teable CSV/Excel import menu is disabled in local mode until that
 file pipeline is ported. Local SQLite imports are available through
 `POST /api/mochi/imports/sqlite`.
 
-The old Postgres-backed Teable runtime still exists while the API migration is
-in progress. The target is to remove that dependency as the SQLite API adapter
-replaces the remaining paths.
+The old Postgres-backed Teable runtime still exists in the repository for
+non-local paths while the API migration is in progress. The local backend
+entrypoint used by `make dev.backend` avoids that runtime for day-to-day Mochi
+SQLite development.
+
+## Local Parity Checklist
+
+Current local-mode coverage:
+
+- Header/view update realtime: filter, sort, group, column meta, options, and
+  view name updates go through the table-scoped `setView` path.
+- Record realtime: create/update/delete publish local action triggers for the
+  existing grid subscription path.
+- Table metadata: name, icon, and description updates trigger local table
+  refresh handling and can be verified with
+  `make mochi.table-metadata.verify`.
+- Field header actions: create, rename, convert, duplicate, and delete field
+  endpoints are covered by `make mochi.field-header.verify`.
+- View lifecycle actions: create, duplicate, and delete view endpoints are
+  covered by `make mochi.view-lifecycle.verify`.
+- Selection actions: preview/copy, paste, clear, stream paste, stream duplicate,
+  stream delete, and delete-by-id are covered by `make mochi.selection.verify`.
+- Dev runtime: `make dev.backend` boots the SQLite-only backend without
+  Postgres or Redis.
+- Verification: `make mochi.realtime.verify`,
+  `make mochi.table-metadata.verify`, `make mochi.field-header.verify`,
+  `make mochi.view-lifecycle.verify`, `make mochi.selection.verify`, backend
+  Mochi tests, SDK `useInstances` tests, app typecheck,
+  `@mochi/table-sqlite verify`, and the umbrella `make mochi.local.verify`.
+
+Known remaining gaps:
+
+- Browser UI parity still needs a human click-through pass for the full toolbar
+  surface: create/duplicate/delete/rename view, hide/show field, resize/reorder
+  columns, filter/sort/group, and selection tools.
+- Comments, share/admin endpoints, user last-visit, and some base-node related
+  routes are local compatibility stubs rather than full upstream Teable
+  behavior.
+- Formula support is local and intentionally smaller than Teable's full
+  Postgres formula SQL engine.
 
 ## Local SQLite API
 

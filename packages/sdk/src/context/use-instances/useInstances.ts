@@ -44,9 +44,11 @@ const subscribeQueryCache = new Map<string, CachedQuery>();
 
 type ActionTriggerPayload = {
   tableId?: string;
+  viewId?: unknown;
   fieldIds?: unknown;
   field?: unknown;
   recordIds?: unknown;
+  updatedProperties?: unknown;
   skipRealtime?: unknown;
 };
 
@@ -167,6 +169,8 @@ const hasSchemaRefreshFieldIds = (fieldIds: unknown): boolean =>
   Array.isArray(fieldIds) && fieldIds.length > 0;
 
 const isRecordCollection = (collection: string) => collection.startsWith(`${IdPrefix.Record}_`);
+const isTableCollection = (collection: string) => collection.startsWith(`${IdPrefix.Table}_`);
+const isViewCollection = (collection: string) => collection.startsWith(`${IdPrefix.View}_`);
 
 const notifyProjectedRecordDocUpdate = <T>(
   doc: Doc<T>,
@@ -289,6 +293,24 @@ const isSchemaRefreshAction = (tableId: string, batch: unknown): boolean => {
     }
 
     return false;
+  });
+};
+
+const shouldRefreshAfterViewMutation = (tableId: string, batch: unknown): boolean => {
+  if (!Array.isArray(batch)) {
+    return false;
+  }
+
+  return batch.some((item) => {
+    if (!(item instanceof Object)) {
+      return false;
+    }
+    const action = item as ActionTrigger;
+    return (
+      action.actionKey === 'setView' &&
+      action.payload?.tableId === tableId &&
+      action.payload?.skipRealtime === true
+    );
   });
 };
 
@@ -541,7 +563,11 @@ export function useInstances<T, R extends { id: string }>({
   );
 
   useEffect(() => {
-    if (!connection || !schemaRefreshCollectionTableId || !isRecordCollection(collection)) {
+    if (
+      !connection ||
+      !schemaRefreshCollectionTableId ||
+      (!isRecordCollection(collection) && !isViewCollection(collection))
+    ) {
       return;
     }
 
@@ -557,6 +583,13 @@ export function useInstances<T, R extends { id: string }>({
     }
 
     const receiveListener = (_id: string, batch: unknown) => {
+      if (isViewCollection(collection)) {
+        if (shouldRefreshAfterViewMutation(schemaRefreshCollectionTableId, batch)) {
+          setSchemaRefreshToken((current) => current + 1);
+        }
+        return;
+      }
+
       const deletedRecordIds = getProjectedDeleteRecordIds(schemaRefreshCollectionTableId, batch);
       if (deletedRecordIds?.length) {
         removeProjectedRecordsByIds(deletedRecordIds);
@@ -609,19 +642,29 @@ export function useInstances<T, R extends { id: string }>({
   ]);
 
   useEffect(() => {
-    if (!schemaRefreshCollectionTableId || !isRecordCollection(collection)) {
+    if (!isRecordCollection(collection) && !isTableCollection(collection)) {
       return;
     }
 
-    const refreshLocalRecordQuery = (event: Event) => {
+    const refreshLocalQuery = (event: Event) => {
       const scope = (event as CustomEvent<{ scope?: string }>).detail?.scope;
-      if (scope && scope !== 'record') {
+      if (isRecordCollection(collection)) {
+        if (scope && scope !== 'record') {
+          return;
+        }
+        setSchemaRefreshToken((current) => current + 1);
+        return;
+      }
+      if (scope !== 'table') {
+        return;
+      }
+      if (!isTableCollection(collection)) {
         return;
       }
       setSchemaRefreshToken((current) => current + 1);
     };
-    window.addEventListener(localDataMutatedEvent, refreshLocalRecordQuery);
-    return () => window.removeEventListener(localDataMutatedEvent, refreshLocalRecordQuery);
+    window.addEventListener(localDataMutatedEvent, refreshLocalQuery);
+    return () => window.removeEventListener(localDataMutatedEvent, refreshLocalQuery);
   }, [collection, schemaRefreshCollectionTableId]);
 
   const handleReady = useCallback((query: Query<T>) => {

@@ -223,7 +223,7 @@ export const FieldMenu = () => {
       index,
       allFields.length,
       (index: number) => {
-        return view.columnMeta[allFields[index].id].order;
+        return view.columnMeta?.[allFields[index].id]?.order ?? index;
       },
       isInsertAfter
     );

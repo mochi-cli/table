@@ -83,7 +83,11 @@ const dbFieldTypeFor = (cellValueType?: string) => {
   return 'TEXT';
 };
 
-const toSnapshot = (id: string, data?: Record<string, unknown>, versionSource?: string): LocalSnapshot => ({
+const toSnapshot = (
+  id: string,
+  data?: Record<string, unknown>,
+  versionSource?: string
+): LocalSnapshot => ({
   id,
   v: Date.parse(versionSource ?? '') || 1,
   m: null,
@@ -141,6 +145,15 @@ const normalizeColumnMeta = (columnMeta: unknown) => {
   }, {});
 };
 
+const normalizeSort = (sort: unknown) => {
+  if (!sort) return undefined;
+  if (Array.isArray(sort)) return { sortObjs: sort };
+  const sortValue = sort as { sortObjs?: unknown };
+  return Array.isArray(sortValue.sortObjs) ? sort : undefined;
+};
+
+const normalizeGroup = (group: unknown) => (Array.isArray(group) ? group : undefined);
+
 const toViewData = (view: LocalView) => ({
   id: view.id,
   name: view.name,
@@ -150,8 +163,8 @@ const toViewData = (view: LocalView) => ({
   options: view.options ?? {},
   columnMeta: normalizeColumnMeta(view.columnMeta),
   filter: view.filter,
-  sort: view.sort,
-  group: view.group,
+  sort: normalizeSort(view.sort),
+  group: normalizeGroup(view.group),
   isLocked: false,
   createdBy: 'usr_mochi_local',
   createdTime: view.created_time ?? new Date(0).toISOString(),
@@ -213,7 +226,9 @@ class MochiLocalShareDbAdapter extends ShareDBClass.DB {
         : undefined;
       callback(
         null,
-        table ? toSnapshot(table.id, toTableData(table, defaultViewId), table.last_modified_time) : ({ id, v: 0 } as Snapshot)
+        table
+          ? toSnapshot(table.id, toTableData(table, defaultViewId), table.last_modified_time)
+          : ({ id, v: 0 } as Snapshot)
       );
       return;
     }
@@ -228,7 +243,9 @@ class MochiLocalShareDbAdapter extends ShareDBClass.DB {
       const view = this.mochiSqliteService.getView(id) as LocalView | null;
       callback(
         null,
-        view ? toSnapshot(view.id, toViewData(view), view.last_modified_time) : ({ id, v: 0 } as Snapshot)
+        view
+          ? toSnapshot(view.id, toViewData(view), view.last_modified_time)
+          : ({ id, v: 0 } as Snapshot)
       );
       return;
     }
@@ -269,7 +286,10 @@ class MochiLocalShareDbAdapter extends ShareDBClass.DB {
 
     if (docType === FIELD_COLLECTION_PREFIX) {
       const fields = this.mochiSqliteService.listFields(collectionId) as LocalField[];
-      callback(null, fields.map((field) => toSnapshot(field.id, toFieldData(field))));
+      callback(
+        null,
+        fields.map((field) => toSnapshot(field.id, toFieldData(field)))
+      );
       return;
     }
 
@@ -295,7 +315,10 @@ class MochiLocalShareDbAdapter extends ShareDBClass.DB {
       sorts: Array.isArray(query?.orderBy) ? query.orderBy : [],
     }) as LocalRecord[];
 
-    callback(null, records.map((record) => toRecordSnapshot(collectionId, record)));
+    callback(
+      null,
+      records.map((record) => toRecordSnapshot(collectionId, record))
+    );
   };
 
   getOps(
@@ -331,7 +354,10 @@ export class MochiLocalShareDbService extends ShareDBClass {
   private readonly logger = new Logger(MochiLocalShareDbService.name);
   private readonly publishActionTrigger = (
     tableId: string,
-    data: Array<{ actionKey: 'addRecord' | 'setRecord' | 'deleteRecord'; payload?: Record<string, unknown> }>
+    data: Array<{
+      actionKey: 'addRecord' | 'setRecord' | 'deleteRecord' | 'setView';
+      payload?: Record<string, unknown>;
+    }>
   ) => {
     const presence = this.connect().getPresence(`__action_trigger_${tableId}`);
     const localPresence = presence.create(tableId);

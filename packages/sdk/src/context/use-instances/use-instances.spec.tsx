@@ -1526,6 +1526,88 @@ describe('useInstances hook', () => {
     expect(createSubscribeQuery).toHaveBeenCalledTimes(2);
   });
 
+  it('refreshes the view query when setView presence is received for the same table', async () => {
+    const { connection, createSubscribeQuery, presenceController, collection, queryParams } =
+      createMockConnection({
+        collection: 'viw_tblViewRefresh01',
+      });
+
+    renderHook(
+      () =>
+        useInstances({
+          ...mockProps,
+          collection,
+          queryParams,
+        }),
+      {
+        wrapper: createUseInstancesWrap({ ...mockAppContext, connection }),
+      }
+    );
+
+    expect(createSubscribeQuery).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      presenceController.emitReceive([
+        {
+          actionKey: 'setView',
+          payload: {
+            tableId: 'tblViewRefresh01',
+            viewId: 'viwViewRefresh01',
+            updatedProperties: ['filter'],
+            skipRealtime: true,
+          },
+        },
+      ]);
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(createSubscribeQuery).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not refresh record queries for setView presence', async () => {
+    const { connection, createSubscribeQuery, presenceController, collection, queryParams } =
+      createMockConnection({
+        collection: 'rec_tblViewRefresh02',
+      });
+
+    renderHook(
+      () =>
+        useInstances({
+          ...mockProps,
+          collection,
+          queryParams,
+        }),
+      {
+        wrapper: createUseInstancesWrap({ ...mockAppContext, connection }),
+      }
+    );
+
+    expect(createSubscribeQuery).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      presenceController.emitReceive([
+        {
+          actionKey: 'setView',
+          payload: {
+            tableId: 'tblViewRefresh02',
+            viewId: 'viwViewRefresh02',
+            updatedProperties: ['filter'],
+            skipRealtime: true,
+          },
+        },
+      ]);
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(createSubscribeQuery).toHaveBeenCalledTimes(1);
+  });
+
   it('ignores setField presence without schema refresh properties', () => {
     const { connection, createSubscribeQuery, presenceController, collection, queryParams } =
       createMockConnection({

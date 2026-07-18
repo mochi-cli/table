@@ -145,15 +145,73 @@ describe('MochiTeableApiController', () => {
       'tbl_1'
     );
 
-    controller.updateViewColumnMeta('viw_1', {
+    controller.updateViewColumnMeta('tbl_1', 'viw_1', {
       columnMeta: { fld_1: { hidden: true } },
     });
-    expect(service.updateView).toHaveBeenCalledWith('viw_1', {
-      columnMeta: { fld_1: { hidden: true } },
-    });
+    expect(service.updateView).toHaveBeenCalledWith(
+      'viw_1',
+      {
+        columnMeta: { fld_1: { hidden: true } },
+      },
+      'tbl_1'
+    );
 
     controller.deleteFields(['fld_2', 'fld_3']);
     expect(service.deleteField).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    {
+      name: 'name',
+      update: (controller: MochiTeableApiController) =>
+        controller.updateViewName('tbl_1', 'viw_1', { name: 'Renamed view' }),
+      patch: { name: 'Renamed view' },
+    },
+    {
+      name: 'filter',
+      update: (controller: MochiTeableApiController) =>
+        controller.updateViewFilter('tbl_1', 'viw_1', {
+          filter: {
+            conjunction: 'and',
+            filterSet: [{ fieldId: 'fld_1', operator: 'contains', value: 'Alice' }],
+          },
+        }),
+      patch: {
+        filter: {
+          conjunction: 'and',
+          filterSet: [{ fieldId: 'fld_1', operator: 'contains', value: 'Alice' }],
+        },
+      },
+    },
+    {
+      name: 'sort',
+      update: (controller: MochiTeableApiController) =>
+        controller.updateViewSort('tbl_1', 'viw_1', {
+          sort: [{ fieldId: 'fld_1', order: 'asc' }],
+        }),
+      patch: { sort: [{ fieldId: 'fld_1', order: 'asc' }] },
+    },
+    {
+      name: 'group',
+      update: (controller: MochiTeableApiController) =>
+        controller.updateViewGroup('tbl_1', 'viw_1', {
+          group: [{ fieldId: 'fld_1', order: 'asc' }],
+        }),
+      patch: { group: [{ fieldId: 'fld_1', order: 'asc' }] },
+    },
+    {
+      name: 'options',
+      update: (controller: MochiTeableApiController) =>
+        controller.updateViewOptions('tbl_1', 'viw_1', { options: { rowHeight: 'short' } }),
+      patch: { options: { rowHeight: 'short' } },
+    },
+  ])('keeps local $name view updates on the table-scoped realtime path', ({ update, patch }) => {
+    const service = createService();
+    const controller = new MochiTeableApiController(service);
+
+    update(controller);
+
+    expect(service.updateView).toHaveBeenCalledWith('viw_1', patch, 'tbl_1');
   });
 
   it('duplicates fields, views, records, and selected rows for local grid actions', () => {

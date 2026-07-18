@@ -1468,6 +1468,7 @@ export const useSelectionOperation = (props?: {
         return true;
       }
 
+      notifyLocalDataMutated();
       return false;
     },
     [buildSelectionRequest, tableId]

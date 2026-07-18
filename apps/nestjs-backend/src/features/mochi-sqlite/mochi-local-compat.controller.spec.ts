@@ -20,10 +20,14 @@ const createService = () =>
       sort_order: 2,
     })),
     updateTable: vi.fn(
-      (id: string, patch: { name?: string; icon?: string | null; order?: number }) => ({
+      (
+        id: string,
+        patch: { name?: string; icon?: string | null; description?: string | null; order?: number }
+      ) => ({
         id,
         name: patch.name ?? 'Customers',
         icon: patch.icon ?? null,
+        description: patch.description ?? null,
         sort_order: patch.order ?? 0,
       })
     ),
@@ -113,6 +117,12 @@ describe('MochiLocalCompatController', () => {
       icon: 'building-2',
     });
     expect(service.updateTable).toHaveBeenCalledWith('tbl_1', { icon: 'building-2' });
+
+    expect(controller.updateTableDescription('tbl_1', { description: 'Local CRM' })).toMatchObject({
+      id: 'tbl_1',
+      description: 'Local CRM',
+    });
+    expect(service.updateTable).toHaveBeenCalledWith('tbl_1', { description: 'Local CRM' });
 
     expect(
       controller.createBaseNode('bas_1', { resourceType: 'table', name: 'Orders' })

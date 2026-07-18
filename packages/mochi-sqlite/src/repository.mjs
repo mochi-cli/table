@@ -81,6 +81,196 @@ const aggregateValues = (values, aggregate = 'values') => {
   }
 };
 
+const formulaTokenize = (expression) => {
+  const tokens = [];
+  let index = 0;
+  while (index < expression.length) {
+    const char = expression[index];
+    if (/\s/.test(char)) {
+      index += 1;
+      continue;
+    }
+    if ('+-*/(),'.includes(char)) {
+      tokens.push({ type: char, value: char });
+      index += 1;
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      const quote = char;
+      let value = '';
+      index += 1;
+      while (index < expression.length) {
+        const next = expression[index];
+        if (next === '\\') {
+          value += expression[index + 1] ?? '';
+          index += 2;
+          continue;
+        }
+        if (next === quote) break;
+        value += next;
+        index += 1;
+      }
+      if (expression[index] !== quote) throw new Error('Unterminated formula string');
+      tokens.push({ type: 'string', value });
+      index += 1;
+      continue;
+    }
+    if (char === '{') {
+      const end = expression.indexOf('}', index + 1);
+      if (end === -1) throw new Error('Unterminated formula reference');
+      tokens.push({ type: 'reference', value: expression.slice(index + 1, end).trim() });
+      index = end + 1;
+      continue;
+    }
+    if (/\d|\./.test(char)) {
+      let value = '';
+      while (index < expression.length && /[\d.]/.test(expression[index])) {
+        value += expression[index];
+        index += 1;
+      }
+      const numberValue = Number(value);
+      if (!Number.isFinite(numberValue)) throw new Error(`Invalid formula number: ${value}`);
+      tokens.push({ type: 'number', value: numberValue });
+      continue;
+    }
+    if (/[A-Za-z_]/.test(char)) {
+      let value = '';
+      while (index < expression.length && /[A-Za-z0-9_]/.test(expression[index])) {
+        value += expression[index];
+        index += 1;
+      }
+      tokens.push({ type: 'identifier', value });
+      continue;
+    }
+    throw new Error(`Unexpected formula token: ${char}`);
+  }
+  return tokens;
+};
+
+const formulaToNumber = (value) => {
+  if (value === null || value === undefined || value === '') return null;
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : null;
+};
+
+const formulaString = (value) => (value === null || value === undefined ? '' : String(value));
+
+const evaluateFormulaExpression = (expression, fields, fieldByName) => {
+  const tokens = formulaTokenize(String(expression ?? ''));
+  let index = 0;
+
+  const peek = () => tokens[index];
+  const take = (type) => {
+    const token = peek();
+    if (!token || token.type !== type) return null;
+    index += 1;
+    return token;
+  };
+  const expect = (type) => {
+    const token = take(type);
+    if (!token) throw new Error(`Expected formula token: ${type}`);
+    return token;
+  };
+  const resolveReference = (reference) => {
+    if (Object.prototype.hasOwnProperty.call(fields, reference)) return fields[reference];
+    const field = fieldByName.get(reference.toLocaleLowerCase());
+    return field ? fields[field.id] : null;
+  };
+  const callFunction = (name, args) => {
+    switch (name.toLocaleUpperCase()) {
+      case 'CONCATENATE':
+        return args.map(formulaString).join('');
+      case 'LOWER':
+        return formulaString(args[0]).toLocaleLowerCase();
+      case 'UPPER':
+        return formulaString(args[0]).toLocaleUpperCase();
+      case 'LEN':
+        return formulaString(args[0]).length;
+      default:
+        throw new Error(`Unsupported formula function: ${name}`);
+    }
+  };
+
+  const parseExpression = () => parseAdditive();
+  const parsePrimary = () => {
+    const token = peek();
+    if (!token) throw new Error('Unexpected end of formula');
+    if (take('number')) return token.value;
+    if (take('string')) return token.value;
+    if (take('reference')) return resolveReference(token.value);
+    if (take('(')) {
+      const value = parseExpression();
+      expect(')');
+      return value;
+    }
+    if (token.type === 'identifier') {
+      index += 1;
+      expect('(');
+      const args = [];
+      if (!take(')')) {
+        do {
+          args.push(parseExpression());
+        } while (take(','));
+        expect(')');
+      }
+      return callFunction(token.value, args);
+    }
+    throw new Error(`Unexpected formula token: ${token.type}`);
+  };
+  const parseUnary = () => {
+    if (take('-')) {
+      const value = formulaToNumber(parseUnary());
+      return value === null ? null : -value;
+    }
+    if (take('+')) return parseUnary();
+    return parsePrimary();
+  };
+  const parseMultiplicative = () => {
+    let left = parseUnary();
+    while (peek()?.type === '*' || peek()?.type === '/') {
+      const operator = tokens[index].type;
+      index += 1;
+      const right = parseUnary();
+      const leftNumber = formulaToNumber(left);
+      const rightNumber = formulaToNumber(right);
+      if (leftNumber === null || rightNumber === null) {
+        left = null;
+      } else if (operator === '*') {
+        left = leftNumber * rightNumber;
+      } else {
+        left = rightNumber === 0 ? null : leftNumber / rightNumber;
+      }
+    }
+    return left;
+  };
+  const parseAdditive = () => {
+    let left = parseMultiplicative();
+    while (peek()?.type === '+' || peek()?.type === '-') {
+      const operator = tokens[index].type;
+      index += 1;
+      const right = parseMultiplicative();
+      if (operator === '+') {
+        const leftNumber = formulaToNumber(left);
+        const rightNumber = formulaToNumber(right);
+        left =
+          leftNumber !== null && rightNumber !== null
+            ? leftNumber + rightNumber
+            : `${formulaString(left)}${formulaString(right)}`;
+      } else {
+        const leftNumber = formulaToNumber(left);
+        const rightNumber = formulaToNumber(right);
+        left = leftNumber === null || rightNumber === null ? null : leftNumber - rightNumber;
+      }
+    }
+    return left;
+  };
+
+  if (!tokens.length) return null;
+  const value = parseExpression();
+  if (index < tokens.length) throw new Error(`Unexpected formula token: ${tokens[index].type}`);
+  return value;
+};
+
 const compareValues = (left, right) => {
   if (left === right) return 0;
   if (left === null || left === undefined) return -1;
@@ -781,6 +971,54 @@ export class MochiSqliteRepository {
 
     if (statements.length > 0) this.db.transaction(statements);
     return { tableId, fields: fields.length, records: records.length, updatedRecords };
+  }
+
+  resolveFormulas(tableId, options = {}) {
+    const tableFields = this.listFields(tableId);
+    const fieldByName = new Map(
+      tableFields.map((field) => [field.name.toLocaleLowerCase(), field])
+    );
+    const formulaFields = tableFields.filter(
+      (field) => field.type === 'formula' || (field.is_computed && field.options?.expression)
+    );
+    const records = options.recordId
+      ? [this.getRecord(options.recordId)].filter((record) => record?.table_id === tableId)
+      : this.listRecords(tableId, { limit: 100000 });
+    let updatedRecords = 0;
+    const statements = [];
+
+    for (const record of records) {
+      const nextFields = { ...record.fields };
+      let changed = false;
+      for (const field of formulaFields) {
+        const expression = field.options?.expression ?? field.meta?.expression;
+        if (!expression) continue;
+        let nextValue = null;
+        try {
+          const sourceFields = { ...nextFields, [field.id]: record.fields[field.id] };
+          nextValue = evaluateFormulaExpression(expression, sourceFields, fieldByName);
+        } catch {
+          nextValue = null;
+        }
+        if (JSON.stringify(nextFields[field.id] ?? null) !== JSON.stringify(nextValue ?? null)) {
+          nextFields[field.id] = nextValue;
+          changed = true;
+        }
+      }
+      if (!changed) continue;
+      updatedRecords += 1;
+      statements.push(
+        `UPDATE mochi_record
+         SET fields_json = ${jsonValue(nextFields)},
+             version = version + 1,
+             last_modified_time = ${nowExpr}
+         WHERE id = ${sqlValue(record.id)};`,
+        ...this.recordSearchStatements(tableId, record.id, nextFields)
+      );
+    }
+
+    if (statements.length > 0) this.db.transaction(statements);
+    return { tableId, fields: formulaFields.length, records: records.length, updatedRecords };
   }
 
   deleteRecord(id, options = {}) {

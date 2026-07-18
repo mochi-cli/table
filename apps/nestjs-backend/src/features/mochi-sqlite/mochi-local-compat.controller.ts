@@ -294,6 +294,16 @@ export class MochiLocalCompatController {
     return this.mochiSqliteService.updateTable(tableId, { icon: body.icon ?? null });
   }
 
+  @Put('base/:baseId/table/:tableId/description')
+  updateTableDescription(
+    @Param('tableId') tableId: string,
+    @Body() body: { description?: string | null }
+  ) {
+    return this.mochiSqliteService.updateTable(tableId, {
+      description: body.description?.trim() ? body.description : null,
+    });
+  }
+
   @Get('base/:baseId/node/tree')
   getBaseNodeTree(@Param('baseId') baseId: string) {
     const tables = pickUniqueTablesByName(

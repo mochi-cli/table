@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { buildTreeItems, hasChildrenNode } from './helper';
 
 export type TreeItemData = Omit<IBaseNodeVo, 'children'> & { children: string[] };
+const localDataMutatedEvent = 'mochi-local-data-mutated';
 
 export const useBaseNode = (baseId: string, isRestrictedAuthority?: boolean) => {
   const { connection } = useConnection();
@@ -98,6 +99,17 @@ export const useBaseNode = (baseId: string, isRestrictedAuthority?: boolean) => 
       presence?.listenerCount('receive') === 0 && presence?.destroy();
     };
   }, [connection, presence, channel, setNodes, invalidateMenu]);
+
+  useEffect(() => {
+    const refreshLocalTableNode = (event: Event) => {
+      const scope = (event as CustomEvent<{ scope?: string }>).detail?.scope;
+      if (scope === 'table') {
+        invalidateMenu();
+      }
+    };
+    window.addEventListener(localDataMutatedEvent, refreshLocalTableNode);
+    return () => window.removeEventListener(localDataMutatedEvent, refreshLocalTableNode);
+  }, [invalidateMenu]);
 
   return useMemo(() => {
     return {

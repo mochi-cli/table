@@ -1,3 +1,4 @@
+import { MutationCache, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { IFieldVo, IRecord, IViewVo } from '@teable/core';
 import { CellValueType, DbFieldType, FieldType, ViewType } from '@teable/core';
 import { axios as teableAxios } from '@teable/openapi';
@@ -11,19 +12,19 @@ import {
   TableProvider,
 } from '@teable/sdk/context';
 import { defaultLocale } from '@teable/sdk/context/app/i18n';
-import { MutationCache, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { GetServerSideProps } from 'next';
+import { RouterContext } from 'next/dist/shared/lib/router-context.shared-runtime';
 import dynamic from 'next/dynamic';
 import type { NextRouter } from 'next/router';
 import { useRouter } from 'next/router';
-import { RouterContext } from 'next/dist/shared/lib/router-context.shared-runtime';
 import { useTranslation } from 'next-i18next';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { BaseNodeProvider } from '@/features/app/blocks/base/base-node/BaseNodeProvider';
 import { BaseSideBar } from '@/features/app/blocks/base/base-side-bar/BaseSideBar';
 import { Sidebar } from '@/features/app/components/sidebar/Sidebar';
 import { tableConfig } from '@/features/i18n/table.config';
 import { getServerSideTranslations } from '@/lib/i18n/getServerSideTranslations';
+import { getLocalDataMutationScope, type LocalDataMutationScope } from './local-data-mutation';
 
 const DynamicTable = dynamic(
   () => import('@/features/app/blocks/table/Table').then((mod) => mod.Table),
@@ -92,7 +93,6 @@ const apiBase = process.env.NEXT_PUBLIC_MOCHI_API_BASE_URL ?? '';
 const localUserId = 'usr_mochi_local';
 const localSpaceId = 'spc_local';
 const localDataMutatedEvent = 'mochi-local-data-mutated';
-type LocalDataMutationScope = 'record' | 'schema';
 type RouterUrl = Parameters<NextRouter['push']>[0];
 type LocalTableVo = ITableVo & { permission: Record<string, boolean> };
 
@@ -135,38 +135,6 @@ const rewriteLocalRouterUrl = (url: RouterUrl): RouterUrl => {
   }
 
   return url;
-};
-
-const getLocalDataMutationScope = (data: unknown): LocalDataMutationScope | null => {
-  const response = data as {
-    config?: { method?: string; url?: string };
-  };
-  const method = response.config?.method?.toLowerCase();
-  const url = response.config?.url;
-  if (!method || !url || !['post', 'patch', 'put', 'delete'].includes(method)) {
-    return null;
-  }
-  if (!url.includes('/table/') || url.endsWith('/plan') || url.includes('/plan?')) {
-    return null;
-  }
-
-  if (
-    /\/table\/[^/]+\/record(\/[^/]+)?$/.test(url) ||
-    /\/table\/[^/]+\/selection\/(paste|paste-by-id|clear|clear-by-id|delete|delete-by-id)$/.test(
-      url
-    )
-  ) {
-    return 'record';
-  }
-
-  if (
-    /\/table\/[^/]+\/field(\/[^/]+)?(\/convert)?$/.test(url) ||
-    /\/table\/[^/]+\/view(\/[^/]+)?(\/(name|filter|sort|group|column-meta|options))?$/.test(url)
-  ) {
-    return 'schema';
-  }
-
-  return null;
 };
 
 const dispatchLocalDataMutated = (scope: LocalDataMutationScope) => {
@@ -297,6 +265,16 @@ const normalizeColumnMeta = (
   }, defaultColumnMeta);
 };
 
+const normalizeSort = (sort: LocalView['sort']): IViewVo['sort'] => {
+  if (!sort) return undefined;
+  if (Array.isArray(sort)) return { sortObjs: sort } as IViewVo['sort'];
+  const sortValue = sort as { sortObjs?: unknown };
+  return Array.isArray(sortValue.sortObjs) ? (sort as IViewVo['sort']) : undefined;
+};
+
+const normalizeGroup = (group: LocalView['group']): IViewVo['group'] =>
+  Array.isArray(group) ? (group as IViewVo['group']) : undefined;
+
 const mapView = (view: LocalView, fields: IFieldVo[]): IViewVo => {
   const columnMeta = normalizeColumnMeta(view.columnMeta, fields);
 
@@ -307,9 +285,9 @@ const mapView = (view: LocalView, fields: IFieldVo[]): IViewVo => {
     description: view.description ?? undefined,
     order: view.sort_order ?? 0,
     options: (view.options ?? {}) as IViewVo['options'],
-    sort: view.sort,
+    sort: normalizeSort(view.sort),
     filter: view.filter,
-    group: view.group,
+    group: normalizeGroup(view.group),
     isLocked: false,
     createdBy: localUserId,
     createdTime: view.created_time ?? new Date(0).toISOString(),
@@ -424,7 +402,8 @@ function MochiLocalGridPageInner() {
       viewId,
       tables: tables.map((candidate) => {
         const defaultViewId =
-          viewsByTableId.get(candidate.id)?.[0]?.id ?? (candidate.id === table.id ? viewId : undefined);
+          viewsByTableId.get(candidate.id)?.[0]?.id ??
+          (candidate.id === table.id ? viewId : undefined);
         return mapTable(candidate, defaultViewId);
       }),
       fields,
@@ -441,10 +420,12 @@ function MochiLocalGridPageInner() {
   useEffect(() => {
     const refreshLocalData = (event: Event) => {
       const scope = (event as CustomEvent<{ scope?: LocalDataMutationScope }>).detail?.scope;
-      if (scope === 'record') {
+      if (scope === 'record' || scope === 'table') {
         return;
       }
-      loadData().catch((error) => setStatus(error instanceof Error ? error.message : String(error)));
+      loadData().catch((error) =>
+        setStatus(error instanceof Error ? error.message : String(error))
+      );
     };
 
     window.addEventListener(localDataMutatedEvent, refreshLocalData);

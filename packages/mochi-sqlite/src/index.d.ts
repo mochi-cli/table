@@ -22,7 +22,13 @@ export class MochiSqliteRepository {
   createSpace(input: { id?: string; name: string; avatar?: string | null }): unknown;
   getSpace(id: string): unknown | null;
   listBases(spaceId?: string): unknown[];
-  createBase(input: { id?: string; spaceId?: string; name: string; icon?: string | null; order?: number }): unknown;
+  createBase(input: {
+    id?: string;
+    spaceId?: string;
+    name: string;
+    icon?: string | null;
+    order?: number;
+  }): unknown;
   getBase(id: string): unknown | null;
   listTables(baseId: string): unknown[];
   createTable(input: {
@@ -37,9 +43,22 @@ export class MochiSqliteRepository {
     viewId?: string;
   }): unknown;
   getTable(id: string): unknown | null;
-  updateTable(id: string, patch: { name?: string; description?: string | null; icon?: string | null; order?: number }): unknown | null;
+  updateTable(
+    id: string,
+    patch: { name?: string; description?: string | null; icon?: string | null; order?: number }
+  ): unknown | null;
   deleteTable(id: string): unknown | null;
-  duplicateTable(id: string, input?: { id?: string; baseId?: string; name?: string; description?: string | null; icon?: string | null; order?: number }): unknown | null;
+  duplicateTable(
+    id: string,
+    input?: {
+      id?: string;
+      baseId?: string;
+      name?: string;
+      description?: string | null;
+      icon?: string | null;
+      order?: number;
+    }
+  ): unknown | null;
   listFields(tableId: string): unknown[];
   createField(input: {
     id?: string;
@@ -80,9 +99,22 @@ export class MochiSqliteRepository {
     source?: string;
   }): unknown;
   getRecord(id: string): unknown | null;
-  updateRecord(id: string, patch: { fields?: JsonRecord; order?: unknown; batchId?: string; label?: string; source?: string }): unknown | null;
-  deleteRecord(id: string, options?: { batchId?: string; label?: string; source?: string }): unknown | null;
+  updateRecord(
+    id: string,
+    patch: {
+      fields?: JsonRecord;
+      order?: unknown;
+      batchId?: string;
+      label?: string;
+      source?: string;
+    }
+  ): unknown | null;
+  deleteRecord(
+    id: string,
+    options?: { batchId?: string; label?: string; source?: string }
+  ): unknown | null;
   resolveLookupRollup(tableId: string, options?: { recordId?: string }): unknown;
+  resolveFormulas(tableId: string, options?: { recordId?: string }): unknown;
   listTrash(): unknown[];
   restoreTrash(id: string): unknown | null;
   createAttachment(input: {
