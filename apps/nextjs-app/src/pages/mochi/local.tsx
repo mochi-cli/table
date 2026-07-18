@@ -23,6 +23,7 @@ import { BaseNodeProvider } from '@/features/app/blocks/base/base-node/BaseNodeP
 import { BaseSideBar } from '@/features/app/blocks/base/base-side-bar/BaseSideBar';
 import { Sidebar } from '@/features/app/components/sidebar/Sidebar';
 import { tableConfig } from '@/features/i18n/table.config';
+import { getLocalTableHref, rewriteLocalRouterUrl } from '@/features/mochi/local-router';
 import { getServerSideTranslations } from '@/lib/i18n/getServerSideTranslations';
 import { getLocalDataMutationScope, type LocalDataMutationScope } from './local-data-mutation';
 
@@ -93,10 +94,8 @@ const apiBase = process.env.NEXT_PUBLIC_MOCHI_API_BASE_URL ?? '';
 const localUserId = 'usr_mochi_local';
 const localSpaceId = 'spc_local';
 const localDataMutatedEvent = 'mochi-local-data-mutated';
-type RouterUrl = Parameters<NextRouter['push']>[0];
 type LocalTableVo = ITableVo & { permission: Record<string, boolean> };
 
-const localTablePathPattern = /^\/base\/[^/]+\/table\/([^/?#]+)(?:\/([^/?#]+))?/;
 const localTablePermission = {
   'table|read': true,
   'table|create': true,
@@ -104,37 +103,6 @@ const localTablePermission = {
   'table|delete': true,
   'table|export': true,
   'table|import': true,
-};
-
-const getLocalTableHref = (tableId: string, viewId?: string) => {
-  const params = new URLSearchParams({ tableId });
-  if (viewId) {
-    params.set('viewId', viewId);
-  }
-  return `/mochi/local?${params.toString()}`;
-};
-
-const rewriteLocalRouterUrl = (url: RouterUrl): RouterUrl => {
-  if (typeof url === 'string') {
-    const match = url.match(localTablePathPattern);
-    return match ? getLocalTableHref(match[1], match[2]) : url;
-  }
-
-  const query = typeof url.query === 'object' && url.query !== null ? url.query : undefined;
-  const slug = query?.slug;
-  if (Array.isArray(slug) && slug[0] === 'table' && typeof slug[1] === 'string') {
-    return getLocalTableHref(slug[1], typeof slug[2] === 'string' ? slug[2] : undefined);
-  }
-
-  const pathname = url.pathname;
-  if (typeof pathname === 'string') {
-    const match = pathname.match(localTablePathPattern);
-    if (match) {
-      return getLocalTableHref(match[1], match[2]);
-    }
-  }
-
-  return url;
 };
 
 const dispatchLocalDataMutated = (scope: LocalDataMutationScope) => {

@@ -190,9 +190,14 @@ make mochi.integrity.verify
 
 - Keep extending browser coverage for drag-heavy edge cases and additional
   history entry points as Mochi local workflows grow.
-- Keep extending SQLite route coverage where local compatibility endpoints are
-  still stubs: comments, share/admin, user last-visit, and some base-node
-  behavior.
+- Keep extending SQLite route coverage for local-only table behavior:
+  base-node create/rename/icon/description/duplicate/move/delete, local
+  last-visit fallbacks, and read-only public admin settings.
+- Exclude login/auth/collaboration-dependent features from local parity:
+  share link creation/passwords, collaborator invites/roles, shared-base access
+  control, admin user management, OAuth/access-token setup, and persisted
+  per-account last-visit history. Local mode should keep returning fixed
+  `usr_mochi_local` responses or empty local-safe stubs for these endpoints.
 - Expand formula parity beyond the current local evaluator as Mochi workflows
   require more Teable formula functions.
 
