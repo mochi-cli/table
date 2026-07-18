@@ -54,6 +54,7 @@ export const BaseNodeAddResourceButton = (props: BaseNodeAddResourceButtonProps)
   const tables = useTables();
   const base = useBase();
   const { data: publicSetting } = usePublicSettingQuery();
+  const isMochiLocal = publicSetting?.instanceId === 'mochi-local';
   const airtableImportEnabled = !!publicSetting?.availableIntegrationProviders?.includes(
     UserIntegrationProvider.Airtable
   );
@@ -158,6 +159,7 @@ export const BaseNodeAddResourceButton = (props: BaseNodeAddResourceButtonProps)
 
   const ImportTableMenuItems = () => {
     if (!canCreateTable) return null;
+    if (isMochiLocal) return null;
     if (parentId && parentId !== ROOT_ID) return null;
     return (
       <>

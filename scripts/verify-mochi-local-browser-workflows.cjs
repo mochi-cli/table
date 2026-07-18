@@ -507,6 +507,23 @@ async function runLocalDashboardMenuSmoke(page, appOrigin, tableId, viewId, resu
     name: 'local-dashboard-create-menu-removed',
     ok: dashboardMenuItems === 0,
   });
+
+  const createButton = page.getByRole('button', { name: 'Create' });
+  const createButtonCount = await createButton.count();
+  if (createButtonCount !== 1) {
+    throw new Error(`Expected one Create button, got ${createButtonCount}`);
+  }
+  await createButton.click();
+  const legacyImportItems = await page
+    .locator(
+      '[data-attr="base-create-menu-import-csv"], [data-attr="base-create-menu-import-excel"]'
+    )
+    .count();
+  results.push({
+    name: 'local-legacy-import-menu-removed',
+    ok: legacyImportItems === 0,
+  });
+  await page.keyboard.press('Escape');
 }
 
 async function runHistorySmoke(page, origin, appOrigin, tableId, viewId, fieldId, marker, results) {

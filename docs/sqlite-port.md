@@ -88,7 +88,9 @@ Kept:
   the temporary field.
 - `make mochi.browser-workflows.verify` checks browser-backed local workflows
   for view create/rename/duplicate/delete, cell selection copy/paste/clear,
-  selected-row duplicate/delete, record history panel rendering, table history
+  selected-row duplicate/delete, local comment panel render/update/delete,
+  advanced Kanban/Gallery/Calendar/Form render smoke checks, local SQLite import
+  UI, Dashboard menu removal, record history panel rendering, table history
   backed data, and two-tab realtime filter/column-meta updates without page
   navigation.
 - `make mochi.integrity.verify` checks local SQLite integrity guards: no
@@ -237,3 +239,41 @@ Later:
   editing; advanced view metadata lifecycle is covered by
   `make mochi.view-lifecycle.verify`, and render smoke checks are covered by
   `make mochi.browser-workflows.verify`.
+
+## Local parity status
+
+Supported local surface:
+
+- Grid/table CRUD, field header actions, filter/sort/group, view lifecycle,
+  selection helpers, record expand modal, comments, history, base-node table
+  actions, local SQLite import, attachment metadata, search/storage integrity,
+  lookup/rollup, computed jobs, and the current local formula evaluator.
+- Advanced view metadata and smoke rendering for Kanban, Gallery, Calendar, and
+  Form. The local backend preserves view type/options and the browser verifier
+  opens each view without falling back to grid.
+- Realtime for table header/view updates and record actions through local
+  SockJS/ShareDB. `make dev.backend` is SQLite-only and does not require Redis;
+  Redis pub/sub is optional only when explicitly configured.
+
+Excluded local surface:
+
+- Dashboard is permanently disabled in local mode and must not appear in the
+  create menu.
+- Plugin/app/admin generation, login/signup/invite/account flows,
+  OAuth/access-token setup, collaborator invites/roles, shared-base access
+  control, and persisted per-account last-visit history are outside local
+  parity.
+- Share/admin/user last-visit routes that upstream components still read should
+  remain local-safe stubs or fixed `usr_mochi_local` responses. Login-dependent
+  write/admin behavior should remain unsupported for local mode.
+- Legacy Teable CSV/Excel upload import is still not ported; local SQLite import
+  is the supported path.
+
+Current gate:
+
+- Run `make mochi.local.verify` while `make dev.backend` is running for the
+  non-browser local suite.
+- Run `make mochi.browser.verify` and `make mochi.browser-workflows.verify`
+  while the backend and app are running for UI/browser parity.
+- Finish with `make mochi.finalize.verify` to clean smoke data and verify SQLite
+  integrity.

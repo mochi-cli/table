@@ -39,13 +39,14 @@ Implemented:
 - advanced view type metadata lifecycle and browser render checks for kanban, gallery, calendar, and form
 - local SockJS/ShareDB realtime bridge for record updates and view filter/sort/group/options updates
 - SQLite-only local backend entrypoint through `make dev.backend`
+- local SQLite import button on `/mochi/local`
 
 Not finished yet:
 
 - mapping the existing Teable API/controllers fully to SQLite
 - full parity with every upstream Teable non-login table path
 - polished Mochi profile/workspace picker UI
-- replacing the legacy CSV/Excel import UI with a local SQLite-friendly import flow
+- porting the legacy CSV/Excel upload pipeline to SQLite local mode
 - advanced formulas beyond the current local evaluator
 
 ## Repository Shape
@@ -235,10 +236,16 @@ SQLite development.
 
 Current local-mode coverage:
 
+- Grid/table CRUD: local table rendering, add record, record expand modal,
+  record update/delete, table metadata, and base-node table actions are covered
+  by the local Teable-compatible API and browser smoke checks.
 - Header/view update realtime: filter, sort, group, column meta, options, and
   view name updates go through the table-scoped `setView` path.
 - Record realtime: create/update/delete publish local action triggers for the
   existing grid subscription path.
+- Header table UI: Filter/Sort/Group popovers, field header menu, column
+  resize/reorder, record expand inputs, and close-without-reload behavior are
+  covered by `make mochi.browser.verify`.
 - Table metadata: name, icon, and description updates trigger local table
   refresh handling and can be verified with
   `make mochi.table-metadata.verify`.
@@ -251,22 +258,50 @@ Current local-mode coverage:
 - Record history: field-level before/after rows are exposed through
   Teable-compatible record and table history endpoints and covered by
   `make mochi.history.verify`.
+- Comments: local record comment create/list/count/update/delete endpoints are
+  covered by `make mochi.comments.verify`; browser panel render/update/delete
+  smoke checks are covered by `make mochi.browser-workflows.verify`.
+- Advanced views: Kanban, Gallery, Calendar, and Form metadata are preserved in
+  local mode and browser render smoke checks are covered by
+  `make mochi.browser-workflows.verify`.
+- Formula/lookup/rollup: local formula text/numeric/logical/comparison/date,
+  regex/date diff, lookup/rollup, and computed-job paths are covered by
+  `make mochi.computed.verify`.
+- SQLite import/storage: local SQLite path import is available from the
+  `/mochi/local` sidebar and through `POST /api/mochi/imports/sqlite`; storage
+  paths are covered by `make mochi.storage.verify`.
+- Base-node/menu: local base-node tree and create menu are table/folder scoped;
+  Dashboard creation is disabled in local mode and covered by
+  `make mochi.browser-workflows.verify`.
 - Dev runtime: `make dev.backend` boots the SQLite-only backend without
   Postgres or Redis.
 - Verification: `make mochi.realtime.verify`,
   `make mochi.table-metadata.verify`, `make mochi.field-header.verify`,
   `make mochi.view-lifecycle.verify`, `make mochi.selection.verify`,
-  `make mochi.history.verify`, backend Mochi tests, SDK `useInstances` tests, app typecheck,
-  `@mochi/table-sqlite verify`, and the umbrella `make mochi.local.verify`.
+  `make mochi.history.verify`, `make mochi.comments.verify`,
+  `make mochi.base-node.verify`, `make mochi.computed.verify`,
+  `make mochi.storage.verify`, `make mochi.browser.verify`,
+  `make mochi.browser-workflows.verify`, backend Mochi tests, SDK
+  `useInstances` tests, app typecheck, `@mochi/table-sqlite verify`, and the
+  umbrella `make mochi.local.verify`.
+
+Intentionally excluded from local parity:
+
+- Dashboard, plugin/app/admin generation, login/signup/invite/account flows,
+  OAuth/access-token setup, collaborator invites/roles, shared-base access
+  control, and persisted per-account last-visit history.
+- Share/admin/user last-visit endpoints that local UI still probes are
+  local-safe read stubs or fixed `usr_mochi_local` responses. Login-dependent
+  write/admin behavior should stay unsupported in local mode.
+- Redis is not required for local development. `make dev.backend` uses the
+  SQLite-only backend and local SockJS/ShareDB bridge; Redis pub/sub is only an
+  optional compatibility path when a Redis URI is explicitly configured.
 
 Known remaining gaps:
 
-- Browser UI parity still needs a human click-through pass for the full toolbar
-  surface: create/duplicate/delete/rename view, hide/show field, resize/reorder
-  columns, filter/sort/group, and selection tools.
-- Comments, share/admin endpoints, user last-visit, and some base-node related
-  routes are local compatibility stubs rather than full upstream Teable
-  behavior.
+- Legacy Teable CSV/Excel upload import is still not ported to SQLite local
+  mode. Use the local SQLite import button or `POST /api/mochi/imports/sqlite`
+  instead.
 - Formula support is local and intentionally smaller than Teable's full
   Postgres formula SQL engine.
 
