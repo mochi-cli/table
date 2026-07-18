@@ -12,6 +12,16 @@ import {
   TableProvider,
 } from '@teable/sdk/context';
 import { defaultLocale } from '@teable/sdk/context/app/i18n';
+import {
+  Button,
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  Input,
+} from '@teable/ui-lib/shadcn';
+import { DatabaseZap } from 'lucide-react';
 import type { GetServerSideProps } from 'next';
 import { RouterContext } from 'next/dist/shared/lib/router-context.shared-runtime';
 import dynamic from 'next/dynamic';
@@ -358,6 +368,93 @@ type GridData = {
   records: IRecord[];
 };
 
+function LocalSqliteImportButton(props: { baseId: string; onImported: () => Promise<void> }) {
+  const { baseId, onImported } = props;
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [sqlitePath, setSqlitePath] = useState('');
+  const [isImporting, setIsImporting] = useState(false);
+  const [message, setMessage] = useState('');
+
+  const submitImport = async () => {
+    const path = sqlitePath.trim();
+    if (!path) {
+      setMessage('Enter a SQLite file path');
+      return;
+    }
+    setIsImporting(true);
+    setMessage('');
+    try {
+      const imported = await api<{
+        importedTables?: Array<{ table?: LocalTable; views?: LocalView[] }>;
+      }>('/api/mochi/imports/sqlite', {
+        method: 'POST',
+        body: JSON.stringify({ path, baseId, tableNamePrefix: 'Imported ' }),
+      });
+      const importedTable = imported.importedTables?.[0]?.table;
+      const importedViewId =
+        imported.importedTables?.[0]?.views?.[0]?.id ??
+        (importedTable?.id
+          ? (await api<LocalView[]>(`/api/mochi/tables/${importedTable.id}/views`))[0]?.id
+          : undefined);
+      await onImported();
+      if (importedTable?.id && importedViewId) {
+        await router.push(getLocalTableHref(importedTable.id, importedViewId));
+      }
+      setSqlitePath('');
+      setOpen(false);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  return (
+    <>
+      <Button
+        className="mx-2 justify-start gap-2"
+        data-testid="mochi-local-import-sqlite"
+        size="sm"
+        variant="ghost"
+        onClick={() => setOpen(true)}
+      >
+        <DatabaseZap className="size-4" />
+        Import SQLite
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle>Import SQLite</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Input
+              aria-label="SQLite file path"
+              placeholder="/absolute/path/to/source.sqlite"
+              value={sqlitePath}
+              onChange={(event) => setSqlitePath(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  void submitImport();
+                }
+              }}
+            />
+            {message && <div className="text-xs text-destructive">{message}</div>}
+          </div>
+          <DialogFooter>
+            <Button size="sm" variant="outline" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button size="sm" disabled={isImporting} onClick={() => void submitImport()}>
+              {isImporting ? 'Importing' : 'Import'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 function MochiLocalGridPageInner() {
   const router = useRouter();
   const [data, setData] = useState<GridData>();
@@ -526,6 +623,7 @@ function MochiLocalGridPageInner() {
                       }
                     >
                       <div className="flex h-full flex-col gap-2 divide-y divide-solid overflow-auto py-2">
+                        <LocalSqliteImportButton baseId={data.baseId} onImported={loadData} />
                         <BaseSideBar />
                       </div>
                     </Sidebar>

@@ -169,6 +169,47 @@ async function main() {
         expression: 'DATETIME_FORMAT(DATEADD("2026-07-18T00:00:00Z", 2, "days"), "YYYY-MM-DD")',
       },
     });
+    const findSearch = await createField(origin, tableId, {
+      name: `Find search ${marker}`,
+      type: 'formula',
+      cellValueType: 'string',
+      isComputed: true,
+      options: {
+        expression: `CONCATENATE(FIND("e", {${item.id}}), ":", SEARCH("A", {${item.id}}))`,
+      },
+    });
+    const substituteValue = await createField(origin, tableId, {
+      name: `Sub value ${marker}`,
+      type: 'formula',
+      cellValueType: 'number',
+      isComputed: true,
+      options: { expression: 'VALUE(SUBSTITUTE("1,234", ",", ""))' },
+    });
+    const regexLabel = await createField(origin, tableId, {
+      name: `Regex label ${marker}`,
+      type: 'formula',
+      cellValueType: 'string',
+      isComputed: true,
+      options: {
+        expression: `IF(REGEX_MATCH({${item.id}}, "^T"), REGEX_EXTRACT("SKU-42", "[0-9]+"), "no")`,
+      },
+    });
+    const regexReplace = await createField(origin, tableId, {
+      name: `Regex replace ${marker}`,
+      type: 'formula',
+      cellValueType: 'string',
+      isComputed: true,
+      options: { expression: 'REGEX_REPLACE("SKU-42", "[0-9]+", "99")' },
+    });
+    const dateDiff = await createField(origin, tableId, {
+      name: `Date diff ${marker}`,
+      type: 'formula',
+      cellValueType: 'number',
+      isComputed: true,
+      options: {
+        expression: 'DATETIME_DIFF(DATETIME_PARSE("2026-07-25"), "2026-07-18", "days")',
+      },
+    });
     createdFieldIds.push(
       item.id,
       qty.id,
@@ -185,7 +226,12 @@ async function main() {
       minMaxSpread.id,
       absIf.id,
       logicalLabel.id,
-      dateLabel.id
+      dateLabel.id,
+      findSearch.id,
+      substituteValue.id,
+      regexLabel.id,
+      regexReplace.id,
+      dateDiff.id
     );
 
     const formulaRecord = await postJson(`${origin}/api/mochi/tables/${tableId}/records`, {
@@ -219,7 +265,12 @@ async function main() {
         fieldValue(firstFormulaRecord, minMaxSpread.id) === 9.5 &&
         fieldValue(firstFormulaRecord, absIf.id) === 7 &&
         fieldValue(firstFormulaRecord, logicalLabel.id) === 'stocked' &&
-        fieldValue(firstFormulaRecord, dateLabel.id) === '2026-07-20',
+        fieldValue(firstFormulaRecord, dateLabel.id) === '2026-07-20' &&
+        fieldValue(firstFormulaRecord, findSearch.id) === '2:3' &&
+        fieldValue(firstFormulaRecord, substituteValue.id) === 1234 &&
+        fieldValue(firstFormulaRecord, regexLabel.id) === '42' &&
+        fieldValue(firstFormulaRecord, regexReplace.id) === 'SKU-99' &&
+        fieldValue(firstFormulaRecord, dateDiff.id) === 7,
     });
 
     await patchJson(`${origin}/api/mochi/records/${formulaRecord.id}`, {

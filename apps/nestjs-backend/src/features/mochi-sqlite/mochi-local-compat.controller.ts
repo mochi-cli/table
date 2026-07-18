@@ -103,7 +103,7 @@ const localPublicSetting = {
   disallowSignUp: true,
   disallowSpaceCreation: false,
   disallowSpaceInvitation: true,
-  disallowDashboard: false,
+  disallowDashboard: true,
   enableEmailVerification: false,
   enableWaitlist: false,
   createdTime: new Date(0).toISOString(),

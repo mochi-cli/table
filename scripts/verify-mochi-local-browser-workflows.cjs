@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 
 const { createRequire } = require('module');
+const fs = require('fs');
+const os = require('os');
 const path = require('path');
+const { spawnSync } = require('child_process');
 
 const appRequire = createRequire(path.join(process.cwd(), 'apps/nextjs-app/package.json'));
 const { chromium } = appRequire('@playwright/test');
@@ -311,6 +314,43 @@ async function runCommentPanelSmoke(
       Number(recordCount.count) === 1 &&
       (await page.getByText(commentText).first().isVisible()),
   });
+
+  const updatedText = `Comment panel updated ${marker}`;
+  await patchJson(`${origin}/api/comment/${tableId}/${recordId}/${comment.id}`, {
+    content: commentContent(updatedText),
+  });
+  await page.goto(
+    `${appOrigin}/mochi/local?tableId=${tableId}&viewId=${viewId}&recordId=${recordId}&showComment=true`,
+    { waitUntil: 'domcontentloaded' }
+  );
+  await page.getByText(updatedText).first().waitFor({ timeout: 15000 });
+  results.push({
+    name: 'record-comment-ui-update',
+    ok:
+      (await page.getByText(updatedText).first().isVisible()) &&
+      !(await page
+        .getByText(commentText)
+        .first()
+        .isVisible()
+        .catch(() => false)),
+  });
+
+  await deleteJson(`${origin}/api/comment/${tableId}/${recordId}/${comment.id}`);
+  await page.goto(
+    `${appOrigin}/mochi/local?tableId=${tableId}&viewId=${viewId}&recordId=${recordId}&showComment=true`,
+    { waitUntil: 'domcontentloaded' }
+  );
+  const countAfterDelete = await getJson(`${origin}/api/comment/${tableId}/${recordId}/count`);
+  results.push({
+    name: 'record-comment-ui-delete-count',
+    ok:
+      Number(countAfterDelete.count) === 0 &&
+      !(await page
+        .getByText(updatedText)
+        .first()
+        .isVisible()
+        .catch(() => false)),
+  });
 }
 
 async function createField(origin, tableId, input) {
@@ -382,15 +422,91 @@ async function runAdvancedViewRenderSmoke(
     });
     await page.getByText(view.name).first().waitFor({ timeout: 15000 });
     const bodyText = await page.locator('body').innerText();
+    const savedView = await getView(origin, tableId, view.id);
+    const optionsPersisted =
+      input.type === 'kanban'
+        ? savedView?.options?.stackFieldId === status.id
+        : input.type === 'calendar'
+          ? savedView?.options?.startDateFieldId === date.id &&
+            savedView?.options?.titleFieldId === fieldId
+          : true;
+    const viewBehaviorVisible =
+      input.type === 'form'
+        ? /Submit/.test(bodyText)
+        : input.type === 'gallery'
+          ? bodyText.includes(`Advanced render ${marker}`)
+          : optionsPersisted;
     results.push({
       name: `advanced-view-${input.type}-renders`,
       ok:
         page.url().includes(view.id) &&
         bodyText.includes(view.name) &&
+        viewBehaviorVisible &&
         !bodyText.includes('Unhandled Runtime Error') &&
         !bodyText.includes('Application error'),
     });
   }
+}
+
+async function runLocalImportUiSmoke(page, appOrigin, origin, baseId, marker, results) {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), `mochi-import-ui-${marker}-`));
+  const sourcePath = path.join(tmpDir, 'source.sqlite');
+  const sql = `
+    CREATE TABLE contacts (name TEXT, score INTEGER);
+    INSERT INTO contacts (name, score) VALUES ('Import UI ${marker}', 99);
+  `;
+  const sqlite = spawnSync('sqlite3', [sourcePath, sql], { encoding: 'utf8' });
+  if (sqlite.status !== 0) {
+    throw new Error(`sqlite3 import UI source creation failed: ${sqlite.stderr || sqlite.stdout}`);
+  }
+
+  await page.goto(`${appOrigin}/mochi/local`, { waitUntil: 'domcontentloaded' });
+  await page.getByTestId('mochi-local-import-sqlite').waitFor({ timeout: 15000 });
+  await page.getByTestId('mochi-local-import-sqlite').click();
+  await page.getByRole('textbox', { name: 'SQLite file path' }).fill(sourcePath);
+  await page.getByRole('button', { name: /^Import$/ }).click();
+  await page.getByText('Imported contacts').first().waitFor({ timeout: 15000 });
+
+  const tables = await getJson(`${origin}/api/mochi/bases/${baseId}/tables`);
+  const importedTable = tables.find((table) => table.name === 'Imported contacts');
+  const importedRecords = importedTable?.id
+    ? await getJson(`${origin}/api/mochi/tables/${importedTable.id}/records`)
+    : [];
+  results.push({
+    name: 'local-sqlite-import-ui',
+    ok:
+      Boolean(importedTable?.id && page.url().includes(importedTable.id)) &&
+      Boolean(importedTable?.id) &&
+      (await page.getByText('Imported contacts').first().isVisible()) &&
+      importedRecords.some((record) =>
+        Object.values(record.fields ?? {}).includes(`Import UI ${marker}`)
+      ),
+  });
+
+  if (importedTable?.id) {
+    await deleteJson(`${origin}/api/base/${baseId}/node/${importedTable.id}/permanent`).catch(
+      () => undefined
+    );
+  }
+}
+
+async function runLocalDashboardMenuSmoke(page, appOrigin, tableId, viewId, results) {
+  await page.goto(`${appOrigin}/mochi/local?tableId=${tableId}&viewId=${viewId}`, {
+    waitUntil: 'domcontentloaded',
+  });
+  await page.getByRole('button', { name: 'Add record' }).waitFor();
+  const setting = await getJson(`${appOrigin}/api/admin/setting/public`);
+  results.push({
+    name: 'local-dashboard-public-setting-disabled',
+    ok: setting.disallowDashboard === true,
+  });
+  const dashboardMenuItems = await page
+    .locator('[data-attr="base-create-menu-new-dashboard"]')
+    .count();
+  results.push({
+    name: 'local-dashboard-create-menu-removed',
+    ok: dashboardMenuItems === 0,
+  });
 }
 
 async function runHistorySmoke(page, origin, appOrigin, tableId, viewId, fieldId, marker, results) {
@@ -479,7 +595,7 @@ async function main() {
   const backendOrigin = process.env.MOCHI_BACKEND_ORIGIN ?? 'http://127.0.0.1:3001';
   const appOrigin = process.env.MOCHI_APP_ORIGIN ?? 'http://127.0.0.1:3000';
   const target = await discoverTarget(backendOrigin);
-  const { tableId, viewId, fieldId } = target;
+  const { baseId, tableId, viewId, fieldId } = target;
   const marker = `workflow-${Date.now()}`;
   const createdViewIds = new Set();
   const createdRecordIds = new Set();
@@ -546,6 +662,8 @@ async function main() {
       marker,
       results
     );
+    await runLocalImportUiSmoke(page, appOrigin, backendOrigin, baseId, marker, results);
+    await runLocalDashboardMenuSmoke(page, appOrigin, tableId, viewId, results);
     await page.close();
     await runTwoTabRealtimeSmoke(
       browser,

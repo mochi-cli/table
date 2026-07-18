@@ -189,6 +189,45 @@ const formulaDate = (value) => {
   return Number.isNaN(date.getTime()) ? null : date;
 };
 
+const formulaRegex = (pattern) => {
+  try {
+    return new RegExp(formulaString(pattern));
+  } catch {
+    return null;
+  }
+};
+
+const formulaFindIndex = (needle, haystack, start, caseSensitive) => {
+  const sourceText = formulaString(haystack);
+  const searchText = formulaString(needle);
+  const startIndex = Math.max(0, (formulaToNumber(start) ?? 1) - 1);
+  const searchableSource = caseSensitive ? sourceText : sourceText.toLocaleLowerCase();
+  const searchableNeedle = caseSensitive ? searchText : searchText.toLocaleLowerCase();
+  const index = searchableSource.indexOf(searchableNeedle, startIndex);
+  return index === -1 ? 0 : index + 1;
+};
+
+const formulaDateDiff = (leftValue, rightValue, unitValue) => {
+  const left = formulaDate(leftValue);
+  const right = formulaDate(rightValue);
+  if (!left || !right) return null;
+  const unit = formulaString(unitValue || 'days').toLocaleLowerCase();
+  const diffMs = left.getTime() - right.getTime();
+  if (unit.startsWith('millisecond')) return diffMs;
+  if (unit.startsWith('second')) return Math.trunc(diffMs / 1000);
+  if (unit.startsWith('minute')) return Math.trunc(diffMs / (1000 * 60));
+  if (unit.startsWith('hour')) return Math.trunc(diffMs / (1000 * 60 * 60));
+  if (unit.startsWith('week')) return Math.trunc(diffMs / (1000 * 60 * 60 * 24 * 7));
+  if (unit.startsWith('month')) {
+    return (
+      (left.getUTCFullYear() - right.getUTCFullYear()) * 12 +
+      (left.getUTCMonth() - right.getUTCMonth())
+    );
+  }
+  if (unit.startsWith('year')) return left.getUTCFullYear() - right.getUTCFullYear();
+  return Math.trunc(diffMs / (1000 * 60 * 60 * 24));
+};
+
 const padDatePart = (value) => String(value).padStart(2, '0');
 
 const formatFormulaDate = (date, pattern = 'YYYY-MM-DD') => {
@@ -247,6 +286,41 @@ const evaluateFormulaExpression = (expression, fields, fieldByName) => {
         return formulaString(args[0]).toLocaleUpperCase();
       case 'LEN':
         return formulaString(args[0]).length;
+      case 'FIND':
+        return formulaFindIndex(args[0], args[1], args[2], true);
+      case 'SEARCH':
+        return formulaFindIndex(args[0], args[1], args[2], false);
+      case 'SUBSTITUTE': {
+        const source = formulaString(args[0]);
+        const oldText = formulaString(args[1]);
+        const newText = formulaString(args[2]);
+        const occurrence = formulaToNumber(args[3]);
+        if (!oldText) return source;
+        if (!occurrence) return source.split(oldText).join(newText);
+        let seen = 0;
+        return source.replaceAll(oldText, (match) => {
+          seen += 1;
+          return seen === occurrence ? newText : match;
+        });
+      }
+      case 'VALUE': {
+        const normalized = formulaString(args[0]).trim().replaceAll(',', '');
+        const value = formulaToNumber(normalized);
+        return value === null ? null : value;
+      }
+      case 'REGEX_MATCH': {
+        const regex = formulaRegex(args[1]);
+        return regex ? regex.test(formulaString(args[0])) : false;
+      }
+      case 'REGEX_EXTRACT': {
+        const regex = formulaRegex(args[1]);
+        const match = regex?.exec(formulaString(args[0]));
+        return match ? match[1] ?? match[0] : null;
+      }
+      case 'REGEX_REPLACE': {
+        const regex = formulaRegex(args[1]);
+        return regex ? formulaString(args[0]).replace(regex, formulaString(args[2])) : null;
+      }
       case 'ABS': {
         const value = formulaToNumber(args[0]);
         return value === null ? null : Math.abs(value);
@@ -297,6 +371,12 @@ const evaluateFormulaExpression = (expression, fields, fieldByName) => {
         const date = formulaDate(args[0]);
         return date ? formatFormulaDate(date, formulaString(args[1]) || 'YYYY-MM-DD') : null;
       }
+      case 'DATETIME_PARSE': {
+        const date = formulaDate(args[0]);
+        return date ? date.toISOString() : null;
+      }
+      case 'DATETIME_DIFF':
+        return formulaDateDiff(args[0], args[1], args[2]);
       case 'DATEADD': {
         const date = formulaDate(args[0]);
         const amount = formulaToNumber(args[1]);
