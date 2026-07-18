@@ -29,6 +29,16 @@ const remapJsonIds = (value, idMap) => {
   );
 };
 
+const removeFieldColumnMeta = (columnMeta, fieldId) => {
+  if (Array.isArray(columnMeta)) {
+    return columnMeta.filter((item) => item?.fieldId !== fieldId);
+  }
+  if (!columnMeta || typeof columnMeta !== 'object') return columnMeta;
+  const nextColumnMeta = { ...columnMeta };
+  delete nextColumnMeta[fieldId];
+  return nextColumnMeta;
+};
+
 const remapRecordFields = (fields, fieldIdMap, recordIdMap) =>
   Object.fromEntries(
     Object.entries(fields ?? {}).map(([fieldId, value]) => [
@@ -684,6 +694,17 @@ export class MochiSqliteRepository {
       statements.push(...this.recordSearchStatements(current.table_id, record.id, nextFields));
     }
 
+    for (const view of this.listViews(current.table_id)) {
+      const nextColumnMeta = removeFieldColumnMeta(view.columnMeta, id);
+      if (JSON.stringify(nextColumnMeta) === JSON.stringify(view.columnMeta)) continue;
+      statements.push(
+        `UPDATE mochi_view
+         SET column_meta_json = ${jsonValue(nextColumnMeta)},
+             last_modified_time = ${nowExpr}
+         WHERE id = ${sqlValue(view.id)};`
+      );
+    }
+
     this.db.transaction(statements);
     return current;
   }
@@ -949,6 +970,9 @@ export class MochiSqliteRepository {
     }
 
     const filters = [`h.table_id = ${sqlValue(tableId)}`];
+    filters.push('t.deleted_time IS NULL');
+    filters.push('r.deleted_time IS NULL');
+    filters.push('f.deleted_time IS NULL');
     if (options.recordId) filters.push(`h.record_id = ${sqlValue(options.recordId)}`);
     if (Array.isArray(options.fieldIds) && options.fieldIds.length) {
       filters.push(`h.field_id IN (${options.fieldIds.map(sqlValue).join(', ')})`);
@@ -978,6 +1002,8 @@ export class MochiSqliteRepository {
           f.options_json AS field_options_json,
           f.is_lookup AS field_is_lookup
         FROM mochi_record_history h
+        JOIN mochi_table t ON t.id = h.table_id
+        JOIN mochi_record r ON r.id = h.record_id
         JOIN mochi_field f ON f.id = h.field_id
         WHERE ${filters.join(' AND ')}
         ORDER BY h.created_time DESC, h.id DESC

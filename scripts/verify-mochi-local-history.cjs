@@ -124,6 +124,18 @@ async function main() {
       ok: Object.prototype.hasOwnProperty.call(paged, 'nextCursor'),
     });
 
+    await deleteJson(`${origin}/api/table/${tableId}/record/${recordId}`);
+    const afterDeleteHistory = await getJson(
+      `${origin}/api/table/${tableId}/record/${recordId}/history?fieldIds=${fieldId}`
+    );
+    results.push({
+      name: 'deleted-record-history-hidden',
+      ok:
+        Array.isArray(afterDeleteHistory.historyList) &&
+        afterDeleteHistory.historyList.length === 0,
+    });
+    recordId = undefined;
+
     const result = { ok: results.every((item) => item.ok), target, marker, results };
     console.log(JSON.stringify(result, null, 2));
     if (!result.ok) process.exitCode = 1;

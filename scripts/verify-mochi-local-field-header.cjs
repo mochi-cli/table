@@ -38,6 +38,11 @@ const putJson = (url, body) =>
 
 const deleteJson = (url) => requestJson(url, { method: 'DELETE' });
 
+const columnMetaHasField = (columnMeta, fieldId) => {
+  if (Array.isArray(columnMeta)) return columnMeta.some((item) => item?.fieldId === fieldId);
+  return Boolean(columnMeta?.[fieldId]);
+};
+
 async function discoverTarget(origin) {
   const bases = await getJson(`${origin}/api/mochi/bases`);
   const base = bases[0];
@@ -51,16 +56,22 @@ async function discoverTarget(origin) {
     throw new Error(`No table found in local base ${base.id}.`);
   }
 
-  return { baseId: base.id, tableId: table.id };
+  const views = await getJson(`${origin}/api/table/${table.id}/view`);
+  const view = views[0];
+  if (!view?.id) {
+    throw new Error(`Table ${table.id} needs at least one view.`);
+  }
+
+  return { baseId: base.id, tableId: table.id, viewId: view.id };
 }
 
 async function main() {
   const origin = process.env.MOCHI_BACKEND_ORIGIN ?? 'http://127.0.0.1:3001';
   const target =
-    process.argv[2] && process.argv[3]
-      ? { baseId: process.argv[2], tableId: process.argv[3] }
+    process.argv[2] && process.argv[3] && process.argv[4]
+      ? { baseId: process.argv[2], tableId: process.argv[3], viewId: process.argv[4] }
       : await discoverTarget(origin);
-  const { tableId } = target;
+  const { tableId, viewId } = target;
   const marker = `field-header-${Date.now()}`;
   const createdIds = [];
 
@@ -75,7 +86,10 @@ async function main() {
     const renamed = await patchJson(`${origin}/api/table/${tableId}/field/${created.id}`, {
       name: `Renamed ${marker}`,
     });
-    results.push({ name: 'rename', ok: renamed?.id === created.id && renamed.name === `Renamed ${marker}` });
+    results.push({
+      name: 'rename',
+      ok: renamed?.id === created.id && renamed.name === `Renamed ${marker}`,
+    });
 
     const converted = await putJson(`${origin}/api/table/${tableId}/field/${created.id}/convert`, {
       type: 'singleLineText',
@@ -86,24 +100,67 @@ async function main() {
       ok: converted?.id === created.id && converted.type === 'singleLineText',
     });
 
-    const duplicated = await postJson(`${origin}/api/table/${tableId}/field/${created.id}/duplicate`, {
-      name: `Copy ${marker}`,
+    const hiddenView = await putJson(`${origin}/api/table/${tableId}/view/${viewId}/column-meta`, {
+      columnMeta: { [created.id]: { hidden: true } },
     });
+    results.push({
+      name: 'hide-field-column-meta',
+      ok: hiddenView?.columnMeta?.[created.id]?.hidden === true,
+    });
+
+    const insertLeft = await postJson(`${origin}/api/table/${tableId}/field`, {
+      name: `Insert left ${marker}`,
+    });
+    createdIds.push(insertLeft.id);
+    const insertRight = await postJson(`${origin}/api/table/${tableId}/field`, {
+      name: `Insert right ${marker}`,
+    });
+    createdIds.push(insertRight.id);
+    const orderedView = await putJson(`${origin}/api/table/${tableId}/view/${viewId}/column-meta`, {
+      columnMeta: {
+        [insertLeft.id]: { order: -1 },
+        [created.id]: { order: 0 },
+        [insertRight.id]: { order: 1 },
+      },
+    });
+    results.push({
+      name: 'insert-left-right-column-order',
+      ok:
+        orderedView?.columnMeta?.[insertLeft.id]?.order === -1 &&
+        orderedView?.columnMeta?.[created.id]?.order === 0 &&
+        orderedView?.columnMeta?.[insertRight.id]?.order === 1,
+    });
+
+    const duplicated = await postJson(
+      `${origin}/api/table/${tableId}/field/${created.id}/duplicate`,
+      {
+        name: `Copy ${marker}`,
+      }
+    );
     createdIds.push(duplicated.id);
     results.push({
       name: 'duplicate',
-      ok: Boolean(duplicated?.id) && duplicated.id !== created.id && duplicated.name === `Copy ${marker}`,
+      ok:
+        Boolean(duplicated?.id) &&
+        duplicated.id !== created.id &&
+        duplicated.name === `Copy ${marker}`,
     });
 
-    await deleteJson(`${origin}/api/table/${tableId}/field/${duplicated.id}`);
-    await deleteJson(`${origin}/api/table/${tableId}/field/${created.id}`);
+    const fieldIdsToDelete = [...createdIds];
+    for (const fieldId of fieldIdsToDelete.reverse()) {
+      await deleteJson(`${origin}/api/table/${tableId}/field/${fieldId}`);
+    }
     createdIds.length = 0;
 
     const fields = await getJson(`${origin}/api/table/${tableId}/field`);
-    const deleted = [created.id, duplicated.id].every(
+    const deleted = fieldIdsToDelete.every(
       (fieldId) => !fields.some((field) => field.id === fieldId)
     );
-    results.push({ name: 'delete', ok: deleted });
+    const viewsAfterDelete = await getJson(`${origin}/api/table/${tableId}/view`);
+    const deletedColumnMeta = fieldIdsToDelete.every((fieldId) =>
+      viewsAfterDelete.every((view) => !columnMetaHasField(view.columnMeta, fieldId))
+    );
+    results.push({ name: 'delete', ok: deleted && deletedColumnMeta });
 
     const result = {
       ok: results.every((item) => item.ok),

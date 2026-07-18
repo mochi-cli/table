@@ -4,7 +4,7 @@ SQLITE_DB ?= $(CURDIR)/data/mochi-table.sqlite
 
 .DEFAULT_GOAL := help
 
-.PHONY: help sqlite.init sqlite.smoke sqlite.verify mochi.test mochi.typecheck mochi.local.verify mochi.realtime.verify mochi.table-metadata.verify mochi.field-header.verify mochi.view-lifecycle.verify mochi.selection.verify mochi.history.verify mochi.cleanup sqlite.reset dev.backend dev.app
+.PHONY: help sqlite.init sqlite.smoke sqlite.verify mochi.test mochi.typecheck mochi.local.verify mochi.browser.verify mochi.realtime.verify mochi.table-metadata.verify mochi.field-header.verify mochi.view-lifecycle.verify mochi.selection.verify mochi.history.verify mochi.cleanup sqlite.reset dev.backend dev.app
 
 help:
 	@echo "Mochi Table local commands"
@@ -15,6 +15,7 @@ help:
 	@echo "  make mochi.test     Run Mochi backend tests and SQLite verification"
 	@echo "  make mochi.typecheck Typecheck Mochi SQLite backend and app surfaces"
 	@echo "  make mochi.local.verify Run all local Mochi non-browser checks"
+	@echo "  make mochi.browser.verify Verify local header table UI in Playwright"
 	@echo "  make mochi.realtime.verify Verify local view header realtime setView path"
 	@echo "  make mochi.table-metadata.verify Verify local table metadata update path"
 	@echo "  make mochi.field-header.verify Verify local field header update path"
@@ -53,6 +54,9 @@ mochi.local.verify:
 	$(MAKE) mochi.view-lifecycle.verify
 	$(MAKE) mochi.selection.verify
 	$(MAKE) mochi.history.verify
+
+mochi.browser.verify:
+	node scripts/verify-mochi-local-browser.cjs
 
 mochi.realtime.verify:
 	node scripts/verify-mochi-local-realtime.cjs

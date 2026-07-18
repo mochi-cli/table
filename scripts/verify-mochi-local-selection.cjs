@@ -131,16 +131,39 @@ async function main() {
       ok: afterClear.find((record) => record.id === recordId)?.fields?.[fieldId] == null,
     });
 
-    const pasteStreamText = await requestText(`${origin}/api/table/${tableId}/selection/paste-by-id-stream`, {
-      method: 'PATCH',
-      body: JSON.stringify({
-        content: `Stream ${marker}`,
-        selection: { recordIds: [recordId], fieldIds: [fieldId] },
-      }),
-    });
+    const pasteStreamText = await requestText(
+      `${origin}/api/table/${tableId}/selection/paste-by-id-stream`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({
+          content: `Stream ${marker}`,
+          selection: { recordIds: [recordId], fieldIds: [fieldId] },
+        }),
+      }
+    );
     results.push({
       name: 'paste-by-id-stream',
       ok: hasStreamDoneValue(pasteStreamText, 'updatedCount', 1),
+    });
+
+    const clearStreamText = await requestText(
+      `${origin}/api/table/${tableId}/selection/clear-by-id-stream`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ selection: { recordIds: [recordId], fieldIds: [fieldId] } }),
+      }
+    );
+    const afterClearStream = await listRecords(origin, tableId);
+    results.push({
+      name: 'clear-by-id-stream',
+      ok:
+        hasStreamDoneValue(clearStreamText, 'clearedCount', 1) &&
+        afterClearStream.find((record) => record.id === recordId)?.fields?.[fieldId] == null,
+    });
+
+    await patchJson(`${origin}/api/table/${tableId}/selection/paste-by-id`, {
+      content: `Stream ${marker}`,
+      selection: { recordIds: [recordId], fieldIds: [fieldId] },
     });
 
     const recordsBeforeDuplicate = await listRecords(origin, tableId);

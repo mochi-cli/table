@@ -79,18 +79,26 @@ Kept:
 - `make mochi.realtime.verify` checks Teable-compatible view header updates
   (`name`, `filter`, `sort`, `group`, `columnMeta`, and `options`) through the
   local `setView` realtime path.
+- `make mochi.browser.verify` checks the local grid header/table UI in
+  Playwright while `make dev.backend` and `make dev.app` are running. It opens
+  `/mochi/local`, verifies Filter/Sort/Group popovers do not navigate or reload
+  the page, opens the field header menu, resizes a column, reorders a temporary
+  column, checks persistence through the local Teable-compatible API, and then
+  deletes the temporary field.
 - `make mochi.table-metadata.verify` checks table `name`, `icon`, and
   `description` updates through the local Teable-compatible metadata endpoints
   and restores the original table metadata afterward.
 - `make mochi.field-header.verify` checks field create, rename, convert,
-  duplicate, and delete through the local Teable-compatible field endpoints.
+  hide through `columnMeta`, insert-left/right order semantics, duplicate, and
+  delete through the local Teable-compatible field/view endpoints.
 - `make mochi.view-lifecycle.verify` checks view create, duplicate, and delete
   through the local Teable-compatible view endpoints.
 - `make mochi.selection.verify` checks selection preview/copy, paste, clear,
-  stream paste, stream duplicate, stream delete, and delete-by-id through the
-  local Teable-compatible selection endpoints.
+  stream paste, stream clear, stream duplicate, stream delete, and delete-by-id
+  through the local Teable-compatible selection endpoints.
 - `make mochi.history.verify` checks record-level and table-level field history
-  before/after rows through the local Teable-compatible history endpoints.
+  before/after rows, created-by filtering, cursor response shape, and hidden
+  deleted-record history through the local Teable-compatible history endpoints.
 - `make mochi.local.verify` runs the non-browser local verification bundle.
 - `make mochi.cleanup` removes known local smoke-test tables/views from the
   default SQLite DB.
@@ -146,11 +154,29 @@ sort, group, column meta, and options through `/api/table/:tableId/view/:viewId/
 and checks that the socket receives `setView` action triggers with matching
 `updatedProperties` and `skipRealtime: true`.
 
+To run the UI header smoke, start both local dev processes:
+
+```bash
+make dev.backend
+make dev.app
+```
+
+Then run:
+
+```bash
+make mochi.browser.verify
+```
+
+The browser verifier covers the header table interactions that are easiest to
+regress visually: filter/sort/group popovers, field header menu actions,
+column resize persistence, and column reorder persistence after reopening the
+local page.
+
 ## Remaining parity checks
 
-- Complete a browser click-through pass for header/table toolbar behavior:
-  create/duplicate/delete/rename view, filter/sort/group, column meta,
-  hide/show field, resize/reorder column, and selection tools.
+- Keep adding browser coverage for larger workflows such as create, duplicate,
+  delete, and rename view from the left view list; the header toolbar smoke is
+  now covered by `make mochi.browser.verify`.
 - Keep extending SQLite route coverage where local compatibility endpoints are
   still stubs: comments, share/admin, user last-visit, and some base-node
   behavior.
