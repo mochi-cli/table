@@ -51,6 +51,12 @@ const parseNumberQuery = (value: unknown, fallback: number) => {
   return Number.isFinite(numberValue) ? numberValue : fallback;
 };
 
+const parseArrayQuery = (value: unknown): string[] | undefined => {
+  if (Array.isArray(value)) return value.map(String).filter(Boolean);
+  if (typeof value === 'string' && value.length > 0) return [value];
+  return undefined;
+};
+
 const normalizeSearchQuery = (value: unknown): string | undefined => {
   if (Array.isArray(value)) return value.filter(Boolean).join(' ');
   if (typeof value === 'string') return value;
@@ -238,6 +244,32 @@ type LocalRecord = {
   last_modified_time?: string;
 };
 
+type LocalRecordHistoryRow = {
+  id: string;
+  table_id: string;
+  record_id: string;
+  field_id: string;
+  before: unknown;
+  after: unknown;
+  created_time: string;
+  field: LocalField;
+};
+
+type LocalRecordHistoryVo = {
+  historyList: Array<{
+    id: string;
+    tableId: string;
+    recordId: string;
+    fieldId: string;
+    before: { meta: unknown; data: unknown };
+    after: { meta: unknown; data: unknown };
+    createdTime: string;
+    createdBy: string;
+  }>;
+  userMap: Record<string, { id: string; name: string; email?: string; avatar: string | null }>;
+  nextCursor: string | null;
+};
+
 const toBool = (value: unknown) => value === true || value === 1;
 
 const normalizeCellValueType = (cellValueType?: string): CellValueType => {
@@ -368,6 +400,34 @@ const toTeableRecord = (record: LocalRecord | null | undefined): IRecord | null 
     lastModifiedBy: 'Mochi Local',
   };
 };
+
+const toRecordHistoryVo = (history: {
+  rows: unknown[];
+  nextCursor: string | null;
+}): LocalRecordHistoryVo => ({
+  historyList: (history.rows as LocalRecordHistoryRow[]).map((row) => {
+    const meta = toTeableField(row.field);
+    return {
+      id: row.id,
+      tableId: row.table_id,
+      recordId: row.record_id,
+      fieldId: row.field_id,
+      before: { meta, data: row.before },
+      after: { meta, data: row.after },
+      createdTime: row.created_time,
+      createdBy: 'usr_mochi_local',
+    };
+  }),
+  userMap: {
+    usr_mochi_local: {
+      id: 'usr_mochi_local',
+      name: 'Mochi Local',
+      email: 'mochi-local@example.local',
+      avatar: null,
+    },
+  },
+  nextCursor: history.nextCursor,
+});
 
 @Public()
 @Controller('api/table')
@@ -834,6 +894,48 @@ export class MochiTeableApiController {
       sorts: normalizeSortQuery(orderBy),
     }) as LocalRecord[];
     return { records: records.map(toTeableRecord).filter(Boolean) as IRecord[] };
+  }
+
+  @Get(':tableId/record/history')
+  getRecordListHistory(
+    @Param('tableId') tableId: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('fieldIds') fieldIds?: string | string[],
+    @Query('createdByIds') createdByIds?: string | string[],
+    @Query('cursor') cursor?: string
+  ): LocalRecordHistoryVo {
+    return toRecordHistoryVo(
+      this.mochiSqliteService.listRecordHistory(tableId, {
+        startDate,
+        endDate,
+        fieldIds: parseArrayQuery(fieldIds),
+        createdByIds: parseArrayQuery(createdByIds),
+        cursor,
+      })
+    );
+  }
+
+  @Get(':tableId/record/:recordId/history')
+  getRecordHistory(
+    @Param('tableId') tableId: string,
+    @Param('recordId') recordId: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('fieldIds') fieldIds?: string | string[],
+    @Query('createdByIds') createdByIds?: string | string[],
+    @Query('cursor') cursor?: string
+  ): LocalRecordHistoryVo {
+    return toRecordHistoryVo(
+      this.mochiSqliteService.listRecordHistory(tableId, {
+        recordId,
+        startDate,
+        endDate,
+        fieldIds: parseArrayQuery(fieldIds),
+        createdByIds: parseArrayQuery(createdByIds),
+        cursor,
+      })
+    );
   }
 
   @Post(':tableId/record')

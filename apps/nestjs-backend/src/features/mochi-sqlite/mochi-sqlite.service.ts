@@ -116,6 +116,18 @@ type MochiRepository = {
   }) => unknown;
   listRecordAttachments: (recordId: string) => unknown[];
   deleteAttachment: (id: string) => unknown;
+  listRecordHistory: (
+    tableId: string,
+    options?: {
+      recordId?: string;
+      fieldIds?: string[];
+      createdByIds?: string[];
+      startDate?: string;
+      endDate?: string;
+      cursor?: string | null;
+      limit?: number;
+    }
+  ) => { rows: unknown[]; nextCursor: string | null };
   listImportSources: () => unknown[];
   importSqliteDatabase: (input: {
     path: string;
@@ -465,6 +477,21 @@ export class MochiSqliteService {
 
   deleteAttachment(id: string) {
     return this.repository.deleteAttachment(id);
+  }
+
+  listRecordHistory(
+    tableId: string,
+    options?: {
+      recordId?: string;
+      fieldIds?: string[];
+      createdByIds?: string[];
+      startDate?: string;
+      endDate?: string;
+      cursor?: string | null;
+      limit?: number;
+    }
+  ) {
+    return this.repository.listRecordHistory(tableId, options);
   }
 
   listImportSources() {

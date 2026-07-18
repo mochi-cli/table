@@ -912,10 +912,97 @@ export class MochiSqliteRepository {
          ${jsonValue({ fields: current.fields, order: current.order ?? null })},
          ${jsonValue({ fields: nextFields, order: nextOrder ?? null })}
        );`,
+      ...this.recordHistoryStatements(current.table_id, id, current.fields, nextFields),
       ...this.recordSearchStatements(current.table_id, id, nextFields),
     ];
     this.db.transaction(statements);
     return this.getRecord(id);
+  }
+
+  recordHistoryStatements(tableId, recordId, beforeFields, afterFields) {
+    const fieldIds = new Set([
+      ...Object.keys(beforeFields ?? {}),
+      ...Object.keys(afterFields ?? {}),
+    ]);
+    return [...fieldIds].flatMap((fieldId) => {
+      const before = beforeFields?.[fieldId] ?? null;
+      const after = afterFields?.[fieldId] ?? null;
+      if (JSON.stringify(before) === JSON.stringify(after)) return [];
+      return [
+        `INSERT INTO mochi_record_history (id, table_id, record_id, field_id, before_json, after_json)
+         VALUES (
+           ${sqlValue(ids.recordHistory())},
+           ${sqlValue(tableId)},
+           ${sqlValue(recordId)},
+           ${sqlValue(fieldId)},
+           ${jsonValue(before)},
+           ${jsonValue(after)}
+         );`,
+      ];
+    });
+  }
+
+  listRecordHistory(tableId, options = {}) {
+    const limit = Math.max(1, Math.min(Number(options.limit ?? 50), 100));
+    if (Array.isArray(options.createdByIds) && !options.createdByIds.includes('usr_mochi_local')) {
+      return { rows: [], nextCursor: null };
+    }
+
+    const filters = [`h.table_id = ${sqlValue(tableId)}`];
+    if (options.recordId) filters.push(`h.record_id = ${sqlValue(options.recordId)}`);
+    if (Array.isArray(options.fieldIds) && options.fieldIds.length) {
+      filters.push(`h.field_id IN (${options.fieldIds.map(sqlValue).join(', ')})`);
+    }
+    if (options.startDate) filters.push(`h.created_time >= ${sqlValue(options.startDate)}`);
+    if (options.endDate) filters.push(`h.created_time <= ${sqlValue(options.endDate)}`);
+
+    if (options.cursor) {
+      const cursor = this.db.get(
+        `SELECT id, created_time FROM mochi_record_history WHERE id = ${sqlValue(options.cursor)};`
+      );
+      if (cursor) {
+        filters.push(
+          `(h.created_time < ${sqlValue(cursor.created_time)} OR (h.created_time = ${sqlValue(cursor.created_time)} AND h.id < ${sqlValue(cursor.id)}))`
+        );
+      }
+    }
+
+    const rows = this.db
+      .all(
+        `
+        SELECT
+          h.*,
+          f.name AS field_name,
+          f.type AS field_type,
+          f.cell_value_type AS field_cell_value_type,
+          f.options_json AS field_options_json,
+          f.is_lookup AS field_is_lookup
+        FROM mochi_record_history h
+        JOIN mochi_field f ON f.id = h.field_id
+        WHERE ${filters.join(' AND ')}
+        ORDER BY h.created_time DESC, h.id DESC
+        LIMIT ${limit + 1};
+      `
+      )
+      .map((row) => ({
+        ...row,
+        before: parseJson(row.before_json),
+        after: parseJson(row.after_json),
+        field: {
+          id: row.field_id,
+          name: row.field_name,
+          type: row.field_type,
+          cell_value_type: row.field_cell_value_type,
+          options: parseJson(row.field_options_json),
+          is_lookup: row.field_is_lookup,
+        },
+      }));
+
+    const page = rows.slice(0, limit);
+    return {
+      rows: page,
+      nextCursor: rows.length > limit ? page.at(-1)?.id ?? null : null,
+    };
   }
 
   resolveLookupRollup(tableId, options = {}) {

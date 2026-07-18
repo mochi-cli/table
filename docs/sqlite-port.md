@@ -89,6 +89,8 @@ Kept:
 - `make mochi.selection.verify` checks selection preview/copy, paste, clear,
   stream paste, stream duplicate, stream delete, and delete-by-id through the
   local Teable-compatible selection endpoints.
+- `make mochi.history.verify` checks record-level and table-level field history
+  before/after rows through the local Teable-compatible history endpoints.
 - `make mochi.local.verify` runs the non-browser local verification bundle.
 - `make mochi.cleanup` removes known local smoke-test tables/views from the
   default SQLite DB.
@@ -121,6 +123,7 @@ Implemented foundation:
 - attachment metadata, trash/restore, SQLite import, and computed job scaffolding
 - legacy CSV/Excel import UI hidden in local mode until the file pipeline is ported
 - local SockJS/ShareDB realtime for record actions and view `setView` updates
+- local field-level record history for record and table history panels
 
 ## Local realtime verification
 

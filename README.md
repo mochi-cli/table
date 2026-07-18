@@ -131,7 +131,7 @@ can create bases, tables, fields, views, and records; edit grid cells; run
 copy/paste/clear/delete/duplicate selection helpers; duplicate fields, views,
 records, and tables; search records; rebuild FTS; resolve lookup/rollup values;
 resolve basic formulas; import SQLite files through the local API; and run
-undo/redo.
+undo/redo and record history.
 
 Verify the local view/header realtime path while `make dev.backend` is running:
 
@@ -184,6 +184,16 @@ That verifier creates a temporary record and covers preview/copy, paste,
 clear, stream paste, stream duplicate, stream delete, and delete-by-id before
 cleaning the temporary records.
 
+Record history can be checked with:
+
+```bash
+make mochi.history.verify
+```
+
+That verifier creates a temporary record, updates a field twice, checks both
+record-level and table-level history endpoints, verifies the local user filter,
+and removes the temporary record.
+
 To run the full non-browser local check suite while `make dev.backend` is
 running:
 
@@ -223,12 +233,15 @@ Current local-mode coverage:
   covered by `make mochi.view-lifecycle.verify`.
 - Selection actions: preview/copy, paste, clear, stream paste, stream duplicate,
   stream delete, and delete-by-id are covered by `make mochi.selection.verify`.
+- Record history: field-level before/after rows are exposed through
+  Teable-compatible record and table history endpoints and covered by
+  `make mochi.history.verify`.
 - Dev runtime: `make dev.backend` boots the SQLite-only backend without
   Postgres or Redis.
 - Verification: `make mochi.realtime.verify`,
   `make mochi.table-metadata.verify`, `make mochi.field-header.verify`,
-  `make mochi.view-lifecycle.verify`, `make mochi.selection.verify`, backend
-  Mochi tests, SDK `useInstances` tests, app typecheck,
+  `make mochi.view-lifecycle.verify`, `make mochi.selection.verify`,
+  `make mochi.history.verify`, backend Mochi tests, SDK `useInstances` tests, app typecheck,
   `@mochi/table-sqlite verify`, and the umbrella `make mochi.local.verify`.
 
 Known remaining gaps:

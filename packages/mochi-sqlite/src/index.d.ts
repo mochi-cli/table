@@ -140,6 +140,18 @@ export class MochiSqliteRepository {
   }): unknown;
   listRecordAttachments(recordId: string): unknown[];
   deleteAttachment(id: string): unknown | null;
+  listRecordHistory(
+    tableId: string,
+    options?: {
+      recordId?: string;
+      fieldIds?: string[];
+      createdByIds?: string[];
+      startDate?: string;
+      endDate?: string;
+      cursor?: string | null;
+      limit?: number;
+    }
+  ): { rows: unknown[]; nextCursor: string | null };
   listImportSources(): unknown[];
   createImportSource(input: {
     id?: string;

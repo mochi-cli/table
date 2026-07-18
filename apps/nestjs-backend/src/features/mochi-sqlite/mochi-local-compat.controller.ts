@@ -39,7 +39,7 @@ const localBasePermission = {
   'record|update': true,
   'record|comment': false,
   'record|copy': true,
-  'table_record_history|read': false,
+  'table_record_history|read': true,
   'automation|read': false,
   'automation|create': false,
   'automation|update': false,

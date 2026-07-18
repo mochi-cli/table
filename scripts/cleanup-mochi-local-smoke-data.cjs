@@ -18,16 +18,20 @@ async function main() {
   const deletedViews = [];
   const deletedOrphanViews = [];
   const renamedViews = [];
+  const deletedHistoryRows = [];
 
   for (const base of bases) {
     const tables = repo.listTables(base.id);
     const activeTables = tables.filter((table) => !table.deleted_time);
-    const primaryTable = activeTables.find((table) => table.name === 'Customers') ?? activeTables[0];
+    const primaryTable =
+      activeTables.find((table) => table.name === 'Customers') ?? activeTables[0];
 
     for (const table of activeTables) {
       const shouldDeleteTable =
         table.id !== primaryTable?.id &&
-        (table.name === 'Customers' || table.name === 'New table' || table.name === 'Schema only smoke');
+        (table.name === 'Customers' ||
+          table.name === 'New table' ||
+          table.name === 'Schema only smoke');
       if (shouldDeleteTable) {
         for (const view of repo.listViews(table.id).filter((item) => !item.deleted_time)) {
           repo.deleteView(view.id);
@@ -47,7 +51,10 @@ async function main() {
       views[0];
 
     for (const view of views) {
-      if (view.id !== primaryView?.id && ['Gallery', 'Gallery 2', 'Grid view copy'].includes(view.name)) {
+      if (
+        view.id !== primaryView?.id &&
+        ['Gallery', 'Gallery 2', 'Grid view copy'].includes(view.name)
+      ) {
         repo.deleteView(view.id);
         deletedViews.push({ id: view.id, name: view.name, tableId: primaryTable.id });
       }
@@ -75,6 +82,33 @@ async function main() {
     deletedOrphanViews.push(view);
   }
 
+  const historyCleanup = repo.db.get(`
+    SELECT COUNT(*) AS count
+    FROM mochi_record_history h
+    LEFT JOIN mochi_record r ON r.id = h.record_id
+    LEFT JOIN mochi_table t ON t.id = h.table_id
+    WHERE r.id IS NULL
+       OR r.deleted_time IS NOT NULL
+       OR t.id IS NULL
+       OR t.deleted_time IS NOT NULL;
+  `);
+  repo.db.run(`
+    DELETE FROM mochi_record_history
+    WHERE id IN (
+      SELECT h.id
+      FROM mochi_record_history h
+      LEFT JOIN mochi_record r ON r.id = h.record_id
+      LEFT JOIN mochi_table t ON t.id = h.table_id
+      WHERE r.id IS NULL
+         OR r.deleted_time IS NOT NULL
+         OR t.id IS NULL
+         OR t.deleted_time IS NOT NULL
+    );
+  `);
+  if (historyCleanup?.count) {
+    deletedHistoryRows.push({ count: historyCleanup.count });
+  }
+
   console.log(
     JSON.stringify(
       {
@@ -84,6 +118,7 @@ async function main() {
         deletedViews,
         deletedOrphanViews,
         renamedViews,
+        deletedHistoryRows,
       },
       null,
       2

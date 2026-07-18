@@ -12,6 +12,7 @@ export const ids = {
   attachment: () => createId('att'),
   attachmentRef: () => createId('arf'),
   trash: () => createId('trh'),
+  recordHistory: () => createId('rhi'),
   importSource: () => createId('ims'),
   computedJob: () => createId('job'),
   opBatch: () => createId('opb'),
