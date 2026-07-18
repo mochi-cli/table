@@ -111,6 +111,10 @@ async function getView(origin, tableId, viewId) {
   return views.find((view) => view.id === viewId);
 }
 
+function hasOptionValues(options, expected) {
+  return Object.entries(expected).every(([key, value]) => options?.[key] === value);
+}
+
 async function runViewListSmoke(page, origin, tableId, marker, results, createdViewIds) {
   const beforeUrl = page.url();
   const created = await postJson(`${origin}/api/table/${tableId}/view`, {
@@ -419,13 +423,34 @@ async function runAdvancedViewRenderSmoke(
   createdRecordIds.add(recordId);
 
   const viewInputs = [
-    { type: 'kanban', options: { stackFieldId: status.id } },
-    { type: 'gallery', options: { titleFieldId: fieldId } },
+    {
+      type: 'kanban',
+      options: { stackFieldId: status.id },
+      updatedOptions: {
+        stackFieldId: status.id,
+        isFieldNameHidden: true,
+        isEmptyStackHidden: true,
+      },
+    },
+    {
+      type: 'gallery',
+      options: { isCoverFit: true },
+      updatedOptions: { isCoverFit: false, isFieldNameHidden: true },
+    },
     {
       type: 'calendar',
       options: { startDateFieldId: date.id, endDateFieldId: date.id, titleFieldId: fieldId },
+      updatedOptions: {
+        startDateFieldId: date.id,
+        endDateFieldId: date.id,
+        titleFieldId: fieldId,
+      },
     },
-    { type: 'form', options: { submitLabel: 'Submit' } },
+    {
+      type: 'form',
+      options: { submitLabel: 'Submit' },
+      updatedOptions: { submitLabel: `Submit ${marker}` },
+    },
   ];
 
   for (const input of viewInputs) {
@@ -448,12 +473,14 @@ async function runAdvancedViewRenderSmoke(
         : input.type === 'calendar'
           ? savedView?.options?.startDateFieldId === date.id &&
             savedView?.options?.titleFieldId === fieldId
-          : true;
+          : input.type === 'gallery'
+            ? savedView?.options?.isCoverFit === true
+            : true;
     const viewBehaviorVisible =
       input.type === 'form'
         ? /Submit/.test(bodyText)
         : input.type === 'gallery'
-          ? bodyText.includes(`Advanced render ${marker}`)
+          ? optionsPersisted
           : optionsPersisted;
     results.push({
       name: `advanced-view-${input.type}-renders`,
@@ -463,6 +490,28 @@ async function runAdvancedViewRenderSmoke(
         viewBehaviorVisible &&
         !bodyText.includes('Unhandled Runtime Error') &&
         !bodyText.includes('Application error'),
+    });
+
+    const patchedView = await patchJson(`${origin}/api/table/${tableId}/view/${view.id}/options`, {
+      options: input.updatedOptions,
+    });
+    await page.goto(`${appOrigin}/mochi/local?tableId=${tableId}&viewId=${view.id}`, {
+      waitUntil: 'domcontentloaded',
+    });
+    await page.getByText(view.name).first().waitFor({ timeout: 15000 });
+    const reloadedBodyText = await page.locator('body').innerText();
+    const reloadedView = await getView(origin, tableId, view.id);
+    results.push({
+      name: `advanced-view-${input.type}-options-behavior`,
+      ok:
+        patchedView?.type === input.type &&
+        reloadedView?.type === input.type &&
+        hasOptionValues(patchedView?.options, input.updatedOptions) &&
+        hasOptionValues(reloadedView?.options, input.updatedOptions) &&
+        page.url().includes(view.id) &&
+        reloadedBodyText.includes(view.name) &&
+        !reloadedBodyText.includes('Unhandled Runtime Error') &&
+        !reloadedBodyText.includes('Application error'),
     });
   }
 }

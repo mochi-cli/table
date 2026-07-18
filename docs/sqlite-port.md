@@ -89,10 +89,10 @@ Kept:
 - `make mochi.browser-workflows.verify` checks browser-backed local workflows
   for view create/rename/duplicate/delete, cell selection copy/paste/clear,
   selected-row duplicate/delete, local comment panel render/update/delete,
-  advanced Kanban/Gallery/Calendar/Form render smoke checks, local SQLite import
-  UI, Dashboard menu removal, record history panel rendering, table history
-  backed data, and two-tab realtime filter/column-meta updates without page
-  navigation.
+  advanced Kanban/Gallery/Calendar/Form render and options behavior smoke
+  checks, local SQLite import UI, Dashboard menu removal, record history panel
+  rendering, table history backed data, and two-tab realtime filter/column-meta
+  updates without page navigation.
 - `make mochi.integrity.verify` checks local SQLite integrity guards: no
   orphan/deleted-resource history rows, no active view `columnMeta` entries
   pointing at deleted fields, and no duplicate active view names in a table.
@@ -239,10 +239,10 @@ Later:
 
 - richer comment reactions/subscriptions/notifications; local comment CRUD and
   counts are covered by `make mochi.comments.verify`.
-- richer advanced view behavior such as drag/drop and per-view configuration
-  editing; advanced view metadata lifecycle is covered by
-  `make mochi.view-lifecycle.verify`, and render smoke checks are covered by
-  `make mochi.browser-workflows.verify`.
+- richer advanced view behavior such as drag/drop and full per-view
+  configuration editing; advanced view metadata lifecycle is covered by
+  `make mochi.view-lifecycle.verify`, and render/options behavior smoke checks
+  are covered by `make mochi.browser-workflows.verify`.
 
 ## Local parity status
 
@@ -253,9 +253,10 @@ Supported local surface:
   actions, local CSV/Excel import, local SQLite import, attachment metadata,
   search/storage integrity, lookup/rollup, computed jobs, and the current local
   formula evaluator.
-- Advanced view metadata and smoke rendering for Kanban, Gallery, Calendar, and
-  Form. The local backend preserves view type/options and the browser verifier
-  opens each view without falling back to grid.
+- Advanced view metadata, smoke rendering, and options behavior checks for
+  Kanban, Gallery, Calendar, and Form. The local backend preserves view
+  type/options and the browser verifier opens each view without falling back to
+  grid.
 - Realtime for table header/view updates and record actions through local
   SockJS/ShareDB. `make dev.backend` is SQLite-only and does not require Redis;
   Redis pub/sub is optional only when explicitly configured.
