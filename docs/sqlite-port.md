@@ -123,6 +123,10 @@ Kept:
   default SQLite DB, resets the primary view name, removes smoke history rows,
   strips stale `columnMeta` entries that point at deleted fields, and removes
   storage/import verifier source rows.
+- `make mochi.finalize.verify` runs `mochi.cleanup` and then
+  `mochi.integrity.verify` sequentially. Use this instead of running cleanup and
+  integrity in parallel, because SQLite can briefly lock the database while
+  cleanup is writing.
 
 ## First supported feature set
 
@@ -190,32 +194,37 @@ make mochi.browser-workflows.verify
 ```
 
 The browser verifiers cover the header table interactions that are easiest to
-regress visually, plus view-list, selection, history, and two-tab realtime
-workflows. Finish with:
+regress visually, record expand edge-drag behavior, plus view-list, selection,
+history, and two-tab realtime workflows. Finish with:
 
 ```bash
-make mochi.cleanup
-make mochi.integrity.verify
+make mochi.finalize.verify
 ```
 
 ## Remaining parity checks
 
-- Keep extending browser coverage for drag-heavy edge cases and additional
-  history entry points as Mochi local workflows grow.
-- Keep extending SQLite route coverage for local-only table behavior:
-  base-node create/rename/icon/description/duplicate/move/delete, local
-  last-visit fallbacks, and read-only public admin settings.
+- Keep extending browser coverage for row/view drag-heavy edge cases as Mochi
+  local workflows grow. Header popovers, column resize/reorder, and record
+  expand edge-drag behavior are covered by `make mochi.browser.verify`.
+- Keep extending SQLite route coverage for local-only table behavior as new UI
+  paths appear. Base-node create/rename/icon/description/duplicate/move/delete,
+  permanent delete removal, local last-visit fallbacks, and read-only public
+  admin settings are covered by `make mochi.base-node.verify`.
 - Exclude login/auth/collaboration-dependent features from local parity:
   share link creation/passwords, collaborator invites/roles, shared-base access
   control, admin user management, OAuth/access-token setup, and persisted
   per-account last-visit history. Local mode should keep returning fixed
-  `usr_mochi_local` responses or empty local-safe stubs for these endpoints.
+  `usr_mochi_local` responses or empty local-safe stubs for read endpoints; the
+  login-dependent write/admin endpoints are verified as not implemented by
+  `make mochi.base-node.verify`.
 - Expand formula parity beyond the current local evaluator as Mochi workflows
-  require more Teable formula functions. The current API-level formula,
+  require more Teable formula functions. The current API-level arithmetic,
+  grouping, text functions (`CONCATENATE`, `LOWER`, `UPPER`, `LEN`),
   lookup/rollup, and computed-job paths are covered by the
-  `mochi.computed.verify` target.
+  `make mochi.computed.verify` target.
 
 Later:
 
-- comments
+- full comment create/update/delete support. Local-safe comment counts currently
+  return empty/zero responses and are covered by `make mochi.base-node.verify`.
 - advanced view types

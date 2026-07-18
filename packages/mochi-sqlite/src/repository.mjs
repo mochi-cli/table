@@ -466,6 +466,25 @@ export class MochiSqliteRepository {
     return current;
   }
 
+  permanentDeleteTable(id) {
+    const current = this.getTable(id);
+    if (!current) return null;
+    this.db.transaction([
+      `DELETE FROM mochi_record_fts WHERE table_id = ${sqlValue(id)};`,
+      `DELETE FROM mochi_attachment_ref WHERE table_id = ${sqlValue(id)};`,
+      `DELETE FROM mochi_record_history WHERE table_id = ${sqlValue(id)};`,
+      `DELETE FROM mochi_op WHERE table_id = ${sqlValue(id)};`,
+      `DELETE FROM mochi_computed_job WHERE table_id = ${sqlValue(id)};`,
+      `DELETE FROM mochi_record WHERE table_id = ${sqlValue(id)};`,
+      `DELETE FROM mochi_view WHERE table_id = ${sqlValue(id)};`,
+      `DELETE FROM mochi_field WHERE table_id = ${sqlValue(id)};`,
+      `DELETE FROM mochi_trash WHERE resource_type = 'table' AND resource_id = ${sqlValue(id)};`,
+      `UPDATE mochi_import_source SET table_id = NULL WHERE table_id = ${sqlValue(id)};`,
+      `DELETE FROM mochi_table WHERE id = ${sqlValue(id)};`,
+    ]);
+    return current;
+  }
+
   duplicateTable(id, input = {}) {
     const source = this.getTable(id);
     if (!source || source.deleted_time) return null;

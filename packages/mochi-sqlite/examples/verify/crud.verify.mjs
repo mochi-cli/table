@@ -24,5 +24,33 @@ export const run = () => {
   assert.equal(repo.listViews(duplicated.id).length, 1);
   assert.equal(repo.listRecords(duplicated.id).length, 0);
 
+  const permanent = repo.createTable({
+    baseId: table.base_id,
+    name: 'Permanent delete target',
+  });
+  const permanentField = repo.createField({
+    tableId: permanent.id,
+    name: 'Searchable',
+    type: 'singleLineText',
+  });
+  const permanentRecord = repo.createRecord({
+    tableId: permanent.id,
+    fields: { [permanentField.id]: 'hard delete search token' },
+  });
+  repo.updateRecord(permanentRecord.id, {
+    fields: { [permanentField.id]: 'hard delete updated token' },
+  });
+  assert.equal(repo.searchRecordIds(permanent.id, 'updated token').length, 1);
+
+  const deleted = repo.permanentDeleteTable(permanent.id);
+  assert.equal(deleted.id, permanent.id);
+  assert.equal(repo.getTable(permanent.id), null);
+  assert.equal(repo.duplicateTable(permanent.id), null);
+  assert.equal(repo.listFields(permanent.id).length, 0);
+  assert.equal(repo.listViews(permanent.id).length, 0);
+  assert.equal(repo.listRecords(permanent.id).length, 0);
+  assert.equal(repo.listRecordHistory(permanent.id).rows.length, 0);
+  assert.equal(repo.searchRecordIds(permanent.id, 'updated token').length, 0);
+
   return { name, dbPath };
 };

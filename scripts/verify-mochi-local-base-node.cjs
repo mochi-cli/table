@@ -29,6 +29,18 @@ const putJson = (url, body) =>
   });
 const deleteJson = (url) => requestJson(url, { method: 'DELETE' });
 
+async function requestStatus(url, options = {}) {
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      'content-type': 'application/json',
+      ...options.headers,
+    },
+  });
+  await response.text();
+  return response.status;
+}
+
 async function discoverTarget(origin) {
   const bases = await getJson(`${origin}/api/mochi/bases`);
   const base = bases[0];
@@ -132,6 +144,34 @@ async function main() {
         Boolean(findTableNode(duplicateTree, duplicated.id)),
     });
 
+    const permanent = await postJson(`${origin}/api/base/${baseId}/node/${created.id}/duplicate`, {
+      name: `Node permanent ${marker}`,
+      includeRecords: true,
+    });
+    createdNodeIds.add(permanent.id);
+    await deleteJson(`${origin}/api/base/${baseId}/node/${permanent.id}/permanent`);
+    createdNodeIds.delete(permanent.id);
+    const [tablesAfterPermanent, treeAfterPermanent, duplicateAfterPermanentStatus] =
+      await Promise.all([
+        getJson(`${origin}/api/mochi/bases/${baseId}/tables`),
+        getJson(`${origin}/api/base/${baseId}/node/tree`),
+        requestStatus(`${origin}/api/base/${baseId}/node/${permanent.id}/duplicate`, {
+          method: 'POST',
+          body: JSON.stringify({
+            name: `Node permanent duplicate retry ${marker}`,
+            includeRecords: false,
+          }),
+        }),
+      ]);
+    results.push({
+      name: 'base-node-permanent-delete-removes-table',
+      ok:
+        !tablesAfterPermanent.some((table) => table.id === permanent.id) &&
+        !findTableNode(treeAfterPermanent, permanent.id) &&
+        duplicateAfterPermanentStatus === 404,
+      duplicateAfterPermanentStatus,
+    });
+
     await deleteJson(`${origin}/api/base/${baseId}/node/${duplicated.id}`);
     createdNodeIds.delete(duplicated.id);
     await deleteJson(`${origin}/api/base/${baseId}/node/${created.id}`);
@@ -163,6 +203,29 @@ async function main() {
         recordCommentCount.count === 0 &&
         aiConfig.enable === false &&
         Array.isArray(disabledAi.disableActions),
+    });
+
+    const loginDependentStatuses = await Promise.all([
+      requestStatus(`${origin}/api/base/${baseId}/share`, {
+        method: 'POST',
+        body: JSON.stringify({ password: 'local-disabled' }),
+      }),
+      requestStatus(`${origin}/api/base/${baseId}/invite`, {
+        method: 'POST',
+        body: JSON.stringify({ email: 'local@example.test' }),
+      }),
+      requestStatus(`${origin}/api/admin/users`, {
+        method: 'GET',
+      }),
+      requestStatus(`${origin}/api/oauth/token`, {
+        method: 'POST',
+        body: JSON.stringify({ code: 'local-disabled' }),
+      }),
+    ]);
+    results.push({
+      name: 'login-dependent-endpoints-not-implemented',
+      ok: loginDependentStatuses.every((status) => status === 404),
+      statuses: loginDependentStatuses,
     });
 
     const lastVisitPayload = {

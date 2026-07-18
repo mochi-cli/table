@@ -48,6 +48,7 @@ export class MochiSqliteRepository {
     patch: { name?: string; description?: string | null; icon?: string | null; order?: number }
   ): unknown | null;
   deleteTable(id: string): unknown | null;
+  permanentDeleteTable(id: string): unknown | null;
   duplicateTable(
     id: string,
     input?: {

@@ -1,3 +1,4 @@
+import { NotFoundException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 import type { MochiSqliteService } from './mochi-sqlite.service';
 import { MochiLocalCompatController } from './mochi-local-compat.controller';
@@ -39,6 +40,7 @@ const createService = () =>
       sort_order: 3,
     })),
     deleteTable: vi.fn((id: string) => ({ id, name: 'Customers', sort_order: 0 })),
+    permanentDeleteTable: vi.fn((id: string) => ({ id, name: 'Customers', sort_order: 0 })),
   }) as unknown as MochiSqliteService;
 
 describe('MochiLocalCompatController', () => {
@@ -193,6 +195,7 @@ describe('MochiLocalCompatController', () => {
       resourceType: 'table',
       permanent: true,
     });
+    expect(service.permanentDeleteTable).toHaveBeenCalledWith('tbl_1');
   });
 
   it('supports Teable table duplicate check and duplicate APIs', () => {
@@ -224,5 +227,16 @@ describe('MochiLocalCompatController', () => {
       name: 'Customers no records',
       includeRecords: false,
     });
+  });
+
+  it('returns not found when duplicating a missing table or node', () => {
+    const service = createService();
+    vi.mocked(service.duplicateTable).mockReturnValue(null);
+    const controller = new MochiLocalCompatController(service);
+
+    expect(() => controller.duplicateBaseNode('bas_1', 'tbl_missing', {})).toThrow(
+      NotFoundException
+    );
+    expect(() => controller.duplicateTable('bas_1', 'tbl_missing', {})).toThrow(NotFoundException);
   });
 });

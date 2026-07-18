@@ -29,6 +29,7 @@ type MochiRepository = {
   getTable: (id: string) => unknown;
   updateTable: (id: string, patch: JsonRecord) => unknown;
   deleteTable: (id: string) => unknown;
+  permanentDeleteTable: (id: string) => unknown;
   duplicateTable: (id: string, input?: JsonRecord) => unknown;
   createTable: (input: {
     id?: string;
@@ -282,6 +283,10 @@ export class MochiSqliteService {
 
   deleteTable(id: string) {
     return this.repository.deleteTable(id);
+  }
+
+  permanentDeleteTable(id: string) {
+    return this.repository.permanentDeleteTable(id);
   }
 
   duplicateTable(id: string, input?: JsonRecord) {

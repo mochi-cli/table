@@ -86,7 +86,45 @@ async function main() {
       isComputed: true,
       options: { expression: `CONCATENATE({${item.id}}, " x", {${qty.id}})` },
     });
-    createdFieldIds.push(item.id, qty.id, price.id, total.id, label.id);
+    const upperItem = await createField(origin, tableId, {
+      name: `Upper item ${marker}`,
+      type: 'formula',
+      cellValueType: 'string',
+      isComputed: true,
+      options: { expression: `UPPER({${item.id}})` },
+    });
+    const lowerItem = await createField(origin, tableId, {
+      name: `Lower item ${marker}`,
+      type: 'formula',
+      cellValueType: 'string',
+      isComputed: true,
+      options: { expression: `LOWER({${item.id}})` },
+    });
+    const itemLength = await createField(origin, tableId, {
+      name: `Item length ${marker}`,
+      type: 'formula',
+      cellValueType: 'number',
+      isComputed: true,
+      options: { expression: `LEN({${item.id}})` },
+    });
+    const adjustedTotal = await createField(origin, tableId, {
+      name: `Adjusted total ${marker}`,
+      type: 'formula',
+      cellValueType: 'number',
+      isComputed: true,
+      options: { expression: `({${qty.id}} + 2) * ({${price.id}} - 2.5)` },
+    });
+    createdFieldIds.push(
+      item.id,
+      qty.id,
+      price.id,
+      total.id,
+      label.id,
+      upperItem.id,
+      lowerItem.id,
+      itemLength.id,
+      adjustedTotal.id
+    );
 
     const formulaRecord = await postJson(`${origin}/api/mochi/tables/${tableId}/records`, {
       fields: { [item.id]: 'Tea', [qty.id]: 3, [price.id]: 12.5 },
@@ -105,6 +143,14 @@ async function main() {
         firstFormulaResolve.updatedRecords === 1 &&
         fieldValue(firstFormulaRecord, total.id) === 37.5 &&
         fieldValue(firstFormulaRecord, label.id) === 'Tea x3',
+    });
+    results.push({
+      name: 'formula-text-and-grouping-parity',
+      ok:
+        fieldValue(firstFormulaRecord, upperItem.id) === 'TEA' &&
+        fieldValue(firstFormulaRecord, lowerItem.id) === 'tea' &&
+        fieldValue(firstFormulaRecord, itemLength.id) === 3 &&
+        fieldValue(firstFormulaRecord, adjustedTotal.id) === 50,
     });
 
     await patchJson(`${origin}/api/mochi/records/${formulaRecord.id}`, {

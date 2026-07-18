@@ -1,4 +1,14 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  NotFoundException,
+  Param,
+  Post,
+  Put,
+  Query,
+} from '@nestjs/common';
 import { Public } from '../auth/decorators/public.decorator';
 import { MochiSqliteService } from './mochi-sqlite.service';
 
@@ -278,6 +288,7 @@ export class MochiLocalCompatController {
       name: body.name,
       includeRecords: body.includeRecords,
     }) as LocalTable;
+    if (!table) throw new NotFoundException(`Table ${tableId} not found`);
     const fields = this.mochiSqliteService.listFields(table.id) as LocalField[];
     const views = this.mochiSqliteService.listViews(table.id) as LocalView[];
     return mapDuplicatedTable(table, fields, views, sourceFields, sourceViews);
@@ -376,6 +387,7 @@ export class MochiLocalCompatController {
       name: body.name,
       includeRecords: body.includeRecords,
     }) as LocalTable;
+    if (!table) throw new NotFoundException(`Table ${nodeId} not found`);
     const views = this.mochiSqliteService.listViews(table.id) as LocalView[];
     return mapTableNode(table, views[0]?.id ?? null);
   }
@@ -413,7 +425,7 @@ export class MochiLocalCompatController {
 
   @Delete('base/:baseId/node/:nodeId/permanent')
   permanentDeleteBaseNode(@Param('nodeId') nodeId: string) {
-    const table = this.mochiSqliteService.deleteTable(nodeId) as LocalTable | null;
+    const table = this.mochiSqliteService.permanentDeleteTable(nodeId) as LocalTable | null;
     return {
       resourceId: table?.id ?? nodeId,
       resourceType: 'table',

@@ -4,7 +4,7 @@ SQLITE_DB ?= $(CURDIR)/data/mochi-table.sqlite
 
 .DEFAULT_GOAL := help
 
-.PHONY: help sqlite.init sqlite.smoke sqlite.verify mochi.test mochi.typecheck mochi.local.verify mochi.browser.verify mochi.browser-workflows.verify mochi.integrity.verify mochi.realtime.verify mochi.table-metadata.verify mochi.field-header.verify mochi.view-lifecycle.verify mochi.selection.verify mochi.history.verify mochi.base-node.verify mochi.computed.verify mochi.storage.verify mochi.cleanup sqlite.reset dev.backend dev.app
+.PHONY: help sqlite.init sqlite.smoke sqlite.verify mochi.test mochi.typecheck mochi.local.verify mochi.browser.verify mochi.browser-workflows.verify mochi.integrity.verify mochi.finalize.verify mochi.realtime.verify mochi.table-metadata.verify mochi.field-header.verify mochi.view-lifecycle.verify mochi.selection.verify mochi.history.verify mochi.base-node.verify mochi.computed.verify mochi.storage.verify mochi.cleanup sqlite.reset dev.backend dev.app
 
 help:
 	@echo "Mochi Table local commands"
@@ -18,6 +18,7 @@ help:
 	@echo "  make mochi.browser.verify Verify local header table UI in Playwright"
 	@echo "  make mochi.browser-workflows.verify Verify local view/selection/history/realtime UI workflows"
 	@echo "  make mochi.integrity.verify Verify local SQLite integrity guards"
+	@echo "  make mochi.finalize.verify Cleanup local smoke data, then verify SQLite integrity"
 	@echo "  make mochi.realtime.verify Verify local view header realtime setView path"
 	@echo "  make mochi.table-metadata.verify Verify local table metadata update path"
 	@echo "  make mochi.field-header.verify Verify local field header update path"
@@ -71,6 +72,10 @@ mochi.browser-workflows.verify:
 
 mochi.integrity.verify:
 	node scripts/verify-mochi-local-integrity.cjs "$(SQLITE_DB)"
+
+mochi.finalize.verify:
+	$(MAKE) mochi.cleanup
+	$(MAKE) mochi.integrity.verify
 
 mochi.realtime.verify:
 	node scripts/verify-mochi-local-realtime.cjs
