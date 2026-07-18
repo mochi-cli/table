@@ -115,10 +115,14 @@ Kept:
 - `make mochi.computed.verify` checks local formula resolution, lookup/rollup
   resolution, and computed job queue state transitions through the local Nest
   API, then deletes its temporary records and fields.
+- `make mochi.storage.verify` checks local search-index rebuild, trash/restore,
+  attachment metadata/reference APIs, and SQLite import through the local Nest
+  API using temporary tables.
 - `make mochi.local.verify` runs the non-browser local verification bundle.
 - `make mochi.cleanup` removes known local smoke-test tables/views from the
   default SQLite DB, resets the primary view name, removes smoke history rows,
-  and strips stale `columnMeta` entries that point at deleted fields.
+  strips stale `columnMeta` entries that point at deleted fields, and removes
+  storage/import verifier source rows.
 
 ## First supported feature set
 

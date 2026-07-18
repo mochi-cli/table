@@ -20,6 +20,7 @@ async function main() {
   const renamedViews = [];
   const deletedHistoryRows = [];
   const cleanedColumnMeta = [];
+  const deletedImportSources = [];
 
   for (const base of bases) {
     const tables = repo.listTables(base.id);
@@ -128,6 +129,29 @@ async function main() {
     deletedHistoryRows.push({ count: historyCleanup.count });
   }
 
+  const importSourceCleanup = repo.db.get(`
+    SELECT COUNT(*) AS count
+    FROM mochi_import_source s
+    LEFT JOIN mochi_table t ON t.id = s.table_id
+    WHERE s.profile_id LIKE 'storage-%'
+       OR s.path LIKE '%mochi-storage-%'
+       OR t.deleted_time IS NOT NULL;
+  `);
+  repo.db.run(`
+    DELETE FROM mochi_import_source
+    WHERE id IN (
+      SELECT s.id
+      FROM mochi_import_source s
+      LEFT JOIN mochi_table t ON t.id = s.table_id
+      WHERE s.profile_id LIKE 'storage-%'
+         OR s.path LIKE '%mochi-storage-%'
+         OR t.deleted_time IS NOT NULL
+    );
+  `);
+  if (importSourceCleanup?.count) {
+    deletedImportSources.push({ count: importSourceCleanup.count });
+  }
+
   console.log(
     JSON.stringify(
       {
@@ -139,6 +163,7 @@ async function main() {
         renamedViews,
         deletedHistoryRows,
         cleanedColumnMeta,
+        deletedImportSources,
       },
       null,
       2
