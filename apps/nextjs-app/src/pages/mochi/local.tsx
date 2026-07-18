@@ -243,16 +243,63 @@ const normalizeSort = (sort: LocalView['sort']): IViewVo['sort'] => {
 const normalizeGroup = (group: LocalView['group']): IViewVo['group'] =>
   Array.isArray(group) ? (group as IViewVo['group']) : undefined;
 
+const normalizeViewType = (type?: string): ViewType =>
+  Object.values(ViewType).includes(type as ViewType) ? (type as ViewType) : ViewType.Grid;
+
+const defaultViewOptionsFor = (
+  type: ViewType,
+  options: unknown,
+  fields: IFieldVo[]
+): IViewVo['options'] => {
+  const currentOptions = (options ?? {}) as Record<string, unknown>;
+  const primaryField = fields.find((field) => field.isPrimary) ?? fields[0];
+  const firstDateField = fields.find(
+    (field) => field.type === FieldType.Date || field.cellValueType === CellValueType.DateTime
+  );
+  const firstSingleSelectField = fields.find((field) => field.type === FieldType.SingleSelect);
+
+  switch (type) {
+    case ViewType.Kanban:
+      return {
+        stackFieldId: firstSingleSelectField?.id,
+        isFieldNameHidden: false,
+        isEmptyStackHidden: false,
+        ...currentOptions,
+      } as IViewVo['options'];
+    case ViewType.Calendar:
+      return {
+        startDateFieldId: firstDateField?.id,
+        endDateFieldId: firstDateField?.id,
+        titleFieldId: primaryField?.id,
+        ...currentOptions,
+      } as IViewVo['options'];
+    case ViewType.Form:
+      return {
+        submitLabel: 'Submit',
+        ...currentOptions,
+      } as IViewVo['options'];
+    case ViewType.Gallery:
+      return {
+        titleFieldId: primaryField?.id,
+        isCoverFit: true,
+        ...currentOptions,
+      } as IViewVo['options'];
+    default:
+      return currentOptions as IViewVo['options'];
+  }
+};
+
 const mapView = (view: LocalView, fields: IFieldVo[]): IViewVo => {
   const columnMeta = normalizeColumnMeta(view.columnMeta, fields);
+  const type = normalizeViewType(view.type);
 
   return {
     id: view.id,
     name: view.name,
-    type: ViewType.Grid,
+    type,
     description: view.description ?? undefined,
     order: view.sort_order ?? 0,
-    options: (view.options ?? {}) as IViewVo['options'],
+    options: defaultViewOptionsFor(type, view.options, fields),
     sort: normalizeSort(view.sort),
     filter: view.filter,
     group: normalizeGroup(view.group),

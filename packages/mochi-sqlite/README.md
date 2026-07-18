@@ -58,7 +58,8 @@ for Mochi/AI to import arbitrary profile/workspace data.
 - local computed job queue scaffold
 - local formula resolver for arithmetic, string literals, field references, and
   `CONCATENATE`/`LOWER`/`UPPER`/`LEN`/`TRIM`/`LEFT`/`RIGHT`/`REPT` plus
-  `ABS`/`ROUND`/`SUM`/`AVERAGE`/`MIN`/`MAX`/`IF`
+  `ABS`/`ROUND`/`SUM`/`AVERAGE`/`MIN`/`MAX`/`IF`/`AND`/`OR`/`NOT`/`ISBLANK`
+  and basic date functions
 - local record comments with create/list/count/update/delete helpers
 
 The formula SQL engine is intentionally not implemented here yet. Formula fields

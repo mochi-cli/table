@@ -206,7 +206,8 @@ make mochi.finalize.verify
 
 - Keep extending browser coverage for row/view drag-heavy edge cases as Mochi
   local workflows grow. Header popovers, column resize/reorder, record expand
-  edge-drag behavior, and row-range drag stability are covered by
+  edge-drag behavior, row-range drag stability, local comment panel rendering,
+  and kanban/gallery/calendar/form render smoke checks are covered by
   `make mochi.browser.verify` / `make mochi.browser-workflows.verify`.
 - Keep extending SQLite route coverage for local-only table behavior as new UI
   paths appear. Base-node create/rename/icon/description/duplicate/move/delete,
@@ -223,12 +224,16 @@ make mochi.finalize.verify
   require more Teable formula functions. The current API-level arithmetic,
   grouping, text functions (`CONCATENATE`, `LOWER`, `UPPER`, `LEN`, `TRIM`,
   `LEFT`, `RIGHT`, `REPT`), numeric functions (`ABS`, `ROUND`, `SUM`,
-  `AVERAGE`, `MIN`, `MAX`, `IF`), lookup/rollup, and computed-job paths are
-  covered by the `make mochi.computed.verify` target.
+  `AVERAGE`, `MIN`, `MAX`), logical/comparison functions and operators (`IF`,
+  `AND`, `OR`, `NOT`, `ISBLANK`, `>`, `<`, `>=`, `<=`, `=`, `!=`), basic date
+  functions (`DATETIME_FORMAT`, `DATEADD`, `TODAY`, `NOW`), lookup/rollup, and
+  computed-job paths are covered by the `make mochi.computed.verify` target.
 
 Later:
 
 - richer comment reactions/subscriptions/notifications; local comment CRUD and
   counts are covered by `make mochi.comments.verify`.
-- full advanced view rendering parity; advanced view metadata lifecycle is
-  covered by `make mochi.view-lifecycle.verify`.
+- richer advanced view behavior such as drag/drop and per-view configuration
+  editing; advanced view metadata lifecycle is covered by
+  `make mochi.view-lifecycle.verify`, and render smoke checks are covered by
+  `make mochi.browser-workflows.verify`.

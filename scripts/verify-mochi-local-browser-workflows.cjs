@@ -273,6 +273,126 @@ async function runDragHeavySmoke(
   });
 }
 
+const commentContent = (text) => [{ type: 'p', children: [{ type: 'span', value: text }] }];
+
+async function runCommentPanelSmoke(
+  page,
+  appOrigin,
+  origin,
+  tableId,
+  viewId,
+  fieldId,
+  marker,
+  results,
+  createdRecordIds
+) {
+  const created = await postJson(`${origin}/api/table/${tableId}/record`, {
+    records: [{ fields: { [fieldId]: `Comment UI ${marker}` } }],
+  });
+  const recordId = created.records?.[0]?.id;
+  if (!recordId) throw new Error('Failed to create comment UI smoke record.');
+  createdRecordIds.add(recordId);
+
+  const commentText = `Comment panel ${marker}`;
+  const comment = await postJson(`${origin}/api/comment/${tableId}/${recordId}/create`, {
+    content: commentContent(commentText),
+  });
+
+  await page.goto(
+    `${appOrigin}/mochi/local?tableId=${tableId}&viewId=${viewId}&recordId=${recordId}&showComment=true`,
+    { waitUntil: 'domcontentloaded' }
+  );
+  await page.getByText(commentText).first().waitFor({ timeout: 15000 });
+  const recordCount = await getJson(`${origin}/api/comment/${tableId}/${recordId}/count`);
+  results.push({
+    name: 'record-comment-ui-panel',
+    ok:
+      Boolean(comment.id) &&
+      Number(recordCount.count) === 1 &&
+      (await page.getByText(commentText).first().isVisible()),
+  });
+}
+
+async function createField(origin, tableId, input) {
+  return postJson(`${origin}/api/mochi/tables/${tableId}/fields`, input);
+}
+
+async function runAdvancedViewRenderSmoke(
+  page,
+  appOrigin,
+  origin,
+  tableId,
+  fieldId,
+  marker,
+  results,
+  createdViewIds,
+  createdRecordIds,
+  createdFieldIds
+) {
+  const status = await createField(origin, tableId, {
+    name: `Status ${marker}`,
+    type: 'singleSelect',
+    cellValueType: 'string',
+    options: { choices: [{ id: `opt_${marker}`, name: 'Ready', color: 'green' }] },
+  });
+  const date = await createField(origin, tableId, {
+    name: `Date ${marker}`,
+    type: 'date',
+    cellValueType: 'dateTime',
+    options: { formatting: { date: 'YYYY-MM-DD', time: 'None', timeZone: 'UTC' } },
+  });
+  createdFieldIds.add(status.id);
+  createdFieldIds.add(date.id);
+
+  const record = await postJson(`${origin}/api/table/${tableId}/record`, {
+    records: [
+      {
+        fields: {
+          [fieldId]: `Advanced render ${marker}`,
+          [status.id]: 'Ready',
+          [date.id]: '2026-07-18T00:00:00.000Z',
+        },
+      },
+    ],
+  });
+  const recordId = record.records?.[0]?.id;
+  if (!recordId) throw new Error('Failed to create advanced view render record.');
+  createdRecordIds.add(recordId);
+
+  const viewInputs = [
+    { type: 'kanban', options: { stackFieldId: status.id } },
+    { type: 'gallery', options: { titleFieldId: fieldId } },
+    {
+      type: 'calendar',
+      options: { startDateFieldId: date.id, endDateFieldId: date.id, titleFieldId: fieldId },
+    },
+    { type: 'form', options: { submitLabel: 'Submit' } },
+  ];
+
+  for (const input of viewInputs) {
+    const view = await postJson(`${origin}/api/table/${tableId}/view`, {
+      name: `Render ${input.type} ${marker}`,
+      type: input.type,
+      options: input.options,
+    });
+    createdViewIds.add(view.id);
+
+    await page.goto(`${appOrigin}/mochi/local?tableId=${tableId}&viewId=${view.id}`, {
+      waitUntil: 'domcontentloaded',
+    });
+    await page.getByText(view.name).first().waitFor({ timeout: 15000 });
+    const bodyText = await page.locator('body').innerText();
+    results.push({
+      name: `advanced-view-${input.type}-renders`,
+      ok:
+        page.url().includes(view.id) &&
+        bodyText.includes(view.name) &&
+        !bodyText.includes('Unhandled Runtime Error') &&
+        !bodyText.includes('Application error'),
+    });
+  }
+}
+
 async function runHistorySmoke(page, origin, appOrigin, tableId, viewId, fieldId, marker, results) {
   const created = await postJson(`${origin}/api/table/${tableId}/record`, {
     records: [{ fields: { [fieldId]: `History before ${marker}` } }],
@@ -363,6 +483,7 @@ async function main() {
   const marker = `workflow-${Date.now()}`;
   const createdViewIds = new Set();
   const createdRecordIds = new Set();
+  const createdFieldIds = new Set();
   const results = [];
   let browser;
 
@@ -391,6 +512,29 @@ async function main() {
       marker,
       results,
       createdRecordIds
+    );
+    await runCommentPanelSmoke(
+      page,
+      appOrigin,
+      backendOrigin,
+      tableId,
+      viewId,
+      fieldId,
+      marker,
+      results,
+      createdRecordIds
+    );
+    await runAdvancedViewRenderSmoke(
+      page,
+      appOrigin,
+      backendOrigin,
+      tableId,
+      fieldId,
+      marker,
+      results,
+      createdViewIds,
+      createdRecordIds,
+      createdFieldIds
     );
     await runHistorySmoke(
       page,
@@ -426,6 +570,11 @@ async function main() {
     }
     for (const recordId of [...createdRecordIds].reverse()) {
       await deleteJson(`${backendOrigin}/api/table/${tableId}/record/${recordId}`).catch(
+        () => undefined
+      );
+    }
+    for (const fieldIdToDelete of [...createdFieldIds].reverse()) {
+      await deleteJson(`${backendOrigin}/api/table/${tableId}/field/${fieldIdToDelete}`).catch(
         () => undefined
       );
     }

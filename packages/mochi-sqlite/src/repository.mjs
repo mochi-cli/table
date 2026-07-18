@@ -100,7 +100,13 @@ const formulaTokenize = (expression) => {
       index += 1;
       continue;
     }
-    if ('+-*/(),'.includes(char)) {
+    const twoCharOperator = expression.slice(index, index + 2);
+    if (['>=', '<=', '!=', '=='].includes(twoCharOperator)) {
+      tokens.push({ type: twoCharOperator, value: twoCharOperator });
+      index += 2;
+      continue;
+    }
+    if ('+-*/(),><='.includes(char)) {
       tokens.push({ type: char, value: char });
       index += 1;
       continue;
@@ -165,6 +171,40 @@ const formulaToNumber = (value) => {
 
 const formulaString = (value) => (value === null || value === undefined ? '' : String(value));
 const formulaNumbers = (args) => args.map(formulaToNumber).filter((value) => value !== null);
+const formulaBool = (value) => {
+  if (typeof value === 'boolean') return value;
+  if (value === null || value === undefined || value === '') return false;
+  if (typeof value === 'number') return value !== 0;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLocaleLowerCase();
+    if (['false', '0', 'no', 'off'].includes(normalized)) return false;
+    if (['true', '1', 'yes', 'on'].includes(normalized)) return true;
+  }
+  return Boolean(value);
+};
+
+const formulaDate = (value) => {
+  if (value === null || value === undefined || value === '') return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const padDatePart = (value) => String(value).padStart(2, '0');
+
+const formatFormulaDate = (date, pattern = 'YYYY-MM-DD') => {
+  const replacements = {
+    YYYY: String(date.getUTCFullYear()),
+    MM: padDatePart(date.getUTCMonth() + 1),
+    DD: padDatePart(date.getUTCDate()),
+    HH: padDatePart(date.getUTCHours()),
+    mm: padDatePart(date.getUTCMinutes()),
+    ss: padDatePart(date.getUTCSeconds()),
+  };
+  return Object.entries(replacements).reduce(
+    (result, [token, value]) => result.replaceAll(token, value),
+    pattern
+  );
+};
 
 const evaluateFormulaExpression = (expression, fields, fieldByName) => {
   const tokens = formulaTokenize(String(expression ?? ''));
@@ -235,12 +275,50 @@ const evaluateFormulaExpression = (expression, fields, fieldByName) => {
       }
       case 'IF':
         return args[0] ? args[1] : args[2];
+      case 'AND':
+        return args.every(formulaBool);
+      case 'OR':
+        return args.some(formulaBool);
+      case 'NOT':
+        return !formulaBool(args[0]);
+      case 'ISBLANK':
+        return args[0] === null || args[0] === undefined || args[0] === '';
+      case 'BLANK':
+        return null;
+      case 'TODAY': {
+        const date = new Date();
+        return formatFormulaDate(
+          new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()))
+        );
+      }
+      case 'NOW':
+        return new Date().toISOString();
+      case 'DATETIME_FORMAT': {
+        const date = formulaDate(args[0]);
+        return date ? formatFormulaDate(date, formulaString(args[1]) || 'YYYY-MM-DD') : null;
+      }
+      case 'DATEADD': {
+        const date = formulaDate(args[0]);
+        const amount = formulaToNumber(args[1]);
+        if (!date || amount === null) return null;
+        const unit = formulaString(args[2]).toLocaleLowerCase();
+        const nextDate = new Date(date.getTime());
+        if (unit.startsWith('day')) nextDate.setUTCDate(nextDate.getUTCDate() + amount);
+        else if (unit.startsWith('month')) nextDate.setUTCMonth(nextDate.getUTCMonth() + amount);
+        else if (unit.startsWith('year'))
+          nextDate.setUTCFullYear(nextDate.getUTCFullYear() + amount);
+        else if (unit.startsWith('hour')) nextDate.setUTCHours(nextDate.getUTCHours() + amount);
+        else if (unit.startsWith('minute'))
+          nextDate.setUTCMinutes(nextDate.getUTCMinutes() + amount);
+        else return null;
+        return nextDate.toISOString();
+      }
       default:
         throw new Error(`Unsupported formula function: ${name}`);
     }
   };
 
-  const parseExpression = () => parseAdditive();
+  const parseExpression = () => parseComparison();
   const parsePrimary = () => {
     const token = peek();
     if (!token) throw new Error('Unexpected end of formula');
@@ -254,6 +332,12 @@ const evaluateFormulaExpression = (expression, fields, fieldByName) => {
     }
     if (token.type === 'identifier') {
       index += 1;
+      const constantName = token.value.toLocaleUpperCase();
+      if (!peek() || peek()?.type !== '(') {
+        if (constantName === 'TRUE') return true;
+        if (constantName === 'FALSE') return false;
+        throw new Error(`Expected formula function call: ${token.value}`);
+      }
       expect('(');
       const args = [];
       if (!take(')')) {
@@ -309,6 +393,46 @@ const evaluateFormulaExpression = (expression, fields, fieldByName) => {
         const leftNumber = formulaToNumber(left);
         const rightNumber = formulaToNumber(right);
         left = leftNumber === null || rightNumber === null ? null : leftNumber - rightNumber;
+      }
+    }
+    return left;
+  };
+  const parseComparison = () => {
+    let left = parseAdditive();
+    while (['>', '<', '>=', '<=', '=', '==', '!='].includes(peek()?.type)) {
+      const operator = tokens[index].type;
+      index += 1;
+      const right = parseAdditive();
+      const leftNumber = formulaToNumber(left);
+      const rightNumber = formulaToNumber(right);
+      const comparison =
+        leftNumber !== null && rightNumber !== null
+          ? leftNumber - rightNumber
+          : formulaString(left).localeCompare(formulaString(right), undefined, {
+              numeric: true,
+            });
+      switch (operator) {
+        case '>':
+          left = comparison > 0;
+          break;
+        case '<':
+          left = comparison < 0;
+          break;
+        case '>=':
+          left = comparison >= 0;
+          break;
+        case '<=':
+          left = comparison <= 0;
+          break;
+        case '=':
+        case '==':
+          left = comparison === 0;
+          break;
+        case '!=':
+          left = comparison !== 0;
+          break;
+        default:
+          left = false;
       }
     }
     return left;

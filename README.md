@@ -36,7 +36,7 @@ Implemented:
 - local grid compatibility endpoints for field/view/record/table duplication
 - local grid copy/paste/clear/delete/duplicate selection helpers
 - local record comment create/list/count/update/delete endpoints
-- advanced view type metadata lifecycle for kanban, gallery, calendar, and form
+- advanced view type metadata lifecycle and browser render checks for kanban, gallery, calendar, and form
 - local SockJS/ShareDB realtime bridge for record updates and view filter/sort/group/options updates
 - SQLite-only local backend entrypoint through `make dev.backend`
 
@@ -205,7 +205,9 @@ make mochi.comments.verify
 
 That verifier creates a temporary record comment, checks table and record
 comment counts, lists the comment, updates it, deletes it, and removes the
-temporary record.
+temporary record. The browser workflow verifier also opens the record modal with
+`showComment=true` and confirms the comment panel renders persisted local
+comments.
 
 To run the full non-browser local check suite while `make dev.backend` is
 running:

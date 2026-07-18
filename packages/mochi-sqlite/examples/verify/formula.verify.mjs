@@ -106,6 +106,24 @@ export const run = () => {
     isComputed: true,
     options: { expression: 'IF({Qty}, ABS(-7), SUM(1, 2))' },
   });
+  const logicalLabel = repo.createField({
+    tableId: table.id,
+    name: 'Logical label',
+    type: 'formula',
+    cellValueType: 'string',
+    isComputed: true,
+    options: { expression: 'IF(AND({Qty} > 2, NOT(ISBLANK({Item}))), "stocked", "empty")' },
+  });
+  const dateLabel = repo.createField({
+    tableId: table.id,
+    name: 'Date label',
+    type: 'formula',
+    cellValueType: 'string',
+    isComputed: true,
+    options: {
+      expression: 'DATETIME_FORMAT(DATEADD("2026-07-18T00:00:00Z", 2, "days"), "YYYY-MM-DD")',
+    },
+  });
   const record = repo.createRecord({
     tableId: table.id,
     fields: { [item.id]: 'Tea', [qty.id]: 3, [price.id]: 12.5 },
@@ -114,7 +132,7 @@ export const run = () => {
   const firstResolve = repo.resolveFormulas(table.id, { recordId: record.id });
   const resolved = repo.getRecord(record.id);
 
-  assert.deepEqual(firstResolve, { tableId: table.id, fields: 11, records: 1, updatedRecords: 1 });
+  assert.deepEqual(firstResolve, { tableId: table.id, fields: 13, records: 1, updatedRecords: 1 });
   assert.equal(resolved.fields[total.id], 37.5);
   assert.equal(resolved.fields[label.id], 'Tea x3');
   assert.equal(resolved.fields[upperItem.id], 'TEA');
@@ -126,6 +144,8 @@ export const run = () => {
   assert.equal(resolved.fields[roundedAverage.id], 8.5);
   assert.equal(resolved.fields[minMaxSpread.id], 9.5);
   assert.equal(resolved.fields[absIf.id], 7);
+  assert.equal(resolved.fields[logicalLabel.id], 'stocked');
+  assert.equal(resolved.fields[dateLabel.id], '2026-07-20');
 
   repo.updateRecord(record.id, { fields: { [qty.id]: 4 } });
   repo.resolveFormulas(table.id, { recordId: record.id });

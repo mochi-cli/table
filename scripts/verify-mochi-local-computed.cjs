@@ -151,6 +151,24 @@ async function main() {
       isComputed: true,
       options: { expression: `IF({${qty.id}}, ABS(-7), SUM(1, 2))` },
     });
+    const logicalLabel = await createField(origin, tableId, {
+      name: `Logical label ${marker}`,
+      type: 'formula',
+      cellValueType: 'string',
+      isComputed: true,
+      options: {
+        expression: `IF(AND({${qty.id}} > 2, NOT(ISBLANK({${item.id}}))), "stocked", "empty")`,
+      },
+    });
+    const dateLabel = await createField(origin, tableId, {
+      name: `Date label ${marker}`,
+      type: 'formula',
+      cellValueType: 'string',
+      isComputed: true,
+      options: {
+        expression: 'DATETIME_FORMAT(DATEADD("2026-07-18T00:00:00Z", 2, "days"), "YYYY-MM-DD")',
+      },
+    });
     createdFieldIds.push(
       item.id,
       qty.id,
@@ -165,7 +183,9 @@ async function main() {
       rightRepeat.id,
       roundedAverage.id,
       minMaxSpread.id,
-      absIf.id
+      absIf.id,
+      logicalLabel.id,
+      dateLabel.id
     );
 
     const formulaRecord = await postJson(`${origin}/api/mochi/tables/${tableId}/records`, {
@@ -197,7 +217,9 @@ async function main() {
         fieldValue(firstFormulaRecord, rightRepeat.id) === 'aaa' &&
         fieldValue(firstFormulaRecord, roundedAverage.id) === 8.5 &&
         fieldValue(firstFormulaRecord, minMaxSpread.id) === 9.5 &&
-        fieldValue(firstFormulaRecord, absIf.id) === 7,
+        fieldValue(firstFormulaRecord, absIf.id) === 7 &&
+        fieldValue(firstFormulaRecord, logicalLabel.id) === 'stocked' &&
+        fieldValue(firstFormulaRecord, dateLabel.id) === '2026-07-20',
     });
 
     await patchJson(`${origin}/api/mochi/records/${formulaRecord.id}`, {

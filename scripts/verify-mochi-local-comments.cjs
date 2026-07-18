@@ -29,7 +29,7 @@ const patchJson = (url, body) =>
   });
 const deleteJson = (url) => requestJson(url, { method: 'DELETE' });
 
-const commentContent = (text) => [{ type: 'paragraph', children: [{ type: 'text', text }] }];
+const commentContent = (text) => [{ type: 'p', children: [{ type: 'span', value: text }] }];
 
 async function discoverTarget(origin) {
   const bases = await getJson(`${origin}/api/mochi/bases`);
@@ -93,7 +93,7 @@ async function main() {
       name: 'comment-update',
       ok:
         updated.id === commentId &&
-        updated.content?.[0]?.children?.[0]?.text === `Updated ${marker}` &&
+        updated.content?.[0]?.children?.[0]?.value === `Updated ${marker}` &&
         Boolean(updated.lastModifiedTime),
     });
 
