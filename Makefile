@@ -4,7 +4,7 @@ SQLITE_DB ?= $(CURDIR)/data/mochi-table.sqlite
 
 .DEFAULT_GOAL := help
 
-.PHONY: help sqlite.init sqlite.smoke sqlite.verify mochi.test mochi.typecheck mochi.local.verify mochi.browser.verify mochi.browser-workflows.verify mochi.integrity.verify mochi.realtime.verify mochi.table-metadata.verify mochi.field-header.verify mochi.view-lifecycle.verify mochi.selection.verify mochi.history.verify mochi.base-node.verify mochi.cleanup sqlite.reset dev.backend dev.app
+.PHONY: help sqlite.init sqlite.smoke sqlite.verify mochi.test mochi.typecheck mochi.local.verify mochi.browser.verify mochi.browser-workflows.verify mochi.integrity.verify mochi.realtime.verify mochi.table-metadata.verify mochi.field-header.verify mochi.view-lifecycle.verify mochi.selection.verify mochi.history.verify mochi.base-node.verify mochi.computed.verify mochi.cleanup sqlite.reset dev.backend dev.app
 
 help:
 	@echo "Mochi Table local commands"
@@ -25,6 +25,7 @@ help:
 	@echo "  make mochi.selection.verify Verify local selection copy/paste/clear/delete/duplicate path"
 	@echo "  make mochi.history.verify Verify local record history API path"
 	@echo "  make mochi.base-node.verify Verify local base-node and login-free stub paths"
+	@echo "  make mochi.computed.verify Verify local formula, lookup/rollup, and computed job API paths"
 	@echo "  make mochi.cleanup  Remove known local smoke-test tables/views"
 	@echo "  make sqlite.reset   Remove and recreate the local SQLite database"
 	@echo "  make dev.backend    Start backend with Mochi local SQLite flags"
@@ -58,6 +59,7 @@ mochi.local.verify:
 	$(MAKE) mochi.selection.verify
 	$(MAKE) mochi.history.verify
 	$(MAKE) mochi.base-node.verify
+	$(MAKE) mochi.computed.verify
 
 mochi.browser.verify:
 	node scripts/verify-mochi-local-browser.cjs
@@ -88,6 +90,9 @@ mochi.history.verify:
 
 mochi.base-node.verify:
 	node scripts/verify-mochi-local-base-node.cjs
+
+mochi.computed.verify:
+	node scripts/verify-mochi-local-computed.cjs
 
 mochi.cleanup:
 	node scripts/cleanup-mochi-local-smoke-data.cjs "$(SQLITE_DB)"

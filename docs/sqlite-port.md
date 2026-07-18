@@ -112,6 +112,9 @@ Kept:
   move, duplicate, and delete through Teable-compatible node endpoints. It also
   checks that share/admin/comment/AI/last-visit endpoints stay login-free and
   return local-safe fixed-user or empty stub responses.
+- `make mochi.computed.verify` checks local formula resolution, lookup/rollup
+  resolution, and computed job queue state transitions through the local Nest
+  API, then deletes its temporary records and fields.
 - `make mochi.local.verify` runs the non-browser local verification bundle.
 - `make mochi.cleanup` removes known local smoke-test tables/views from the
   default SQLite DB, resets the primary view name, removes smoke history rows,
@@ -204,7 +207,9 @@ make mochi.integrity.verify
   per-account last-visit history. Local mode should keep returning fixed
   `usr_mochi_local` responses or empty local-safe stubs for these endpoints.
 - Expand formula parity beyond the current local evaluator as Mochi workflows
-  require more Teable formula functions.
+  require more Teable formula functions. The current API-level formula,
+  lookup/rollup, and computed-job paths are covered by the
+  `mochi.computed.verify` target.
 
 Later:
 
