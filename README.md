@@ -60,7 +60,9 @@ packages/
   core, sdk, ui-lib   Upstream Teable packages still used by the UI
 
 docs/
+  mochi-local.md      Local Mochi app and SQLite backend notes
   sqlite-port.md      Porting plan and current SQLite status
+  backend-legacy-cleanup.md Legacy backend cleanup notes
 ```
 
 ## Local SQLite Smoke Test
@@ -373,7 +375,7 @@ SQLite import accepts:
 
 ## Useful Files
 
-- [MOCHI_LOCAL.md](./MOCHI_LOCAL.md)
+- [docs/mochi-local.md](./docs/mochi-local.md)
 - [docs/sqlite-port.md](./docs/sqlite-port.md)
 - [docs/backend-legacy-cleanup.md](./docs/backend-legacy-cleanup.md)
 - [packages/mochi-sqlite/schema.sql](./packages/mochi-sqlite/schema.sql)
