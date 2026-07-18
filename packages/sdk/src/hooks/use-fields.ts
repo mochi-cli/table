@@ -12,7 +12,11 @@ export function useFields(options: { withHidden?: boolean; withDenied?: boolean 
   const { type: viewType, columnMeta } = view ?? {};
 
   return useMemo(() => {
-    const sortedFields = sortBy(originFields, (field) => columnMeta?.[field.id]?.order ?? Infinity);
+    const fieldIndexMap = new Map(originFields.map((field, index) => [field.id, index]));
+    const sortedFields = sortBy(
+      originFields,
+      (field) => columnMeta?.[field.id]?.order ?? fieldIndexMap.get(field.id) ?? Infinity
+    );
 
     if ((withHidden && withDenied) || viewType == null) {
       return sortedFields;
