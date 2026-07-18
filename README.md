@@ -31,13 +31,16 @@ Implemented:
 - attachment metadata and record attachment references
 - trash/restore for deleted records
 - SQLite-backed computed job queue scaffold
+- lookup/rollup resolver foundation
+- local grid compatibility endpoints for field/view/record/table duplication
+- local grid copy/paste/clear/delete/duplicate selection helpers
 
 Not finished yet:
 
 - mapping the existing Teable API/controllers fully to SQLite
 - connecting the existing grid UI directly to the SQLite repository
 - polished Mochi profile/workspace picker UI
-- lookup/rollup resolver execution
+- replacing the legacy CSV/Excel import UI with a local SQLite-friendly import flow
 - advanced formulas
 
 ## Repository Shape
@@ -117,12 +120,17 @@ Then open:
 http://localhost:3000/mochi/local
 ```
 
-The local page is a temporary SQLite workbench for exercising the new storage
-adapter without changing the upstream grid route yet. SQLite stores the table
-data, while Redis is kept for Teable-style realtime/cache/pubsub so grid edits
-can refresh through the existing socket path. It can create bases, tables,
-fields, records, import SQLite files, search records, rebuild FTS, and run
-undo/redo.
+The local page reuses the existing Teable grid surface with a local SQLite
+compatibility layer. SQLite stores the table data, while a local SockJS/ShareDB
+bridge is kept so grid edits can refresh through the existing socket path. It
+can create bases, tables, fields, views, and records; edit grid cells; run
+copy/paste/clear/delete/duplicate selection helpers; duplicate fields, views,
+records, and tables; search records; rebuild FTS; resolve lookup/rollup values;
+import SQLite files through the local API; and run undo/redo.
+
+The legacy Teable CSV/Excel import menu is disabled in local mode until that
+file pipeline is ported. Local SQLite imports are available through
+`POST /api/mochi/imports/sqlite`.
 
 The old Postgres-backed Teable runtime still exists while the API migration is
 in progress. The target is to remove that dependency as the SQLite API adapter

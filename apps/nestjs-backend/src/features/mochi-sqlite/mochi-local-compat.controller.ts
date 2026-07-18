@@ -19,7 +19,7 @@ const localBasePermission = {
   'table|delete': true,
   'table|read': true,
   'table|update': true,
-  'table|import': true,
+  'table|import': false,
   'table|export': true,
   'table|trash_read': true,
   'table|trash_update': true,
@@ -56,7 +56,7 @@ const localTablePermission = {
     'table|delete': true,
     'table|read': true,
     'table|update': true,
-    'table|import': true,
+    'table|import': false,
     'table|export': true,
     'table|trash_read': true,
     'table|trash_update': true,
@@ -124,6 +124,7 @@ type LocalTable = {
   id: string;
   base_id?: string;
   name: string;
+  description?: string | null;
   icon?: string | null;
   sort_order?: number;
   created_time?: string | null;
@@ -132,6 +133,15 @@ type LocalTable = {
 
 type LocalView = {
   id: string;
+};
+
+type LocalField = {
+  id: string;
+};
+
+type DuplicateTableBody = {
+  name?: string;
+  includeRecords?: boolean;
 };
 
 const pickUniqueTablesByName = (tables: LocalTable[]) => {
@@ -170,6 +180,31 @@ const mapTableNode = (table: LocalTable, defaultViewId: string | null, index = 0
     lastModifiedTime: table.last_modified_time ?? null,
   },
   children: null,
+});
+
+const mapDuplicatedTable = (
+  table: LocalTable,
+  fields: LocalField[],
+  views: LocalView[],
+  sourceFields: LocalField[],
+  sourceViews: LocalView[]
+) => ({
+  id: table.id,
+  name: table.name,
+  dbTableName: table.id.replace(/\W/g, '_').slice(0, 63),
+  description: table.description ?? undefined,
+  icon: table.icon ?? undefined,
+  order: table.sort_order ?? 0,
+  lastModifiedTime: table.last_modified_time ?? undefined,
+  defaultViewId: views[0]?.id,
+  fields,
+  views,
+  viewMap: Object.fromEntries(
+    sourceViews.map((view, index) => [view.id, views[index]?.id]).filter((entry) => entry[1])
+  ),
+  fieldMap: Object.fromEntries(
+    sourceFields.map((field, index) => [field.id, fields[index]?.id]).filter((entry) => entry[1])
+  ),
 });
 
 const mapBase = (base: LocalBase) => ({
@@ -220,6 +255,34 @@ export class MochiLocalCompatController {
     return localTablePermission;
   }
 
+  @Get('base/:baseId/table/:tableId/duplicate-check')
+  duplicateTableCheck() {
+    return { affectedFields: [] };
+  }
+
+  @Get('base/:baseId/table/:tableId/field/:fieldId/duplicate-check')
+  duplicateFieldCheck() {
+    return { affectedFields: [] };
+  }
+
+  @Post('base/:baseId/table/:tableId/duplicate')
+  duplicateTable(
+    @Param('baseId') baseId: string,
+    @Param('tableId') tableId: string,
+    @Body() body: DuplicateTableBody
+  ) {
+    const sourceFields = this.mochiSqliteService.listFields(tableId) as LocalField[];
+    const sourceViews = this.mochiSqliteService.listViews(tableId) as LocalView[];
+    const table = this.mochiSqliteService.duplicateTable(tableId, {
+      baseId,
+      name: body.name,
+      includeRecords: body.includeRecords,
+    }) as LocalTable;
+    const fields = this.mochiSqliteService.listFields(table.id) as LocalField[];
+    const views = this.mochiSqliteService.listViews(table.id) as LocalView[];
+    return mapDuplicatedTable(table, fields, views, sourceFields, sourceViews);
+  }
+
   @Put('base/:baseId/table/:tableId/name')
   updateTableName(@Param('tableId') tableId: string, @Body() body: { name?: string }) {
     const name = typeof body.name === 'string' && body.name.trim() ? body.name : 'Untitled';
@@ -233,7 +296,9 @@ export class MochiLocalCompatController {
 
   @Get('base/:baseId/node/tree')
   getBaseNodeTree(@Param('baseId') baseId: string) {
-    const tables = pickUniqueTablesByName(this.mochiSqliteService.listTables(baseId) as LocalTable[]);
+    const tables = pickUniqueTablesByName(
+      this.mochiSqliteService.listTables(baseId) as LocalTable[]
+    );
     return {
       maxFolderDepth: 2,
       nodes: tables.map((table, index) => {
@@ -294,11 +359,12 @@ export class MochiLocalCompatController {
   duplicateBaseNode(
     @Param('baseId') baseId: string,
     @Param('nodeId') nodeId: string,
-    @Body() body: { name?: string }
+    @Body() body: DuplicateTableBody
   ) {
     const table = this.mochiSqliteService.duplicateTable(nodeId, {
       baseId,
       name: body.name,
+      includeRecords: body.includeRecords,
     }) as LocalTable;
     const views = this.mochiSqliteService.listViews(table.id) as LocalView[];
     return mapTableNode(table, views[0]?.id ?? null);

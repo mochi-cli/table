@@ -245,6 +245,18 @@ const nextConfig = {
       source: '/api/user/:path*',
       destination: `${MOCHI_BACKEND_API_URL}/api/user/:path*`,
     };
+    const mochiPinApiProxy = {
+      source: '/api/pin/:path*',
+      destination: `${MOCHI_BACKEND_API_URL}/api/pin/:path*`,
+    };
+    const mochiAdminApiProxy = {
+      source: '/api/admin/:path*',
+      destination: `${MOCHI_BACKEND_API_URL}/api/admin/:path*`,
+    };
+    const mochiTemplateApiProxy = {
+      source: '/api/template/:path*',
+      destination: `${MOCHI_BACKEND_API_URL}/api/template/:path*`,
+    };
     const mochiAiApiProxy = {
       source: '/api/:baseId/ai/:path*',
       destination: `${MOCHI_BACKEND_API_URL}/api/:baseId/ai/:path*`,
@@ -258,6 +270,9 @@ const nextConfig = {
           mochiBaseApiProxy,
           mochiCommentApiProxy,
           mochiUserApiProxy,
+          mochiPinApiProxy,
+          mochiAdminApiProxy,
+          mochiTemplateApiProxy,
           mochiAiApiProxy,
           socketProxy,
         ];

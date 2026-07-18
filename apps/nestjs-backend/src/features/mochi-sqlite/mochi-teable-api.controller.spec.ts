@@ -14,6 +14,12 @@ const createService = () =>
       },
     ]),
     createView: vi.fn((input) => ({ id: 'viw_new', ...input })),
+    getView: vi.fn((id) => ({
+      id,
+      name: 'Grid view',
+      type: 'grid',
+      columnMeta: { fld_1: { width: 220 } },
+    })),
     updateView: vi.fn((id, patch) => ({ id, name: 'Grid view', type: 'grid', ...patch })),
     deleteView: vi.fn((id) => ({ id })),
     listFields: vi.fn(() => [
@@ -32,6 +38,13 @@ const createService = () =>
       },
     ]),
     createField: vi.fn((input) => ({ id: 'fld_new', ...input })),
+    getField: vi.fn((id) => ({
+      id,
+      name: 'Phone',
+      type: 'singleLineText',
+      cell_value_type: 'string',
+      sort_order: 1,
+    })),
     updateField: vi.fn((id, patch) => ({ id, name: 'Updated', type: 'singleLineText', ...patch })),
     deleteField: vi.fn((id) => ({ id })),
     listRecords: vi.fn(() => [
@@ -47,6 +60,7 @@ const createService = () =>
       },
     ]),
     createRecord: vi.fn((input) => ({ id: 'rec_new', auto_number: 2, ...input })),
+    getRecord: vi.fn((id) => ({ id, auto_number: 1, fields: { fld_1: 'Alice' } })),
     updateRecord: vi.fn((id, patch) => ({ id, auto_number: 1, fields: patch.fields ?? {} })),
     deleteRecord: vi.fn((id) => ({ id, fields: {} })),
   }) as unknown as MochiSqliteService;
@@ -140,6 +154,81 @@ describe('MochiTeableApiController', () => {
 
     controller.deleteFields(['fld_2', 'fld_3']);
     expect(service.deleteField).toHaveBeenCalledTimes(2);
+  });
+
+  it('duplicates fields, views, records, and selected rows for local grid actions', () => {
+    const service = createService();
+    const controller = new MochiTeableApiController(service);
+
+    expect(controller.duplicateView('tbl_1', 'viw_1')).toMatchObject({
+      id: 'viw_new',
+      name: 'Grid view copy',
+      columnMeta: { fld_1: { width: 220 } },
+    });
+    expect(service.createView).toHaveBeenCalledWith({
+      tableId: 'tbl_1',
+      name: 'Grid view copy',
+      type: 'grid',
+      options: undefined,
+      columnMeta: { fld_1: { width: 220 } },
+      filter: undefined,
+      sort: undefined,
+      group: undefined,
+    });
+
+    expect(controller.duplicateRecord('tbl_1', 'rec_1', { viewId: 'viw_1' })).toMatchObject({
+      id: 'rec_new',
+      fields: { fld_1: 'Alice' },
+    });
+    expect(service.createRecord).toHaveBeenCalledWith({
+      tableId: 'tbl_1',
+      fields: { fld_1: 'Alice' },
+      order: { viewId: 'viw_1' },
+    });
+
+    expect(controller.duplicateField('tbl_1', 'fld_2', { name: 'Phone copy' })).toMatchObject({
+      id: 'fld_new',
+      name: 'Phone copy',
+    });
+    expect(service.createField).toHaveBeenCalledWith({
+      tableId: 'tbl_1',
+      name: 'Phone copy',
+      description: undefined,
+      type: 'singleLineText',
+      cellValueType: 'string',
+      options: undefined,
+      meta: undefined,
+      aiConfig: undefined,
+      isComputed: false,
+      isLookup: false,
+      notNull: false,
+      unique: false,
+      order: 1.5,
+    });
+    expect(service.updateRecord).toHaveBeenCalledWith(
+      'rec_1',
+      { fields: { fld_new: null } },
+      'tbl_1'
+    );
+
+    const stream = createStreamResponse();
+    controller.duplicateSelectionStream(
+      'tbl_1',
+      '[[0,1]]',
+      'rows',
+      undefined,
+      undefined,
+      stream.response as never
+    );
+    expect(parseStreamEvents(stream.chunks)).toMatchObject([
+      { id: 'progress', phase: 'preparing', totalCount: 2 },
+      {
+        id: 'done',
+        totalCount: 2,
+        duplicatedCount: 2,
+        data: { duplicatedCount: 2 },
+      },
+    ]);
   });
 
   it('normalizes Teable filter and sort queries before listing records', () => {

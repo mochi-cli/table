@@ -106,12 +106,15 @@ const convertValue = (value, type) => {
     case 'date':
     case 'dateTime': {
       if (typeof value === 'number' || typeof value === 'boolean') return null;
-      if (typeof value === 'string' && !/^\d{4}-\d{2}-\d{2}(?:[T ].*)?$/.test(value.trim())) return null;
+      if (typeof value === 'string' && !/^\d{4}-\d{2}-\d{2}(?:[T ].*)?$/.test(value.trim()))
+        return null;
       const date = new Date(value);
       return Number.isNaN(date.getTime()) ? null : date.toISOString();
     }
     case 'singleSelect':
-      return typeof value === 'object' ? (value.title ?? value.name ?? String(value.id ?? '')) : String(value);
+      return typeof value === 'object'
+        ? value.title ?? value.name ?? String(value.id ?? '')
+        : String(value);
     case 'multipleSelect':
       if (Array.isArray(value)) return value;
       return [String(value)];
@@ -268,7 +271,8 @@ export class MochiSqliteRepository {
     if (!source || source.deleted_time) return null;
     const sourceFields = this.listFields(id);
     const sourceViews = this.listViews(id);
-    const sourceRecords = this.listRecords(id, { limit: 100000 });
+    const includeRecords = input.includeRecords !== false;
+    const sourceRecords = includeRecords ? this.listRecords(id, { limit: 100000 }) : [];
     const fieldIdMap = new Map(sourceFields.map((field) => [field.id, ids.field()]));
     const viewIdMap = new Map(sourceViews.map((view) => [view.id, ids.view()]));
     const recordIdMap = new Map(sourceRecords.map((record) => [record.id, ids.record()]));
@@ -358,11 +362,13 @@ export class MochiSqliteRepository {
 
   listFields(tableId) {
     return this.db
-      .all(`
+      .all(
+        `
         SELECT * FROM mochi_field
         WHERE table_id = ${sqlValue(tableId)} AND deleted_time IS NULL
         ORDER BY sort_order, created_time;
-      `)
+      `
+      )
       .map((field) => ({
         ...field,
         options: parseJson(field.options_json),
@@ -494,11 +500,13 @@ export class MochiSqliteRepository {
 
   listViews(tableId) {
     return this.db
-      .all(`
+      .all(
+        `
         SELECT * FROM mochi_view
         WHERE table_id = ${sqlValue(tableId)} AND deleted_time IS NULL
         ORDER BY sort_order, created_time;
-      `)
+      `
+      )
       .map((view) => ({
         ...view,
         options: parseJson(view.options_json),
@@ -579,11 +587,13 @@ export class MochiSqliteRepository {
     const limit = Math.min(options.limit ?? 100, 100000);
     const offset = options.offset ?? 0;
     let records = this.db
-      .all(`
+      .all(
+        `
         SELECT * FROM mochi_record
         WHERE table_id = ${sqlValue(tableId)} AND deleted_time IS NULL
         ORDER BY auto_number, created_time
-      `)
+      `
+      )
       .map((record) => ({
         ...record,
         fields: parseJson(record.fields_json, {}),
@@ -722,7 +732,9 @@ export class MochiSqliteRepository {
     const fields = this.listFields(tableId).filter(
       (field) => field.is_lookup || field.type === 'lookup' || field.type === 'rollup'
     );
-    const records = options.recordId ? [this.getRecord(options.recordId)].filter(Boolean) : this.listRecords(tableId, { limit: 100000 });
+    const records = options.recordId
+      ? [this.getRecord(options.recordId)].filter(Boolean)
+      : this.listRecords(tableId, { limit: 100000 });
     let updatedRecords = 0;
     const statements = [];
 
@@ -824,12 +836,14 @@ export class MochiSqliteRepository {
     if (!query) return [];
     try {
       return this.db
-        .all(`
+        .all(
+          `
           SELECT record_id
           FROM mochi_record_fts
           WHERE table_id = ${sqlValue(tableId)} AND mochi_record_fts MATCH ${sqlValue(query)}
           LIMIT 10000;
-        `)
+        `
+        )
         .map((row) => row.record_id);
     } catch {
       return [];
@@ -902,7 +916,9 @@ export class MochiSqliteRepository {
   }
 
   listAttachments() {
-    return this.db.all(`SELECT * FROM mochi_attachment WHERE deleted_time IS NULL ORDER BY created_time DESC;`);
+    return this.db.all(
+      `SELECT * FROM mochi_attachment WHERE deleted_time IS NULL ORDER BY created_time DESC;`
+    );
   }
 
   attachToRecord(input) {
@@ -933,7 +949,9 @@ export class MochiSqliteRepository {
   deleteAttachment(id) {
     const attachment = this.getAttachment(id);
     if (!attachment) return null;
-    this.db.run(`UPDATE mochi_attachment SET deleted_time = ${nowExpr} WHERE id = ${sqlValue(id)};`);
+    this.db.run(
+      `UPDATE mochi_attachment SET deleted_time = ${nowExpr} WHERE id = ${sqlValue(id)};`
+    );
     return attachment;
   }
 
@@ -962,14 +980,16 @@ export class MochiSqliteRepository {
   importSqliteDatabase(input) {
     const sourceDb = new SqliteCli(input.path);
     const sourceTables = sourceDb
-      .all(`
+      .all(
+        `
         SELECT name
         FROM sqlite_master
         WHERE type = 'table'
           AND name NOT LIKE 'sqlite_%'
           AND name NOT LIKE '%_fts%'
         ORDER BY name;
-      `)
+      `
+      )
       .map((row) => row.name)
       .filter((name) => !input.tables || input.tables.includes(name));
     const base =
@@ -982,7 +1002,9 @@ export class MochiSqliteRepository {
     const importedTables = [];
 
     for (const sourceTable of sourceTables) {
-      const rows = sourceDb.all(`SELECT * FROM "${sourceTable.replaceAll('"', '""')}" LIMIT ${Number(input.limit ?? 10000)};`);
+      const rows = sourceDb.all(
+        `SELECT * FROM "${sourceTable.replaceAll('"', '""')}" LIMIT ${Number(input.limit ?? 10000)};`
+      );
       const table = this.createTable({
         baseId: base.id,
         name: input.tableNamePrefix ? `${input.tableNamePrefix}${sourceTable}` : sourceTable,
@@ -990,7 +1012,9 @@ export class MochiSqliteRepository {
       const columnNames = Object.keys(rows[0] ?? {});
       const fields = new Map();
       for (const columnName of columnNames) {
-        const sample = rows.find((row) => row[columnName] !== null && row[columnName] !== undefined)?.[columnName];
+        const sample = rows.find(
+          (row) => row[columnName] !== null && row[columnName] !== undefined
+        )?.[columnName];
         const inferred = inferFieldType(sample);
         const field = this.createField({
           tableId: table.id,
@@ -1005,7 +1029,12 @@ export class MochiSqliteRepository {
         for (const [columnName, value] of Object.entries(row)) {
           recordFields[fields.get(columnName)] = value;
         }
-        this.createRecord({ tableId: table.id, fields: recordFields, label: 'Import SQLite row', source: 'import' });
+        this.createRecord({
+          tableId: table.id,
+          fields: recordFields,
+          label: 'Import SQLite row',
+          source: 'import',
+        });
       }
       const importSource = this.createImportSource({
         kind: 'sqlite',
@@ -1014,7 +1043,13 @@ export class MochiSqliteRepository {
         tableId: table.id,
         state: { sourceTable, importedRows: rows.length },
       });
-      importedTables.push({ sourceTable, table, fields: [...fields.values()], rows: rows.length, importSource });
+      importedTables.push({
+        sourceTable,
+        table,
+        fields: [...fields.values()],
+        rows: rows.length,
+        importSource,
+      });
     }
 
     return { base, importedTables };
@@ -1038,11 +1073,13 @@ export class MochiSqliteRepository {
 
   listComputedJobs(status = 'pending') {
     return this.db
-      .all(`
+      .all(
+        `
         SELECT * FROM mochi_computed_job
         WHERE status = ${sqlValue(status)}
         ORDER BY created_time;
-      `)
+      `
+      )
       .map((job) => ({ ...job, payload: parseJson(job.payload_json, {}) }));
   }
 
@@ -1125,7 +1162,9 @@ export class MochiSqliteRepository {
                last_modified_time = ${nowExpr}
            WHERE id = ${sqlValue(op.record_id)};`
         );
-        statements.push(...this.recordSearchStatements(op.table_id, op.record_id, before?.fields ?? {}));
+        statements.push(
+          ...this.recordSearchStatements(op.table_id, op.record_id, before?.fields ?? {})
+        );
       }
     }
     statements.push(
@@ -1156,7 +1195,9 @@ export class MochiSqliteRepository {
                last_modified_time = ${nowExpr}
            WHERE id = ${sqlValue(op.record_id)};`
         );
-        statements.push(...this.recordSearchStatements(op.table_id, op.record_id, after?.fields ?? {}));
+        statements.push(
+          ...this.recordSearchStatements(op.table_id, op.record_id, after?.fields ?? {})
+        );
       }
       if (op.op_type === 'record.delete') {
         statements.push(

@@ -16,5 +16,13 @@ export const run = () => {
   repo.updateRecord(record.id, { fields: { [phone.id]: '+84 999' } });
   assert.equal(repo.getRecord(record.id).fields[phone.id], '+84 999');
 
+  const duplicated = repo.duplicateTable(table.id, {
+    name: 'Customers schema only',
+    includeRecords: false,
+  });
+  assert.equal(repo.listFields(duplicated.id).length, 2);
+  assert.equal(repo.listViews(duplicated.id).length, 1);
+  assert.equal(repo.listRecords(duplicated.id).length, 0);
+
   return { name, dbPath };
 };

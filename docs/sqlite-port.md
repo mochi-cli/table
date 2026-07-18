@@ -86,12 +86,13 @@ Implemented foundation:
 - basic field type conversion
 - operation log tables and undo/redo for record create/update/delete
 - conditional Nest bridge module: `MochiSqliteModule`
+- local grid compatibility routes for record, field, view, selection, and table operations
+- lookup/rollup resolver execution for the current JSON-record model
+- attachment metadata, trash/restore, SQLite import, and computed job scaffolding
+- legacy CSV/Excel import UI hidden in local mode until the file pipeline is ported
 
 Later:
 
 - formulas
-- lookup/rollup
 - comments
-- attachments
-- undo/redo
 - advanced view types

@@ -49,4 +49,4 @@ dev.backend:
 
 dev.app:
 	MOCHI_BACKEND_API_URL=http://localhost:3001 \
-	pnpm --dir apps/nextjs-app next dev
+	pnpm -C apps/nextjs-app exec next dev

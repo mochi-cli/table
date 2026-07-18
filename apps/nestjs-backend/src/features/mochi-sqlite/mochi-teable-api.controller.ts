@@ -77,7 +77,7 @@ const expandIndexRange = (start: number, end: number, max: number) => {
   return indexes;
 };
 
-const unique = <T,>(values: T[]) => Array.from(new Set(values));
+const unique = <T>(values: T[]) => Array.from(new Set(values));
 
 const parsePasteContent = (content: TemporaryPasteBody['content']): unknown[][] => {
   if (Array.isArray(content)) return content;
@@ -141,6 +141,7 @@ type FieldBody = {
   isLookup?: boolean;
   notNull?: boolean;
   unique?: boolean;
+  viewId?: string;
 };
 
 type ViewBody = {
@@ -210,6 +211,7 @@ type LocalField = {
   is_lookup?: number | boolean;
   not_null?: number | boolean;
   unique_value?: number | boolean;
+  sort_order?: number;
 };
 
 type LocalView = {
@@ -539,6 +541,26 @@ export class MochiTeableApiController {
     return toTeableView(created);
   }
 
+  @Post(':tableId/view/:viewId/duplicate')
+  duplicateView(
+    @Param('tableId') tableId: string,
+    @Param('viewId') viewId: string
+  ): IViewVo | null {
+    const source = this.mochiSqliteService.getView(viewId) as LocalView | null;
+    if (!source) return null;
+    const created = this.mochiSqliteService.createView({
+      tableId,
+      name: `${source.name} copy`,
+      type: source.type ?? ViewType.Grid,
+      options: source.options,
+      columnMeta: source.columnMeta,
+      filter: source.filter,
+      sort: source.sort,
+      group: source.group,
+    }) as LocalView | null;
+    return toTeableView(created);
+  }
+
   @Delete(':tableId/view/:viewId')
   deleteView(@Param('viewId') viewId: string): null {
     this.mochiSqliteService.deleteView(viewId);
@@ -547,33 +569,33 @@ export class MochiTeableApiController {
 
   @Put(':tableId/view/:viewId/name')
   updateViewName(@Param('viewId') viewId: string, @Body() body: ViewBody): IViewVo | null {
-    const updated = this.mochiSqliteService.updateView(viewId, { name: body.name }) as
-      | LocalView
-      | null;
+    const updated = this.mochiSqliteService.updateView(viewId, {
+      name: body.name,
+    }) as LocalView | null;
     return toTeableView(updated);
   }
 
   @Put(':tableId/view/:viewId/filter')
   updateViewFilter(@Param('viewId') viewId: string, @Body() body: ViewBody): IViewVo | null {
-    const updated = this.mochiSqliteService.updateView(viewId, { filter: body.filter ?? null }) as
-      | LocalView
-      | null;
+    const updated = this.mochiSqliteService.updateView(viewId, {
+      filter: body.filter ?? null,
+    }) as LocalView | null;
     return toTeableView(updated);
   }
 
   @Put(':tableId/view/:viewId/sort')
   updateViewSort(@Param('viewId') viewId: string, @Body() body: ViewBody): IViewVo | null {
-    const updated = this.mochiSqliteService.updateView(viewId, { sort: body.sort ?? null }) as
-      | LocalView
-      | null;
+    const updated = this.mochiSqliteService.updateView(viewId, {
+      sort: body.sort ?? null,
+    }) as LocalView | null;
     return toTeableView(updated);
   }
 
   @Put(':tableId/view/:viewId/group')
   updateViewGroup(@Param('viewId') viewId: string, @Body() body: ViewBody): IViewVo | null {
-    const updated = this.mochiSqliteService.updateView(viewId, { group: body.group ?? null }) as
-      | LocalView
-      | null;
+    const updated = this.mochiSqliteService.updateView(viewId, {
+      group: body.group ?? null,
+    }) as LocalView | null;
     return toTeableView(updated);
   }
 
@@ -622,6 +644,48 @@ export class MochiTeableApiController {
       notNull: body.notNull,
       unique: body.unique,
     }) as LocalField | null;
+    return toTeableField(created);
+  }
+
+  @Post(':tableId/field/:fieldId/duplicate')
+  duplicateField(
+    @Param('tableId') tableId: string,
+    @Param('fieldId') fieldId: string,
+    @Body() body: FieldBody
+  ): IFieldVo | null {
+    const source = this.mochiSqliteService.getField(fieldId) as LocalField | null;
+    if (!source) return null;
+
+    const created = this.mochiSqliteService.createField({
+      tableId,
+      name: body.name ?? `${source.name} copy`,
+      description: source.description ?? undefined,
+      type: source.type,
+      cellValueType: source.cell_value_type,
+      options: source.options,
+      meta: source.meta,
+      aiConfig: source.aiConfig,
+      isComputed: toBool(source.is_computed),
+      isLookup: toBool(source.is_lookup),
+      notNull: toBool(source.not_null),
+      unique: toBool(source.unique_value),
+      order: (source.sort_order ?? 0) + 0.5,
+    }) as LocalField | null;
+
+    if (created) {
+      const records = this.mochiSqliteService.listRecords(tableId, {
+        limit: 100000,
+      }) as LocalRecord[];
+      for (const record of records) {
+        if (!record.id) continue;
+        this.mochiSqliteService.updateRecord(
+          record.id,
+          { fields: { [created.id]: record.fields?.[fieldId] ?? null } },
+          tableId
+        );
+      }
+    }
+
     return toTeableField(created);
   }
 
@@ -729,6 +793,22 @@ export class MochiTeableApiController {
     return { records: created.map(toTeableRecord).filter(Boolean) as IRecord[] };
   }
 
+  @Post(':tableId/record/:recordId/duplicate')
+  duplicateRecord(
+    @Param('tableId') tableId: string,
+    @Param('recordId') recordId: string,
+    @Body() order?: unknown
+  ): IRecord | null {
+    const source = this.mochiSqliteService.getRecord(recordId) as LocalRecord | null;
+    if (!source) return null;
+    const created = this.mochiSqliteService.createRecord({
+      tableId,
+      fields: { ...(source.fields ?? {}) },
+      order,
+    }) as LocalRecord;
+    return toTeableRecord(created);
+  }
+
   @Patch(':tableId/record/:recordId')
   updateRecord(
     @Param('tableId') tableId: string,
@@ -736,10 +816,14 @@ export class MochiTeableApiController {
     @Body() body: UpdateRecordBody
   ): IRecord | null {
     const fields = body.record?.fields ?? body.fields ?? {};
-    const updated = this.mochiSqliteService.updateRecord(recordId, {
-      fields,
-      order: body.order,
-    }, tableId) as LocalRecord | null;
+    const updated = this.mochiSqliteService.updateRecord(
+      recordId,
+      {
+        fields,
+        order: body.order,
+      },
+      tableId
+    ) as LocalRecord | null;
     return toTeableRecord(updated);
   }
 
@@ -788,7 +872,12 @@ export class MochiTeableApiController {
       filter,
       orderBy,
     });
-    return this.copyByIds(selection.records, selection.fields, selection.recordIds, selection.fieldIds);
+    return this.copyByIds(
+      selection.records,
+      selection.fields,
+      selection.recordIds,
+      selection.fieldIds
+    );
   }
 
   @Post(':tableId/selection/copy-by-id')
@@ -797,7 +886,12 @@ export class MochiTeableApiController {
     @Body() body: SelectionIdBody
   ): { content: string; header: IFieldVo[] } {
     const selection = this.bodySelectionToIds(tableId, body);
-    return this.copyByIds(selection.records, selection.fields, selection.recordIds, selection.fieldIds);
+    return this.copyByIds(
+      selection.records,
+      selection.fields,
+      selection.recordIds,
+      selection.fieldIds
+    );
   }
 
   @Patch(':tableId/selection/temporaryPaste')
@@ -909,6 +1003,67 @@ export class MochiTeableApiController {
     return {
       ranges: [start, [start[0] + columnCount - 1, start[1] + rowCount - 1]],
     };
+  }
+
+  @Get(':tableId/selection/duplicate-stream')
+  duplicateSelectionStream(
+    @Param('tableId') tableId: string,
+    @Query('ranges') rangesQuery: string,
+    @Query('type') type: RangeType | undefined,
+    @Query('filter') filter: string | undefined,
+    @Query('orderBy') orderBy: string | undefined,
+    @Res() response: Response
+  ): void {
+    const selection = this.rangeSelectionToIds(tableId, parseRangesQuery(rangesQuery), type, {
+      filter,
+      orderBy,
+    });
+    const totalCount = selection.recordIds.length;
+    const duplicatedRecordIds: string[] = [];
+
+    this.prepareSelectionStream(response);
+    try {
+      this.sendSelectionStreamEvent(response, {
+        id: 'progress',
+        phase: 'preparing',
+        batchIndex: -1,
+        totalCount,
+        duplicatedCount: 0,
+        batchDuplicatedCount: 0,
+      });
+
+      for (const recordId of selection.recordIds) {
+        const source = this.mochiSqliteService.getRecord(recordId) as LocalRecord | null;
+        if (!source) continue;
+        const created = this.mochiSqliteService.createRecord({
+          tableId,
+          fields: { ...(source.fields ?? {}) },
+        }) as LocalRecord;
+        duplicatedRecordIds.push(created.id);
+      }
+
+      this.sendSelectionStreamEvent(response, {
+        id: 'done',
+        totalCount,
+        duplicatedCount: duplicatedRecordIds.length,
+        data: {
+          duplicatedCount: duplicatedRecordIds.length,
+          duplicatedRecordIds,
+        },
+      });
+    } catch (error) {
+      this.sendSelectionStreamEvent(response, {
+        id: 'error',
+        phase: 'duplicating',
+        batchIndex: -1,
+        totalCount,
+        duplicatedCount: duplicatedRecordIds.length,
+        recordIds: selection.recordIds,
+        message: error instanceof Error ? error.message : 'Duplicate selection stream failed',
+      });
+    } finally {
+      this.finishSelectionStream(response);
+    }
   }
 
   @Patch(':tableId/selection/clear-by-id')

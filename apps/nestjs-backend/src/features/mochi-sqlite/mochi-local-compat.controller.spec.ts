@@ -11,6 +11,7 @@ const createService = () =>
       { id: 'tbl_2', name: 'Customers', sort_order: 1 },
     ],
     listViews: (tableId: string) => [{ id: `viw_${tableId}` }],
+    listFields: (tableId: string) => [{ id: `fld_${tableId}` }],
     createTable: vi.fn((input: { baseId: string; name: string; icon?: string | null }) => ({
       id: 'tbl_new',
       base_id: input.baseId,
@@ -18,12 +19,14 @@ const createService = () =>
       icon: input.icon ?? null,
       sort_order: 2,
     })),
-    updateTable: vi.fn((id: string, patch: { name?: string; icon?: string | null; order?: number }) => ({
-      id,
-      name: patch.name ?? 'Customers',
-      icon: patch.icon ?? null,
-      sort_order: patch.order ?? 0,
-    })),
+    updateTable: vi.fn(
+      (id: string, patch: { name?: string; icon?: string | null; order?: number }) => ({
+        id,
+        name: patch.name ?? 'Customers',
+        icon: patch.icon ?? null,
+        sort_order: patch.order ?? 0,
+      })
+    ),
     duplicateTable: vi.fn((id: string, input: { baseId?: string; name?: string }) => ({
       id: 'tbl_copy',
       base_id: input.baseId,
@@ -111,7 +114,9 @@ describe('MochiLocalCompatController', () => {
     });
     expect(service.updateTable).toHaveBeenCalledWith('tbl_1', { icon: 'building-2' });
 
-    expect(controller.createBaseNode('bas_1', { resourceType: 'table', name: 'Orders' })).toMatchObject({
+    expect(
+      controller.createBaseNode('bas_1', { resourceType: 'table', name: 'Orders' })
+    ).toMatchObject({
       id: 'tbl_new',
       resourceType: 'table',
       defaultUrl: '/mochi/local?tableId=tbl_new&viewId=viw_tbl_new',
@@ -140,7 +145,9 @@ describe('MochiLocalCompatController', () => {
     const service = createService();
     const controller = new MochiLocalCompatController(service);
 
-    expect(controller.duplicateBaseNode('bas_1', 'tbl_1', { name: 'Customers copy' })).toMatchObject({
+    expect(
+      controller.duplicateBaseNode('bas_1', 'tbl_1', { name: 'Customers copy' })
+    ).toMatchObject({
       id: 'tbl_copy',
       resourceType: 'table',
       resourceMeta: {
@@ -150,9 +157,12 @@ describe('MochiLocalCompatController', () => {
     expect(service.duplicateTable).toHaveBeenCalledWith('tbl_1', {
       baseId: 'bas_1',
       name: 'Customers copy',
+      includeRecords: undefined,
     });
 
-    expect(controller.moveBaseNode('tbl_1', { anchorId: 'tbl_2', position: 'after' })).toMatchObject({
+    expect(
+      controller.moveBaseNode('tbl_1', { anchorId: 'tbl_2', position: 'after' })
+    ).toMatchObject({
       id: 'tbl_1',
       order: 0.5,
     });
@@ -172,6 +182,37 @@ describe('MochiLocalCompatController', () => {
       resourceId: 'tbl_1',
       resourceType: 'table',
       permanent: true,
+    });
+  });
+
+  it('supports Teable table duplicate check and duplicate APIs', () => {
+    const service = createService();
+    const controller = new MochiLocalCompatController(service);
+
+    expect(controller.duplicateTableCheck()).toEqual({ affectedFields: [] });
+    expect(controller.duplicateFieldCheck()).toEqual({ affectedFields: [] });
+    expect(
+      controller.duplicateTable('bas_1', 'tbl_1', {
+        name: 'Customers no records',
+        includeRecords: false,
+      })
+    ).toMatchObject({
+      id: 'tbl_copy',
+      name: 'Customers no records',
+      defaultViewId: 'viw_tbl_copy',
+      fields: [{ id: 'fld_tbl_copy' }],
+      views: [{ id: 'viw_tbl_copy' }],
+      fieldMap: {
+        fld_tbl_1: 'fld_tbl_copy',
+      },
+      viewMap: {
+        viw_tbl_1: 'viw_tbl_copy',
+      },
+    });
+    expect(service.duplicateTable).toHaveBeenCalledWith('tbl_1', {
+      baseId: 'bas_1',
+      name: 'Customers no records',
+      includeRecords: false,
     });
   });
 });
