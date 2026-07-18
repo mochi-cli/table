@@ -7,7 +7,9 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 
 const appRequire = createRequire(path.join(process.cwd(), 'apps/nextjs-app/package.json'));
+const backendRequire = createRequire(path.join(process.cwd(), 'apps/nestjs-backend/package.json'));
 const { chromium } = appRequire('@playwright/test');
+const XLSX = backendRequire('xlsx');
 
 async function requestJson(url, options = {}) {
   const response = await fetch(url, {
@@ -44,6 +46,23 @@ const putJson = (url, body) =>
 const deleteJson = (url) => requestJson(url, { method: 'DELETE' });
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function waitForImportedRecord(origin, baseId, tableName, markerText) {
+  let importedTable;
+  let importedRecords = [];
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    const tables = await getJson(`${origin}/api/mochi/bases/${baseId}/tables`);
+    importedTable = tables.find((table) => table.name === tableName);
+    importedRecords = importedTable?.id
+      ? await getJson(`${origin}/api/mochi/tables/${importedTable.id}/records`)
+      : [];
+    if (importedRecords.some((record) => Object.values(record.fields ?? {}).includes(markerText))) {
+      break;
+    }
+    await wait(500);
+  }
+  return { importedTable, importedRecords };
+}
 
 async function discoverTarget(origin) {
   const bases = await getJson(`${origin}/api/mochi/bases`);
@@ -540,23 +559,12 @@ async function runLocalDashboardMenuSmoke(
   await page.locator('[data-attr="base-create-menu-import-csv"]').click();
   await page.locator('input[type="file"]').setInputFiles(csvPath);
 
-  let importedTable;
-  let importedRecords = [];
-  for (let attempt = 0; attempt < 30; attempt += 1) {
-    const tables = await getJson(`${origin}/api/mochi/bases/${baseId}/tables`);
-    importedTable = tables.find((table) => table.name === importedCsvTableName);
-    importedRecords = importedTable?.id
-      ? await getJson(`${origin}/api/mochi/tables/${importedTable.id}/records`)
-      : [];
-    if (
-      importedRecords.some((record) =>
-        Object.values(record.fields ?? {}).includes(`CSV Import ${marker}`)
-      )
-    ) {
-      break;
-    }
-    await wait(500);
-  }
+  const { importedTable, importedRecords } = await waitForImportedRecord(
+    origin,
+    baseId,
+    importedCsvTableName,
+    `CSV Import ${marker}`
+  );
   results.push({
     name: 'local-csv-import-ui',
     ok:
@@ -567,6 +575,44 @@ async function runLocalDashboardMenuSmoke(
   });
   if (importedTable?.id) {
     await deleteJson(`${origin}/api/base/${baseId}/node/${importedTable.id}/permanent`).catch(
+      () => undefined
+    );
+  }
+
+  await page.keyboard.press('Escape');
+  await page
+    .locator('input[type="file"]')
+    .waitFor({ state: 'detached', timeout: 5000 })
+    .catch(() => undefined);
+  await page.goto(`${appOrigin}/mochi/local?tableId=${tableId}&viewId=${viewId}`, {
+    waitUntil: 'domcontentloaded',
+  });
+  await page.getByRole('button', { name: 'Add record' }).waitFor();
+  await createButton.click();
+  const importedExcelTableName = `excel-ui-${marker}`;
+  const excelPath = path.join(tmpDir, `${importedExcelTableName}.xlsx`);
+  const workbook = XLSX.utils.book_new();
+  const worksheet = XLSX.utils.json_to_sheet([
+    { Name: `Excel Import ${marker}`, Score: 73, Active: true },
+  ]);
+  XLSX.utils.book_append_sheet(workbook, worksheet, importedExcelTableName);
+  XLSX.writeFile(workbook, excelPath);
+
+  await page.locator('[data-attr="base-create-menu-import-excel"]').click();
+  await page.locator('input[type="file"]').setInputFiles(excelPath);
+
+  const { importedTable: importedExcelTable, importedRecords: importedExcelRecords } =
+    await waitForImportedRecord(origin, baseId, importedExcelTableName, `Excel Import ${marker}`);
+  results.push({
+    name: 'local-excel-import-ui',
+    ok:
+      Boolean(importedExcelTable?.id) &&
+      importedExcelRecords.some((record) =>
+        Object.values(record.fields ?? {}).includes(`Excel Import ${marker}`)
+      ),
+  });
+  if (importedExcelTable?.id) {
+    await deleteJson(`${origin}/api/base/${baseId}/node/${importedExcelTable.id}/permanent`).catch(
       () => undefined
     );
   }

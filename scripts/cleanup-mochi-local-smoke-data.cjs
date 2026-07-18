@@ -175,6 +175,7 @@ async function main() {
        OR s.path LIKE 'csv-api-storage-%.csv'
        OR s.path LIKE 'excel-api-storage-%.xlsx'
        OR s.path LIKE 'csv-ui-workflow-%.csv'
+       OR s.path LIKE 'excel-ui-workflow-%.xlsx'
        OR s.path = 'contacts.csv'
        OR t.deleted_time IS NOT NULL;
   `);
@@ -190,6 +191,7 @@ async function main() {
         OR s.path LIKE 'csv-api-storage-%.csv'
         OR s.path LIKE 'excel-api-storage-%.xlsx'
         OR s.path LIKE 'csv-ui-workflow-%.csv'
+        OR s.path LIKE 'excel-ui-workflow-%.xlsx'
         OR s.path = 'contacts.csv'
       );
   `);
@@ -209,6 +211,7 @@ async function main() {
          OR s.path LIKE 'csv-api-storage-%.csv'
          OR s.path LIKE 'excel-api-storage-%.xlsx'
          OR s.path LIKE 'csv-ui-workflow-%.csv'
+         OR s.path LIKE 'excel-ui-workflow-%.xlsx'
          OR s.path = 'contacts.csv'
          OR t.deleted_time IS NOT NULL
     );
