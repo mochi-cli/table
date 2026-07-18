@@ -123,6 +123,27 @@ async function openToolbarPopover(page, name, expectedText) {
   return samePage;
 }
 
+async function getExpandedRecordState(page, tableId, recordId) {
+  const dialog = page.getByRole('dialog');
+  await dialog.waitFor();
+  return dialog.evaluate(
+    (node, ids) => {
+      const dialog = node;
+      const recordRoot = document.getElementById(`${ids.tableId}-${ids.recordId}`);
+      const editableElements = dialog.querySelectorAll('input,textarea,[contenteditable="true"]');
+      const rect = dialog.getBoundingClientRect();
+      return {
+        hasRecordRoot: Boolean(recordRoot),
+        inputCount: editableElements.length,
+        text: dialog.textContent ?? '',
+        width: rect.width,
+        height: rect.height,
+      };
+    },
+    { tableId, recordId }
+  );
+}
+
 async function main() {
   const backendOrigin = process.env.MOCHI_BACKEND_ORIGIN ?? 'http://127.0.0.1:3001';
   const appOrigin = process.env.MOCHI_APP_ORIGIN ?? 'http://127.0.0.1:3000';
@@ -248,17 +269,49 @@ async function main() {
     );
     await page.getByRole('dialog').waitFor();
     await wait(1000);
-    const expandedRecordState = await page.getByRole('dialog').evaluate((dialog) => ({
-      inputCount: dialog.querySelectorAll('input,textarea,[contenteditable="true"]').length,
-      text: dialog.textContent ?? '',
-    }));
+    const expandedRecordState = await getExpandedRecordState(page, tableId, recordId);
     results.push({
       name: 'record-expand-modal-inputs',
       ok:
         page.url().includes(`recordId=${recordId}`) &&
+        expandedRecordState.hasRecordRoot &&
         expandedRecordState.inputCount > 0 &&
         expandedRecordState.text.length > 0,
       inputCount: expandedRecordState.inputCount,
+    });
+
+    const dialogBox = await page.getByRole('dialog').boundingBox();
+    if (!dialogBox) {
+      throw new Error('Expanded record dialog has no bounding box.');
+    }
+    const dialogRight = dialogBox.x + dialogBox.width;
+    await page.mouse.move(dialogRight - 2, dialogBox.y + dialogBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(dialogRight - 24, dialogBox.y + dialogBox.height / 2, {
+      steps: 6,
+    });
+    await page.mouse.up();
+    await wait(500);
+    const afterEdgeDragState = await getExpandedRecordState(page, tableId, recordId);
+    const firstEditor = page
+      .getByRole('dialog')
+      .locator('input,textarea,[contenteditable="true"]')
+      .first();
+    await firstEditor.click({ timeout: 5000 });
+    results.push({
+      name: 'record-expand-edge-drag-keeps-editor',
+      ok:
+        page.url().includes(`recordId=${recordId}`) &&
+        afterEdgeDragState.hasRecordRoot &&
+        afterEdgeDragState.inputCount > 0 &&
+        afterEdgeDragState.text.length > 0 &&
+        Math.abs(afterEdgeDragState.width - expandedRecordState.width) < 4 &&
+        Math.abs(afterEdgeDragState.height - expandedRecordState.height) < 4,
+      inputCount: afterEdgeDragState.inputCount,
+      widthBefore: expandedRecordState.width,
+      widthAfter: afterEdgeDragState.width,
+      heightBefore: expandedRecordState.height,
+      heightAfter: afterEdgeDragState.height,
     });
 
     const beforeCloseTitle = await page.title();
