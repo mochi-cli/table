@@ -107,6 +107,10 @@ Kept:
 - `make mochi.history.verify` checks record-level and table-level field history
   before/after rows, created-by filtering, cursor response shape, and hidden
   deleted-record history through the local Teable-compatible history endpoints.
+- `make mochi.base-node.verify` checks local base-node create, rename, icon,
+  move, duplicate, and delete through Teable-compatible node endpoints. It also
+  checks that share/admin/comment/AI/last-visit endpoints stay login-free and
+  return local-safe fixed-user or empty stub responses.
 - `make mochi.local.verify` runs the non-browser local verification bundle.
 - `make mochi.cleanup` removes known local smoke-test tables/views from the
   default SQLite DB, resets the primary view name, removes smoke history rows,
