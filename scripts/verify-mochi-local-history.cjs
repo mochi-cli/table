@@ -29,6 +29,10 @@ const patchJson = (url, body) =>
   });
 const deleteJson = (url) => requestJson(url, { method: 'DELETE' });
 
+function countHistoryItems(history, predicate) {
+  return history.historyList?.filter(predicate).length ?? 0;
+}
+
 async function discoverTarget(origin) {
   const bases = await getJson(`${origin}/api/mochi/bases`);
   const base = bases[0];
@@ -61,10 +65,26 @@ async function main() {
   const marker = `history-${Date.now()}`;
   const results = [];
   let recordId;
+  let secondaryFieldId;
 
   try {
+    const secondaryField = await postJson(`${origin}/api/table/${tableId}/field`, {
+      name: `History verifier ${marker}`,
+      type: 'singleLineText',
+      cellValueType: 'string',
+    });
+    secondaryFieldId = secondaryField?.id;
+    if (!secondaryFieldId) throw new Error('Failed to create secondary history field.');
+
     const created = await postJson(`${origin}/api/table/${tableId}/record`, {
-      records: [{ fields: { [fieldId]: `before ${marker}` } }],
+      records: [
+        {
+          fields: {
+            [fieldId]: `before ${marker}`,
+            [secondaryFieldId]: `secondary before ${marker}`,
+          },
+        },
+      ],
     });
     recordId = created.records?.[0]?.id;
     if (!recordId) throw new Error('Failed to create temporary record for history verification.');
@@ -74,6 +94,34 @@ async function main() {
     });
     await patchJson(`${origin}/api/table/${tableId}/record/${recordId}`, {
       record: { fields: { [fieldId]: `final ${marker}` } },
+    });
+    await patchJson(`${origin}/api/table/${tableId}/record/${recordId}`, {
+      record: { fields: { [fieldId]: `final ${marker}` } },
+    });
+
+    const afterNoopHistory = await getJson(
+      `${origin}/api/table/${tableId}/record/${recordId}/history?fieldIds=${fieldId}`
+    );
+    results.push({
+      name: 'record-history-noop-update-skipped',
+      ok:
+        countHistoryItems(
+          afterNoopHistory,
+          (item) =>
+            item.recordId === recordId &&
+            item.fieldId === fieldId &&
+            item.before?.data === `final ${marker}` &&
+            item.after?.data === `final ${marker}`
+        ) === 0,
+    });
+
+    await patchJson(`${origin}/api/table/${tableId}/record/${recordId}`, {
+      record: {
+        fields: {
+          [fieldId]: `multi primary ${marker}`,
+          [secondaryFieldId]: `multi secondary ${marker}`,
+        },
+      },
     });
 
     const recordHistory = await getJson(
@@ -85,12 +133,36 @@ async function main() {
       name: 'record-history-list',
       ok:
         recordHistory.historyList?.length >= 2 &&
-        latest?.before?.data === `after ${marker}` &&
-        latest?.after?.data === `final ${marker}` &&
-        previous?.before?.data === `before ${marker}` &&
-        previous?.after?.data === `after ${marker}` &&
+        latest?.before?.data === `final ${marker}` &&
+        latest?.after?.data === `multi primary ${marker}` &&
+        previous?.before?.data === `after ${marker}` &&
+        previous?.after?.data === `final ${marker}` &&
         latest?.before?.meta?.id === fieldId &&
         recordHistory.userMap?.usr_mochi_local?.name === 'Mochi Local',
+    });
+
+    const multiFieldHistory = await getJson(
+      `${origin}/api/table/${tableId}/record/${recordId}/history?fieldIds=${fieldId}&fieldIds=${secondaryFieldId}`
+    );
+    results.push({
+      name: 'record-history-multi-field-update',
+      ok:
+        multiFieldHistory.historyList?.some(
+          (item) =>
+            item.recordId === recordId &&
+            item.fieldId === fieldId &&
+            item.before?.data === `final ${marker}` &&
+            item.after?.data === `multi primary ${marker}` &&
+            item.after?.meta?.id === fieldId
+        ) &&
+        multiFieldHistory.historyList?.some(
+          (item) =>
+            item.recordId === recordId &&
+            item.fieldId === secondaryFieldId &&
+            item.before?.data === `secondary before ${marker}` &&
+            item.after?.data === `multi secondary ${marker}` &&
+            item.after?.meta?.id === secondaryFieldId
+        ),
     });
 
     const tableHistory = await getJson(
@@ -102,7 +174,7 @@ async function main() {
         (item) =>
           item.recordId === recordId &&
           item.fieldId === fieldId &&
-          item.after?.data === `final ${marker}`
+          item.after?.data === `multi primary ${marker}`
       ),
     });
 
@@ -142,6 +214,11 @@ async function main() {
   } finally {
     if (recordId) {
       await deleteJson(`${origin}/api/table/${tableId}/record/${recordId}`).catch(() => undefined);
+    }
+    if (secondaryFieldId) {
+      await deleteJson(`${origin}/api/table/${tableId}/field/${secondaryFieldId}`).catch(
+        () => undefined
+      );
     }
   }
 }
