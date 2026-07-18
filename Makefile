@@ -67,50 +67,50 @@ mochi.local.verify:
 	$(MAKE) mochi.storage.verify
 
 mochi.browser.verify:
-	node scripts/verify-mochi-local-browser.cjs
+	node scripts/mochi/verify-mochi-local-browser.cjs
 
 mochi.browser-workflows.verify:
-	node scripts/verify-mochi-local-browser-workflows.cjs
+	node scripts/mochi/verify-mochi-local-browser-workflows.cjs
 
 mochi.integrity.verify:
-	node scripts/verify-mochi-local-integrity.cjs "$(SQLITE_DB)"
+	node scripts/mochi/verify-mochi-local-integrity.cjs "$(SQLITE_DB)"
 
 mochi.finalize.verify:
 	$(MAKE) mochi.cleanup
 	$(MAKE) mochi.integrity.verify
 
 mochi.realtime.verify:
-	node scripts/verify-mochi-local-realtime.cjs
+	node scripts/mochi/verify-mochi-local-realtime.cjs
 
 mochi.table-metadata.verify:
-	node scripts/verify-mochi-local-table-metadata.cjs
+	node scripts/mochi/verify-mochi-local-table-metadata.cjs
 
 mochi.field-header.verify:
-	node scripts/verify-mochi-local-field-header.cjs
+	node scripts/mochi/verify-mochi-local-field-header.cjs
 
 mochi.view-lifecycle.verify:
-	node scripts/verify-mochi-local-view-lifecycle.cjs
+	node scripts/mochi/verify-mochi-local-view-lifecycle.cjs
 
 mochi.selection.verify:
-	node scripts/verify-mochi-local-selection.cjs
+	node scripts/mochi/verify-mochi-local-selection.cjs
 
 mochi.history.verify:
-	node scripts/verify-mochi-local-history.cjs
+	node scripts/mochi/verify-mochi-local-history.cjs
 
 mochi.comments.verify:
-	node scripts/verify-mochi-local-comments.cjs
+	node scripts/mochi/verify-mochi-local-comments.cjs
 
 mochi.base-node.verify:
-	node scripts/verify-mochi-local-base-node.cjs
+	node scripts/mochi/verify-mochi-local-base-node.cjs
 
 mochi.computed.verify:
-	node scripts/verify-mochi-local-computed.cjs
+	node scripts/mochi/verify-mochi-local-computed.cjs
 
 mochi.storage.verify:
-	node scripts/verify-mochi-local-storage.cjs
+	node scripts/mochi/verify-mochi-local-storage.cjs
 
 mochi.cleanup:
-	node scripts/cleanup-mochi-local-smoke-data.cjs "$(SQLITE_DB)"
+	node scripts/mochi/cleanup-mochi-local-smoke-data.cjs "$(SQLITE_DB)"
 
 sqlite.reset:
 	rm -f "$(SQLITE_DB)"
