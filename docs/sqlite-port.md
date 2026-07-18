@@ -85,6 +85,14 @@ Kept:
   the page, opens the field header menu, resizes a column, reorders a temporary
   column, checks persistence through the local Teable-compatible API, and then
   deletes the temporary field.
+- `make mochi.browser-workflows.verify` checks browser-backed local workflows
+  for view create/rename/duplicate/delete, cell selection copy/paste/clear,
+  selected-row duplicate/delete, record history panel rendering, table history
+  backed data, and two-tab realtime filter/column-meta updates without page
+  navigation.
+- `make mochi.integrity.verify` checks local SQLite integrity guards: no
+  orphan/deleted-resource history rows, no active view `columnMeta` entries
+  pointing at deleted fields, and no duplicate active view names in a table.
 - `make mochi.table-metadata.verify` checks table `name`, `icon`, and
   `description` updates through the local Teable-compatible metadata endpoints
   and restores the original table metadata afterward.
@@ -101,7 +109,8 @@ Kept:
   deleted-record history through the local Teable-compatible history endpoints.
 - `make mochi.local.verify` runs the non-browser local verification bundle.
 - `make mochi.cleanup` removes known local smoke-test tables/views from the
-  default SQLite DB.
+  default SQLite DB, resets the primary view name, removes smoke history rows,
+  and strips stale `columnMeta` entries that point at deleted fields.
 
 ## First supported feature set
 
@@ -165,18 +174,22 @@ Then run:
 
 ```bash
 make mochi.browser.verify
+make mochi.browser-workflows.verify
 ```
 
-The browser verifier covers the header table interactions that are easiest to
-regress visually: filter/sort/group popovers, field header menu actions,
-column resize persistence, and column reorder persistence after reopening the
-local page.
+The browser verifiers cover the header table interactions that are easiest to
+regress visually, plus view-list, selection, history, and two-tab realtime
+workflows. Finish with:
+
+```bash
+make mochi.cleanup
+make mochi.integrity.verify
+```
 
 ## Remaining parity checks
 
-- Keep adding browser coverage for larger workflows such as create, duplicate,
-  delete, and rename view from the left view list; the header toolbar smoke is
-  now covered by `make mochi.browser.verify`.
+- Keep extending browser coverage for drag-heavy edge cases and additional
+  history entry points as Mochi local workflows grow.
 - Keep extending SQLite route coverage where local compatibility endpoints are
   still stubs: comments, share/admin, user last-visit, and some base-node
   behavior.

@@ -19,6 +19,7 @@ async function main() {
   const deletedOrphanViews = [];
   const renamedViews = [];
   const deletedHistoryRows = [];
+  const cleanedColumnMeta = [];
 
   for (const base of bases) {
     const tables = repo.listTables(base.id);
@@ -63,6 +64,24 @@ async function main() {
     if (primaryView && primaryView.name !== 'Grid view') {
       repo.updateView(primaryView.id, { name: 'Grid view' });
       renamedViews.push({ id: primaryView.id, from: primaryView.name, to: 'Grid view' });
+    }
+  }
+
+  for (const base of bases) {
+    for (const table of repo.listTables(base.id).filter((item) => !item.deleted_time)) {
+      const activeFieldIds = new Set(repo.listFields(table.id).map((field) => field.id));
+      for (const view of repo.listViews(table.id).filter((item) => !item.deleted_time)) {
+        const columnMeta = view.columnMeta ?? {};
+        const nextColumnMeta = Array.isArray(columnMeta)
+          ? columnMeta.filter((item) => activeFieldIds.has(item?.fieldId))
+          : Object.fromEntries(
+              Object.entries(columnMeta).filter(([fieldId]) => activeFieldIds.has(fieldId))
+            );
+
+        if (JSON.stringify(nextColumnMeta) === JSON.stringify(columnMeta)) continue;
+        repo.updateView(view.id, { columnMeta: nextColumnMeta });
+        cleanedColumnMeta.push({ viewId: view.id, tableId: table.id });
+      }
     }
   }
 
@@ -119,6 +138,7 @@ async function main() {
         deletedOrphanViews,
         renamedViews,
         deletedHistoryRows,
+        cleanedColumnMeta,
       },
       null,
       2
