@@ -46,7 +46,6 @@ Not finished yet:
 - mapping the existing Teable API/controllers fully to SQLite
 - full parity with every upstream Teable non-login table path
 - polished Mochi profile/workspace picker UI
-- porting the legacy CSV/Excel upload pipeline to SQLite local mode
 - advanced formulas beyond the current local evaluator
 
 ## Repository Shape
@@ -223,8 +222,9 @@ To remove known smoke-test tables/views from the local DB:
 make mochi.cleanup
 ```
 
-The legacy Teable CSV/Excel import menu is disabled in local mode until that
-file pipeline is ported. Local SQLite imports are available through
+CSV/Excel file import is available in local mode through the Teable create menu
+and the local `POST /api/mochi/imports/file` endpoint. SQLite database imports
+remain available through the `/mochi/local` sidebar and
 `POST /api/mochi/imports/sqlite`.
 
 The old Postgres-backed Teable runtime still exists in the repository for
@@ -265,11 +265,13 @@ Current local-mode coverage:
   local mode and browser render smoke checks are covered by
   `make mochi.browser-workflows.verify`.
 - Formula/lookup/rollup: local formula text/numeric/logical/comparison/date,
-  regex/date diff, lookup/rollup, and computed-job paths are covered by
-  `make mochi.computed.verify`.
-- SQLite import/storage: local SQLite path import is available from the
-  `/mochi/local` sidebar and through `POST /api/mochi/imports/sqlite`; storage
-  paths are covered by `make mochi.storage.verify`.
+  regex/date diff, expanded numeric/date helpers, lookup/rollup, and
+  computed-job paths are covered by `make mochi.computed.verify`.
+- Import/storage: local CSV/Excel file import is available from the Teable
+  create menu through `POST /api/mochi/imports/file`; SQLite path import is
+  available from the `/mochi/local` sidebar through
+  `POST /api/mochi/imports/sqlite`; storage paths are covered by
+  `make mochi.storage.verify`.
 - Base-node/menu: local base-node tree and create menu are table/folder scoped;
   Dashboard creation is disabled in local mode and covered by
   `make mochi.browser-workflows.verify`.
@@ -297,13 +299,12 @@ Intentionally excluded from local parity:
   SQLite-only backend and local SockJS/ShareDB bridge; Redis pub/sub is only an
   optional compatibility path when a Redis URI is explicitly configured.
 
-Known remaining gaps:
+Known remaining gap:
 
-- Legacy Teable CSV/Excel upload import is still not ported to SQLite local
-  mode. Use the local SQLite import button or `POST /api/mochi/imports/sqlite`
-  instead.
 - Formula support is local and intentionally smaller than Teable's full
-  Postgres formula SQL engine.
+  Postgres formula SQL engine, though the local evaluator now covers the common
+  text, numeric, logical, comparison, regex, date, lookup/rollup, and computed
+  job paths used by Mochi local workflows.
 
 ## Local SQLite API
 
@@ -337,6 +338,7 @@ DELETE /api/mochi/attachments/:attachmentId
 GET  /api/mochi/trash
 POST /api/mochi/trash/:trashId/restore
 GET  /api/mochi/imports
+POST /api/mochi/imports/file
 POST /api/mochi/imports/sqlite
 GET  /api/mochi/computed/jobs
 POST /api/mochi/computed/jobs

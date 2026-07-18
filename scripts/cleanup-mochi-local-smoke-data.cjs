@@ -171,8 +171,32 @@ async function main() {
     LEFT JOIN mochi_table t ON t.id = s.table_id
     WHERE s.profile_id LIKE 'storage-%'
        OR s.path LIKE '%mochi-storage-%'
+       OR s.path LIKE '%mochi-import-ui-%'
+       OR s.path LIKE 'csv-api-storage-%.csv'
+       OR s.path LIKE 'excel-api-storage-%.xlsx'
+       OR s.path LIKE 'csv-ui-workflow-%.csv'
+       OR s.path = 'contacts.csv'
        OR t.deleted_time IS NOT NULL;
   `);
+  const importSmokeTables = repo.db.all(`
+    SELECT DISTINCT t.id, t.name
+    FROM mochi_import_source s
+    JOIN mochi_table t ON t.id = s.table_id
+    WHERE t.deleted_time IS NULL
+      AND (
+        s.profile_id LIKE 'storage-%'
+        OR s.path LIKE '%mochi-storage-%'
+        OR s.path LIKE '%mochi-import-ui-%'
+        OR s.path LIKE 'csv-api-storage-%.csv'
+        OR s.path LIKE 'excel-api-storage-%.xlsx'
+        OR s.path LIKE 'csv-ui-workflow-%.csv'
+        OR s.path = 'contacts.csv'
+      );
+  `);
+  for (const table of importSmokeTables) {
+    repo.permanentDeleteTable(table.id);
+    deletedTables.push({ id: table.id, name: table.name });
+  }
   repo.db.run(`
     DELETE FROM mochi_import_source
     WHERE id IN (
@@ -181,6 +205,11 @@ async function main() {
       LEFT JOIN mochi_table t ON t.id = s.table_id
       WHERE s.profile_id LIKE 'storage-%'
          OR s.path LIKE '%mochi-storage-%'
+         OR s.path LIKE '%mochi-import-ui-%'
+         OR s.path LIKE 'csv-api-storage-%.csv'
+         OR s.path LIKE 'excel-api-storage-%.xlsx'
+         OR s.path LIKE 'csv-ui-workflow-%.csv'
+         OR s.path = 'contacts.csv'
          OR t.deleted_time IS NOT NULL
     );
   `);

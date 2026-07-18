@@ -124,6 +124,33 @@ export const run = () => {
       expression: 'DATETIME_FORMAT(DATEADD("2026-07-18T00:00:00Z", 2, "days"), "YYYY-MM-DD")',
     },
   });
+  const numericParity = repo.createField({
+    tableId: table.id,
+    name: 'Numeric parity',
+    type: 'formula',
+    cellValueType: 'number',
+    isComputed: true,
+    options: { expression: 'POWER(2, 3) + MOD(10, 4) + SQRT(9) + FLOOR(4.8) + CEILING(4.1)' },
+  });
+  const roundingParity = repo.createField({
+    tableId: table.id,
+    name: 'Rounding parity',
+    type: 'formula',
+    cellValueType: 'string',
+    isComputed: true,
+    options: { expression: 'CONCATENATE(ROUNDUP(1.21, 1), ":", ROUNDDOWN(1.29, 1))' },
+  });
+  const dateParts = repo.createField({
+    tableId: table.id,
+    name: 'Date parts',
+    type: 'formula',
+    cellValueType: 'string',
+    isComputed: true,
+    options: {
+      expression:
+        'CONCATENATE(YEAR("2026-07-18T09:08:07Z"), "-", MONTH("2026-07-18T09:08:07Z"), "-", DAY("2026-07-18T09:08:07Z"), " ", HOUR("2026-07-18T09:08:07Z"), ":", MINUTE("2026-07-18T09:08:07Z"), ":", SECOND("2026-07-18T09:08:07Z"), " w", WEEKDAY("2026-07-18T09:08:07Z"))',
+    },
+  });
   const record = repo.createRecord({
     tableId: table.id,
     fields: { [item.id]: 'Tea', [qty.id]: 3, [price.id]: 12.5 },
@@ -132,7 +159,7 @@ export const run = () => {
   const firstResolve = repo.resolveFormulas(table.id, { recordId: record.id });
   const resolved = repo.getRecord(record.id);
 
-  assert.deepEqual(firstResolve, { tableId: table.id, fields: 13, records: 1, updatedRecords: 1 });
+  assert.deepEqual(firstResolve, { tableId: table.id, fields: 16, records: 1, updatedRecords: 1 });
   assert.equal(resolved.fields[total.id], 37.5);
   assert.equal(resolved.fields[label.id], 'Tea x3');
   assert.equal(resolved.fields[upperItem.id], 'TEA');
@@ -146,6 +173,9 @@ export const run = () => {
   assert.equal(resolved.fields[absIf.id], 7);
   assert.equal(resolved.fields[logicalLabel.id], 'stocked');
   assert.equal(resolved.fields[dateLabel.id], '2026-07-20');
+  assert.equal(resolved.fields[numericParity.id], 22);
+  assert.equal(resolved.fields[roundingParity.id], '1.3:1.2');
+  assert.equal(resolved.fields[dateParts.id], '2026-7-18 9:8:7 w7');
 
   repo.updateRecord(record.id, { fields: { [qty.id]: 4 } });
   repo.resolveFormulas(table.id, { recordId: record.id });

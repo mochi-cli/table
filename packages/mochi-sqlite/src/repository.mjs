@@ -66,6 +66,26 @@ const inferFieldType = (value) => {
   return { type: 'singleLineText', cellValueType: 'string' };
 };
 
+const normalizeImportColumnName = (value, index, seen) => {
+  const baseName = String(value ?? '').trim() || `Column ${index + 1}`;
+  let name = baseName;
+  let suffix = 2;
+  while (seen.has(name.toLocaleLowerCase())) {
+    name = `${baseName} ${suffix}`;
+    suffix += 1;
+  }
+  seen.add(name.toLocaleLowerCase());
+  return name;
+};
+
+const normalizeImportRows = (rows = []) =>
+  rows
+    .filter((row) => row && typeof row === 'object')
+    .map((row) => {
+      if (!Array.isArray(row)) return row;
+      return Object.fromEntries(row.map((value, index) => [`Column ${index + 1}`, value]));
+    });
+
 const aggregateValues = (values, aggregate = 'values') => {
   const compact = values.filter((value) => value !== null && value !== undefined && value !== '');
   switch (aggregate) {
@@ -325,11 +345,53 @@ const evaluateFormulaExpression = (expression, fields, fieldByName) => {
         const value = formulaToNumber(args[0]);
         return value === null ? null : Math.abs(value);
       }
+      case 'POWER': {
+        const base = formulaToNumber(args[0]);
+        const exponent = formulaToNumber(args[1]);
+        return base === null || exponent === null ? null : base ** exponent;
+      }
+      case 'MOD': {
+        const dividend = formulaToNumber(args[0]);
+        const divisor = formulaToNumber(args[1]);
+        return dividend === null || divisor === null || divisor === 0 ? null : dividend % divisor;
+      }
+      case 'SQRT': {
+        const value = formulaToNumber(args[0]);
+        return value === null || value < 0 ? null : Math.sqrt(value);
+      }
       case 'ROUND': {
         const value = formulaToNumber(args[0]);
         if (value === null) return null;
         const precision = Math.max(0, Math.min(10, formulaToNumber(args[1]) ?? 0));
         return Number(value.toFixed(precision));
+      }
+      case 'ROUNDUP': {
+        const value = formulaToNumber(args[0]);
+        if (value === null) return null;
+        const precision = Math.max(0, Math.min(10, formulaToNumber(args[1]) ?? 0));
+        const factor = 10 ** precision;
+        return Math.ceil(value * factor) / factor;
+      }
+      case 'ROUNDDOWN': {
+        const value = formulaToNumber(args[0]);
+        if (value === null) return null;
+        const precision = Math.max(0, Math.min(10, formulaToNumber(args[1]) ?? 0));
+        const factor = 10 ** precision;
+        return Math.floor(value * factor) / factor;
+      }
+      case 'FLOOR': {
+        const value = formulaToNumber(args[0]);
+        const significance = formulaToNumber(args[1]) ?? 1;
+        return value === null || significance === 0
+          ? null
+          : Math.floor(value / significance) * significance;
+      }
+      case 'CEILING': {
+        const value = formulaToNumber(args[0]);
+        const significance = formulaToNumber(args[1]) ?? 1;
+        return value === null || significance === 0
+          ? null
+          : Math.ceil(value / significance) * significance;
       }
       case 'SUM':
         return formulaNumbers(args).reduce((total, value) => total + value, 0);
@@ -377,6 +439,34 @@ const evaluateFormulaExpression = (expression, fields, fieldByName) => {
       }
       case 'DATETIME_DIFF':
         return formulaDateDiff(args[0], args[1], args[2]);
+      case 'YEAR': {
+        const date = formulaDate(args[0]);
+        return date ? date.getUTCFullYear() : null;
+      }
+      case 'MONTH': {
+        const date = formulaDate(args[0]);
+        return date ? date.getUTCMonth() + 1 : null;
+      }
+      case 'DAY': {
+        const date = formulaDate(args[0]);
+        return date ? date.getUTCDate() : null;
+      }
+      case 'HOUR': {
+        const date = formulaDate(args[0]);
+        return date ? date.getUTCHours() : null;
+      }
+      case 'MINUTE': {
+        const date = formulaDate(args[0]);
+        return date ? date.getUTCMinutes() : null;
+      }
+      case 'SECOND': {
+        const date = formulaDate(args[0]);
+        return date ? date.getUTCSeconds() : null;
+      }
+      case 'WEEKDAY': {
+        const date = formulaDate(args[0]);
+        return date ? date.getUTCDay() + 1 : null;
+      }
       case 'DATEADD': {
         const date = formulaDate(args[0]);
         const amount = formulaToNumber(args[1]);
@@ -1749,6 +1839,7 @@ export class MochiSqliteRepository {
         baseId: base.id,
         name: input.tableNamePrefix ? `${input.tableNamePrefix}${sourceTable}` : sourceTable,
       });
+      const defaultViewId = this.listViews(table.id)[0]?.id;
       const columnNames = Object.keys(rows[0] ?? {});
       const fields = new Map();
       for (const columnName of columnNames) {
@@ -1785,7 +1876,119 @@ export class MochiSqliteRepository {
       });
       importedTables.push({
         sourceTable,
-        table,
+        table: { ...table, defaultViewId },
+        fields: [...fields.values()],
+        rows: rows.length,
+        importSource,
+      });
+    }
+
+    return { base, importedTables };
+  }
+
+  importTabularData(input) {
+    const worksheets = Array.isArray(input.worksheets) ? input.worksheets : [];
+    const base =
+      input.baseId && this.getBase(input.baseId)
+        ? this.getBase(input.baseId)
+        : this.createBase({
+            name: input.baseName ?? input.name ?? 'Imported data',
+            spaceId: input.spaceId,
+          });
+    const importedTables = [];
+
+    for (const [sheetIndex, worksheet] of worksheets.entries()) {
+      const rows = normalizeImportRows(worksheet.rows).slice(0, Number(input.limit ?? 10000));
+      const columnSeen = new Set();
+      const rowColumnNames = rows.reduce((names, row) => {
+        for (const name of Object.keys(row)) {
+          if (!names.includes(name)) names.push(name);
+        }
+        return names;
+      }, []);
+      const rawColumnNames =
+        Array.isArray(worksheet.columns) && worksheet.columns.length
+          ? worksheet.columns
+          : rowColumnNames;
+      const columnNames = rawColumnNames.map((name, index) =>
+        normalizeImportColumnName(name, index, columnSeen)
+      );
+      if (!columnNames.length) continue;
+
+      const sourceToColumnName = new Map(
+        rawColumnNames.map((name, index) => [
+          String(name ?? `Column ${index + 1}`),
+          columnNames[index],
+        ])
+      );
+      const table = this.createTable({
+        baseId: base.id,
+        name:
+          worksheet.name ||
+          input.tableName ||
+          input.name ||
+          (worksheets.length > 1 ? `Imported sheet ${sheetIndex + 1}` : 'Imported table'),
+        primaryFieldName: columnNames[0],
+      });
+      const defaultViewId = this.listViews(table.id)[0]?.id;
+      const tableFields = this.listFields(table.id);
+      const primaryField = tableFields.find((field) => field.is_primary) ?? tableFields[0];
+      const fields = new Map([[columnNames[0], primaryField.id]]);
+
+      for (const [index, columnName] of columnNames.entries()) {
+        const sample = rows.find((row) => {
+          const sourceName = rawColumnNames[index] ?? columnName;
+          return (
+            row[sourceName] !== null && row[sourceName] !== undefined && row[sourceName] !== ''
+          );
+        })?.[rawColumnNames[index] ?? columnName];
+        const inferred = inferFieldType(sample);
+        if (index === 0) {
+          this.updateField(primaryField.id, {
+            name: columnName,
+            type: inferred.type,
+            cellValueType: inferred.cellValueType,
+          });
+          continue;
+        }
+        const field = this.createField({
+          tableId: table.id,
+          name: columnName,
+          type: inferred.type,
+          cellValueType: inferred.cellValueType,
+        });
+        fields.set(columnName, field.id);
+      }
+
+      for (const row of rows) {
+        const recordFields = {};
+        for (const [sourceName, value] of Object.entries(row)) {
+          const columnName = sourceToColumnName.get(sourceName) ?? sourceName;
+          const fieldId = fields.get(columnName);
+          if (fieldId) recordFields[fieldId] = value;
+        }
+        this.createRecord({
+          tableId: table.id,
+          fields: recordFields,
+          label: `Import ${input.kind ?? 'file'} row`,
+          source: 'import',
+        });
+      }
+
+      const importSource = this.createImportSource({
+        kind: input.kind ?? 'file',
+        path: input.fileName ?? input.name ?? 'local-file',
+        profileId: input.profileId,
+        tableId: table.id,
+        state: {
+          sourceSheet: worksheet.name ?? null,
+          importedRows: rows.length,
+          importedColumns: columnNames.length,
+        },
+      });
+      importedTables.push({
+        sourceSheet: worksheet.name,
+        table: { ...table, defaultViewId },
         fields: [...fields.values()],
         rows: rows.length,
         importSource,

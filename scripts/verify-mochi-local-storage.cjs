@@ -1,9 +1,13 @@
 #!/usr/bin/env node
 
 const fs = require('node:fs');
+const { createRequire } = require('node:module');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+
+const backendRequire = createRequire(path.join(process.cwd(), 'apps/nestjs-backend/package.json'));
+const XLSX = backendRequire('xlsx');
 
 async function requestJson(url, options = {}) {
   const response = await fetch(url, {
@@ -180,6 +184,73 @@ async function main() {
             source.profile_id === marker &&
             source.table_id === importedTable?.id &&
             source.state?.importedRows === 2
+        ),
+    });
+
+    const csvContent = `Name,Score,Active\nCSV API ${marker},88,true\n`;
+    const importedCsv = await postJson(`${origin}/api/mochi/imports/file`, {
+      fileName: `csv-api-${marker}.csv`,
+      fileType: 'csv',
+      baseId,
+      contentBase64: Buffer.from(csvContent, 'utf8').toString('base64'),
+      limit: 10,
+    });
+    for (const importedTable of importedCsv.importedTables ?? []) {
+      if (importedTable.table?.id) createdTableIds.add(importedTable.table.id);
+    }
+    const importedCsvTable = importedCsv.importedTables?.[0]?.table;
+    const importedCsvFields = importedCsvTable?.id
+      ? await getJson(`${origin}/api/mochi/tables/${importedCsvTable.id}/fields`)
+      : [];
+    const importedCsvRecords = importedCsvTable?.id
+      ? await getJson(`${origin}/api/mochi/tables/${importedCsvTable.id}/records`)
+      : [];
+    results.push({
+      name: 'csv-import-api',
+      ok:
+        importedCsv.base?.id === baseId &&
+        importedCsv.importedTables?.length === 1 &&
+        importedCsv.importedTables[0].rows === 1 &&
+        importedCsvFields.some((field) => field.name === 'Score' && field.type === 'number') &&
+        importedCsvFields.some((field) => field.name === 'Active' && field.type === 'checkbox') &&
+        importedCsvRecords.some((record) =>
+          Object.values(record.fields ?? {}).includes(`CSV API ${marker}`)
+        ),
+    });
+
+    const workbook = XLSX.utils.book_new();
+    const worksheet = XLSX.utils.json_to_sheet([
+      { Name: `Excel API ${marker}`, Score: 77, Active: false },
+    ]);
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Sheet One');
+    const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' });
+    const importedExcel = await postJson(`${origin}/api/mochi/imports/file`, {
+      fileName: `excel-api-${marker}.xlsx`,
+      fileType: 'excel',
+      baseId,
+      contentBase64: excelBuffer.toString('base64'),
+      limit: 10,
+    });
+    for (const importedTable of importedExcel.importedTables ?? []) {
+      if (importedTable.table?.id) createdTableIds.add(importedTable.table.id);
+    }
+    const importedExcelTable = importedExcel.importedTables?.[0]?.table;
+    const importedExcelFields = importedExcelTable?.id
+      ? await getJson(`${origin}/api/mochi/tables/${importedExcelTable.id}/fields`)
+      : [];
+    const importedExcelRecords = importedExcelTable?.id
+      ? await getJson(`${origin}/api/mochi/tables/${importedExcelTable.id}/records`)
+      : [];
+    results.push({
+      name: 'excel-import-api',
+      ok:
+        importedExcel.base?.id === baseId &&
+        importedExcel.importedTables?.length === 1 &&
+        importedExcel.importedTables[0].rows === 1 &&
+        importedExcelFields.some((field) => field.name === 'Score' && field.type === 'number') &&
+        importedExcelFields.some((field) => field.name === 'Active' && field.type === 'checkbox') &&
+        importedExcelRecords.some((record) =>
+          Object.values(record.fields ?? {}).includes(`Excel API ${marker}`)
         ),
     });
 

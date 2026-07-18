@@ -156,7 +156,8 @@ Implemented foundation:
 - lookup/rollup resolver execution for the current JSON-record model
 - basic formula resolver execution for the current JSON-record model
 - attachment metadata, trash/restore, SQLite import, and computed job scaffolding
-- legacy CSV/Excel import UI hidden in local mode until the file pipeline is ported
+- local CSV/Excel file import through the Teable create menu and SQLite import
+  through the local sidebar
 - local SockJS/ShareDB realtime for record actions and view `setView` updates
 - local field-level record history for record and table history panels
 
@@ -222,14 +223,17 @@ make mochi.finalize.verify
   `usr_mochi_local` responses or empty local-safe stubs for read endpoints; the
   login-dependent write/admin endpoints are verified as not implemented by
   `make mochi.base-node.verify`.
-- Expand formula parity beyond the current local evaluator as Mochi workflows
-  require more Teable formula functions. The current API-level arithmetic,
-  grouping, text functions (`CONCATENATE`, `LOWER`, `UPPER`, `LEN`, `TRIM`,
-  `LEFT`, `RIGHT`, `REPT`), numeric functions (`ABS`, `ROUND`, `SUM`,
-  `AVERAGE`, `MIN`, `MAX`), logical/comparison functions and operators (`IF`,
-  `AND`, `OR`, `NOT`, `ISBLANK`, `>`, `<`, `>=`, `<=`, `=`, `!=`), basic date
-  functions (`DATETIME_FORMAT`, `DATEADD`, `TODAY`, `NOW`), lookup/rollup, and
-  computed-job paths are covered by the `make mochi.computed.verify` target.
+- Keep expanding formula parity as Mochi workflows require more Teable formula
+  functions. The current API-level arithmetic, grouping, text functions
+  (`CONCATENATE`, `LOWER`, `UPPER`, `LEN`, `TRIM`, `LEFT`, `RIGHT`, `REPT`),
+  numeric functions (`ABS`, `ROUND`, `ROUNDUP`, `ROUNDDOWN`, `SUM`, `AVERAGE`,
+  `MIN`, `MAX`, `POWER`, `MOD`, `SQRT`, `FLOOR`, `CEILING`),
+  logical/comparison functions and operators (`IF`, `AND`, `OR`, `NOT`,
+  `ISBLANK`, `>`, `<`, `>=`, `<=`, `=`, `!=`), date functions
+  (`DATETIME_FORMAT`, `DATETIME_DIFF`, `DATETIME_PARSE`, `DATEADD`, `YEAR`,
+  `MONTH`, `DAY`, `HOUR`, `MINUTE`, `SECOND`, `WEEKDAY`, `TODAY`, `NOW`),
+  lookup/rollup, and computed-job paths are covered by the
+  `make mochi.computed.verify` target.
 
 Later:
 
@@ -246,8 +250,9 @@ Supported local surface:
 
 - Grid/table CRUD, field header actions, filter/sort/group, view lifecycle,
   selection helpers, record expand modal, comments, history, base-node table
-  actions, local SQLite import, attachment metadata, search/storage integrity,
-  lookup/rollup, computed jobs, and the current local formula evaluator.
+  actions, local CSV/Excel import, local SQLite import, attachment metadata,
+  search/storage integrity, lookup/rollup, computed jobs, and the current local
+  formula evaluator.
 - Advanced view metadata and smoke rendering for Kanban, Gallery, Calendar, and
   Form. The local backend preserves view type/options and the browser verifier
   opens each view without falling back to grid.
@@ -266,8 +271,9 @@ Excluded local surface:
 - Share/admin/user last-visit routes that upstream components still read should
   remain local-safe stubs or fixed `usr_mochi_local` responses. Login-dependent
   write/admin behavior should remain unsupported for local mode.
-- Legacy Teable CSV/Excel upload import is still not ported; local SQLite import
-  is the supported path.
+- CSV/Excel import stays local-only in Mochi mode: the UI reads the selected
+  file and posts it to `POST /api/mochi/imports/file`; it must not use the
+  upstream presigned upload/Auth/Postgres import pipeline.
 
 Current gate:
 

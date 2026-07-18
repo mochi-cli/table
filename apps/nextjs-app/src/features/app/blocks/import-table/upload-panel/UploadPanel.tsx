@@ -12,6 +12,7 @@ interface IUploadPanelProps {
   file: File | null;
   fileType: SUPPORTEDTYPE;
   analyzeLoading: boolean;
+  localMode?: boolean;
   onClose: () => void;
   onFinished: (result: INotifyVo) => void;
   onChange: (file: File | null) => void;
@@ -19,7 +20,7 @@ interface IUploadPanelProps {
 const attchmentManager = new AttachmentManager(1);
 
 const UploadPanel = (props: IUploadPanelProps) => {
-  const { file, fileType, onChange, onFinished, onClose, analyzeLoading } = props;
+  const { file, fileType, onChange, onFinished, onClose, analyzeLoading, localMode } = props;
   const { t } = useTranslation(['table']);
   const [process, setProcess] = useState(0);
   const [isImporting, setIsImporting] = useState(false);
@@ -38,7 +39,7 @@ const UploadPanel = (props: IUploadPanelProps) => {
           fileType={fileType}
           onChange={async (file) => {
             setIsImporting(false);
-            if (file) {
+            if (file && !localMode) {
               attchmentManager.upload(
                 [{ id: generateAttachmentId(), instance: file }],
                 UploadType.Import,

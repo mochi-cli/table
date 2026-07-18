@@ -1,5 +1,7 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import Papa from 'papaparse';
+import * as XLSX from 'xlsx';
 import { Events } from '../../event-emitter/events/event.enum';
 import { publishMochiLocalActionTrigger } from './mochi-local-realtime-publisher';
 import { MOCHI_SQLITE_REPOSITORY } from './mochi-sqlite.constants';
@@ -157,6 +159,22 @@ type MochiRepository = {
     tables?: string[];
     tableNamePrefix?: string;
     limit?: number;
+  }) => unknown;
+  importTabularData: (input: {
+    kind?: string;
+    name?: string;
+    fileName?: string;
+    baseId?: string;
+    baseName?: string;
+    spaceId?: string;
+    profileId?: string;
+    tableName?: string;
+    limit?: number;
+    worksheets: Array<{
+      name?: string;
+      columns?: string[];
+      rows?: JsonRecord[];
+    }>;
   }) => unknown;
   enqueueComputedJob: (input: {
     tableId: string;
@@ -571,6 +589,67 @@ export class MochiSqliteService {
     limit?: number;
   }) {
     return this.repository.importSqliteDatabase(input);
+  }
+
+  importFile(input: {
+    fileName?: string;
+    fileType: 'csv' | 'excel';
+    contentBase64: string;
+    baseId?: string;
+    tableName?: string;
+    limit?: number;
+  }) {
+    const buffer = Buffer.from(input.contentBase64, 'base64');
+    const fallbackTableName = input.tableName ?? input.fileName?.replace(/\.[^.]+$/, '');
+
+    if (input.fileType === 'csv') {
+      const text = buffer.toString('utf8');
+      const parsed = Papa.parse<JsonRecord>(text, {
+        header: true,
+        skipEmptyLines: true,
+        dynamicTyping: true,
+      });
+      if (parsed.errors.length) {
+        throw new Error(parsed.errors[0]?.message ?? 'Failed to parse CSV file');
+      }
+      return this.repository.importTabularData({
+        kind: 'csv',
+        fileName: input.fileName,
+        baseId: input.baseId,
+        tableName: fallbackTableName,
+        limit: input.limit,
+        worksheets: [
+          {
+            name: fallbackTableName ?? 'CSV import',
+            columns: parsed.meta.fields ?? [],
+            rows: parsed.data,
+          },
+        ],
+      });
+    }
+
+    const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
+    const worksheets = workbook.SheetNames.map((sheetName) => {
+      const rows = XLSX.utils.sheet_to_json<JsonRecord>(workbook.Sheets[sheetName], {
+        defval: null,
+        raw: true,
+      });
+      const columns = rows.reduce<string[]>((names, row) => {
+        for (const name of Object.keys(row)) {
+          if (!names.includes(name)) names.push(name);
+        }
+        return names;
+      }, []);
+      return { name: sheetName, columns, rows };
+    });
+    return this.repository.importTabularData({
+      kind: 'excel',
+      fileName: input.fileName,
+      baseId: input.baseId,
+      tableName: fallbackTableName,
+      limit: input.limit,
+      worksheets,
+    });
   }
 
   enqueueComputedJob(input: {

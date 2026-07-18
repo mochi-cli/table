@@ -266,6 +266,21 @@ export class MochiSqliteController {
     return this.mochiSqliteService.importSqliteDatabase(body);
   }
 
+  @Post('imports/file')
+  importFile(
+    @Body()
+    body: {
+      fileName?: string;
+      fileType: 'csv' | 'excel';
+      contentBase64: string;
+      baseId?: string;
+      tableName?: string;
+      limit?: number;
+    }
+  ) {
+    return this.mochiSqliteService.importFile(body);
+  }
+
   @Get('computed/jobs')
   listComputedJobs(@Query('status') status?: string) {
     return this.mochiSqliteService.listComputedJobs(status);

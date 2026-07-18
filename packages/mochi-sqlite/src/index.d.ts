@@ -192,6 +192,22 @@ export class MochiSqliteRepository {
     tableNamePrefix?: string;
     limit?: number;
   }): unknown;
+  importTabularData(input: {
+    kind?: string;
+    name?: string;
+    fileName?: string;
+    baseId?: string;
+    baseName?: string;
+    spaceId?: string;
+    profileId?: string;
+    tableName?: string;
+    limit?: number;
+    worksheets: Array<{
+      name?: string;
+      columns?: string[];
+      rows?: Array<Record<string, unknown>>;
+    }>;
+  }): unknown;
   enqueueComputedJob(input: {
     id?: string;
     tableId: string;

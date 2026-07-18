@@ -41,10 +41,12 @@ import {
   Checkbox,
 } from '@teable/ui-lib';
 import { toast } from '@teable/ui-lib/shadcn/ui/sonner';
+import type { NextRouter } from 'next/router';
 import { useRouter } from 'next/router';
 import { useTranslation } from 'next-i18next';
 import { useState, useRef, useCallback } from 'react';
 import { useLocalStorage } from 'react-use';
+import { usePublicSettingQuery } from '../../hooks/useSetting';
 import { getNodeUrl } from '../base/base-node/hooks';
 import { FieldConfigPanel, InplaceFieldConfigPanel } from './field-config-panel';
 import { UploadPanel } from './upload-panel';
@@ -67,10 +69,104 @@ enum Step {
   CONFIG = 'config',
 }
 
+const fileToBase64 = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result ?? '');
+      resolve(result.includes(',') ? result.split(',')[1] : result);
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+
+type LocalImportResult = {
+  importedTables?: Array<{
+    table?: {
+      id?: string;
+      defaultViewId?: string;
+    };
+  }>;
+};
+
+const importLocalFile = async (input: { file: File; fileType: SUPPORTEDTYPE; baseId: string }) => {
+  const contentBase64 = await fileToBase64(input.file);
+  const response = await fetch('/api/mochi/imports/file', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      fileName: input.file.name,
+      fileType: input.fileType,
+      contentBase64,
+      baseId: input.baseId,
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(await response.text());
+  }
+  return response.json() as Promise<LocalImportResult>;
+};
+
+const useLocalFileImport = (input: {
+  baseId: string;
+  fileType: SUPPORTEDTYPE;
+  router: NextRouter;
+  onOpenChange?: (open: boolean) => void;
+  errorMessage: string;
+}) =>
+  useMutation({
+    mutationFn: (file: File) =>
+      importLocalFile({ file, fileType: input.fileType, baseId: input.baseId }),
+    onSuccess: (data) => {
+      const table = data.importedTables?.[0]?.table;
+      input.onOpenChange?.(false);
+      if (table?.id) {
+        input.router.push(`/mochi/local?tableId=${table.id}&viewId=${table.defaultViewId ?? ''}`);
+      }
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : input.errorMessage);
+    },
+  });
+
+const useImportFileChangeHandler = (input: {
+  fileType: SUPPORTEDTYPE;
+  isMochiLocal: boolean;
+  tableId?: string;
+  setFile: (file: File | null) => void;
+  importLocalFile: (file: File) => void;
+  formatError: string;
+  exceedSizeMessage: (size: number) => string;
+}) =>
+  useCallback(
+    (file: File | null) => {
+      const { exceedSize, accept } = importTypeMap[input.fileType];
+      const acceptGroup = accept.split(',');
+
+      if (file && !acceptGroup.includes(file.type)) {
+        toast.error(input.formatError);
+        return;
+      }
+
+      if (exceedSize && file && file.size > exceedSize * 1024 * 1024) {
+        toast.error(input.exceedSizeMessage(exceedSize));
+        return;
+      }
+
+      input.setFile(file);
+      if (file && input.isMochiLocal && !input.tableId) {
+        void input.importLocalFile(file);
+      }
+    },
+    [input]
+  );
+
+// eslint-disable-next-line sonarjs/cognitive-complexity
 export const TableImport = (props: ITableImportProps) => {
   const base = useBase();
   const router = useRouter();
   const { t } = useTranslation(['table']);
+  const { data: publicSetting } = usePublicSettingQuery();
   const [step, setStep] = useState(Step.UPLOAD);
   const { children, open, onOpenChange, fileType, tableId } = props;
   const [errorMessage, setErrorMessage] = useState('');
@@ -85,6 +181,15 @@ export const TableImport = (props: ITableImportProps) => {
   });
   const [shouldAlert, setShouldAlert] = useLocalStorage(LocalStorageKeys.ImportAlert, true);
   const [shouldTips, setShouldTips] = useState(false);
+  const isMochiLocal = publicSetting?.instanceId === 'mochi-local';
+
+  const { mutateAsync: importLocalFileFn, isPending: localImportLoading } = useLocalFileImport({
+    baseId: base.id,
+    fileType,
+    router,
+    onOpenChange,
+    errorMessage: t('table:import.form.error.errorFileFormat'),
+  });
 
   const { mutateAsync: importNewTableFn, isPending: isLoading } = useMutation({
     mutationFn: async ({ baseId, importRo }: { baseId: string; importRo: IImportOptionRo }) => {
@@ -213,26 +318,17 @@ export const TableImport = (props: ITableImportProps) => {
     setFile(null);
   }, []);
 
-  const fileChangeHandler = useCallback(
-    (file: File | null) => {
-      const { exceedSize, accept } = importTypeMap[fileType];
-
-      const acceptGroup = accept.split(',');
-
-      if (file && !acceptGroup.includes(file.type)) {
-        toast.error(t('table:import.form.error.errorFileFormat'));
-        return;
-      }
-
-      if (exceedSize && file && file.size > exceedSize * 1024 * 1024) {
-        toast.error(`${t('table:import.tips.fileExceedSizeTip')} ${exceedSize}MB`);
-        return;
-      }
-
-      setFile(file);
+  const fileChangeHandler = useImportFileChangeHandler({
+    fileType,
+    isMochiLocal,
+    tableId,
+    setFile,
+    importLocalFile: (file) => {
+      void importLocalFileFn(file);
     },
-    [fileType, t]
-  );
+    formatError: t('table:import.form.error.errorFileFormat'),
+    exceedSizeMessage: (size) => `${t('table:import.tips.fileExceedSizeTip')} ${size}MB`,
+  });
 
   const fieldChangeHandler = (value: IImportOptionRo['worksheets']) => {
     setWorkSheets(value);
@@ -271,7 +367,8 @@ export const TableImport = (props: ITableImportProps) => {
                     file={file}
                     onChange={fileChangeHandler}
                     onClose={fileCloseHandler}
-                    analyzeLoading={analyzeLoading}
+                    analyzeLoading={isMochiLocal ? localImportLoading : analyzeLoading}
+                    localMode={isMochiLocal}
                     onFinished={fileFinishedHandler}
                   />
                 )}

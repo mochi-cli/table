@@ -490,7 +490,16 @@ async function runLocalImportUiSmoke(page, appOrigin, origin, baseId, marker, re
   }
 }
 
-async function runLocalDashboardMenuSmoke(page, appOrigin, tableId, viewId, results) {
+async function runLocalDashboardMenuSmoke(
+  page,
+  appOrigin,
+  origin,
+  baseId,
+  tableId,
+  viewId,
+  marker,
+  results
+) {
   await page.goto(`${appOrigin}/mochi/local?tableId=${tableId}&viewId=${viewId}`, {
     waitUntil: 'domcontentloaded',
   });
@@ -520,10 +529,47 @@ async function runLocalDashboardMenuSmoke(page, appOrigin, tableId, viewId, resu
     )
     .count();
   results.push({
-    name: 'local-legacy-import-menu-removed',
-    ok: legacyImportItems === 0,
+    name: 'local-csv-excel-import-menu-enabled',
+    ok: legacyImportItems === 2,
   });
-  await page.keyboard.press('Escape');
+
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), `mochi-csv-import-ui-${marker}-`));
+  const importedCsvTableName = `csv-ui-${marker}`;
+  const csvPath = path.join(tmpDir, `${importedCsvTableName}.csv`);
+  fs.writeFileSync(csvPath, `Name,Score\nCSV Import ${marker},42\n`, 'utf8');
+  await page.locator('[data-attr="base-create-menu-import-csv"]').click();
+  await page.locator('input[type="file"]').setInputFiles(csvPath);
+
+  let importedTable;
+  let importedRecords = [];
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    const tables = await getJson(`${origin}/api/mochi/bases/${baseId}/tables`);
+    importedTable = tables.find((table) => table.name === importedCsvTableName);
+    importedRecords = importedTable?.id
+      ? await getJson(`${origin}/api/mochi/tables/${importedTable.id}/records`)
+      : [];
+    if (
+      importedRecords.some((record) =>
+        Object.values(record.fields ?? {}).includes(`CSV Import ${marker}`)
+      )
+    ) {
+      break;
+    }
+    await wait(500);
+  }
+  results.push({
+    name: 'local-csv-import-ui',
+    ok:
+      Boolean(importedTable?.id) &&
+      importedRecords.some((record) =>
+        Object.values(record.fields ?? {}).includes(`CSV Import ${marker}`)
+      ),
+  });
+  if (importedTable?.id) {
+    await deleteJson(`${origin}/api/base/${baseId}/node/${importedTable.id}/permanent`).catch(
+      () => undefined
+    );
+  }
 }
 
 async function runHistorySmoke(page, origin, appOrigin, tableId, viewId, fieldId, marker, results) {
@@ -680,7 +726,16 @@ async function main() {
       results
     );
     await runLocalImportUiSmoke(page, appOrigin, backendOrigin, baseId, marker, results);
-    await runLocalDashboardMenuSmoke(page, appOrigin, tableId, viewId, results);
+    await runLocalDashboardMenuSmoke(
+      page,
+      appOrigin,
+      backendOrigin,
+      baseId,
+      tableId,
+      viewId,
+      marker,
+      results
+    );
     await page.close();
     await runTwoTabRealtimeSmoke(
       browser,
