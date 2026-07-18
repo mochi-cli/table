@@ -164,6 +164,7 @@ const formulaToNumber = (value) => {
 };
 
 const formulaString = (value) => (value === null || value === undefined ? '' : String(value));
+const formulaNumbers = (args) => args.map(formulaToNumber).filter((value) => value !== null);
 
 const evaluateFormulaExpression = (expression, fields, fieldByName) => {
   const tokens = formulaTokenize(String(expression ?? ''));
@@ -190,12 +191,50 @@ const evaluateFormulaExpression = (expression, fields, fieldByName) => {
     switch (name.toLocaleUpperCase()) {
       case 'CONCATENATE':
         return args.map(formulaString).join('');
+      case 'TRIM':
+        return formulaString(args[0]).trim();
+      case 'LEFT':
+        return formulaString(args[0]).slice(0, Math.max(0, formulaToNumber(args[1]) ?? 0));
+      case 'RIGHT': {
+        const count = Math.max(0, formulaToNumber(args[1]) ?? 0);
+        return count === 0 ? '' : formulaString(args[0]).slice(-count);
+      }
+      case 'REPT':
+        return formulaString(args[0]).repeat(Math.max(0, formulaToNumber(args[1]) ?? 0));
       case 'LOWER':
         return formulaString(args[0]).toLocaleLowerCase();
       case 'UPPER':
         return formulaString(args[0]).toLocaleUpperCase();
       case 'LEN':
         return formulaString(args[0]).length;
+      case 'ABS': {
+        const value = formulaToNumber(args[0]);
+        return value === null ? null : Math.abs(value);
+      }
+      case 'ROUND': {
+        const value = formulaToNumber(args[0]);
+        if (value === null) return null;
+        const precision = Math.max(0, Math.min(10, formulaToNumber(args[1]) ?? 0));
+        return Number(value.toFixed(precision));
+      }
+      case 'SUM':
+        return formulaNumbers(args).reduce((total, value) => total + value, 0);
+      case 'AVERAGE': {
+        const values = formulaNumbers(args);
+        return values.length
+          ? values.reduce((total, value) => total + value, 0) / values.length
+          : null;
+      }
+      case 'MIN': {
+        const values = formulaNumbers(args);
+        return values.length ? Math.min(...values) : null;
+      }
+      case 'MAX': {
+        const values = formulaNumbers(args);
+        return values.length ? Math.max(...values) : null;
+      }
+      case 'IF':
+        return args[0] ? args[1] : args[2];
       default:
         throw new Error(`Unsupported formula function: ${name}`);
     }
@@ -472,6 +511,7 @@ export class MochiSqliteRepository {
     this.db.transaction([
       `DELETE FROM mochi_record_fts WHERE table_id = ${sqlValue(id)};`,
       `DELETE FROM mochi_attachment_ref WHERE table_id = ${sqlValue(id)};`,
+      `DELETE FROM mochi_comment WHERE table_id = ${sqlValue(id)};`,
       `DELETE FROM mochi_record_history WHERE table_id = ${sqlValue(id)};`,
       `DELETE FROM mochi_op WHERE table_id = ${sqlValue(id)};`,
       `DELETE FROM mochi_computed_job WHERE table_id = ${sqlValue(id)};`,
@@ -1158,6 +1198,10 @@ export class MochiSqliteRepository {
     if (!current) return null;
     const batchId = options.batchId ?? ids.opBatch();
     const statements = [
+      `UPDATE mochi_comment
+       SET deleted_time = ${nowExpr},
+           last_modified_time = ${nowExpr}
+       WHERE record_id = ${sqlValue(id)} AND deleted_time IS NULL;`,
       `UPDATE mochi_record
        SET deleted_time = ${nowExpr}, version = version + 1
        WHERE id = ${sqlValue(id)};`,
@@ -1185,6 +1229,128 @@ export class MochiSqliteRepository {
       `DELETE FROM mochi_record_fts WHERE record_id = ${sqlValue(id)};`,
     ];
     this.db.transaction(statements);
+    return current;
+  }
+
+  mapComment(row) {
+    if (!row) return null;
+    return {
+      id: row.id,
+      tableId: row.table_id,
+      recordId: row.record_id,
+      content: parseJson(row.content_json, []),
+      quoteId: row.quote_id ?? undefined,
+      createdBy: {
+        id: row.created_by,
+        name: row.created_by === 'usr_mochi_local' ? 'Mochi Local' : row.created_by,
+        avatar: null,
+      },
+      reaction: parseJson(row.reaction_json, []),
+      createdTime: row.created_time,
+      lastModifiedTime: row.last_modified_time ?? undefined,
+      deletedTime: row.deleted_time ?? undefined,
+    };
+  }
+
+  getComment(tableId, recordId, commentId) {
+    return this.mapComment(
+      this.db.get(`
+        SELECT *
+        FROM mochi_comment
+        WHERE id = ${sqlValue(commentId)}
+          AND table_id = ${sqlValue(tableId)}
+          AND record_id = ${sqlValue(recordId)}
+          AND deleted_time IS NULL;
+      `)
+    );
+  }
+
+  listComments(tableId, recordId, options = {}) {
+    const limit = Math.max(1, Math.min(Number(options.limit ?? 20), 1000));
+    return this.db
+      .all(
+        `
+        SELECT *
+        FROM mochi_comment
+        WHERE table_id = ${sqlValue(tableId)}
+          AND record_id = ${sqlValue(recordId)}
+          AND deleted_time IS NULL
+        ORDER BY created_time ASC, id ASC
+        LIMIT ${limit};
+      `
+      )
+      .map((row) => this.mapComment(row));
+  }
+
+  countComments(tableId) {
+    return this.db.all(`
+      SELECT record_id AS recordId, COUNT(*) AS count
+      FROM mochi_comment
+      WHERE table_id = ${sqlValue(tableId)} AND deleted_time IS NULL
+      GROUP BY record_id
+      ORDER BY record_id;
+    `);
+  }
+
+  countRecordComments(tableId, recordId) {
+    const row = this.db.get(`
+      SELECT COUNT(*) AS count
+      FROM mochi_comment
+      WHERE table_id = ${sqlValue(tableId)}
+        AND record_id = ${sqlValue(recordId)}
+        AND deleted_time IS NULL;
+    `);
+    return Number(row?.count ?? 0);
+  }
+
+  createComment(input) {
+    const id = input.id ?? ids.comment();
+    this.db.run(`
+      INSERT INTO mochi_comment (
+        id, table_id, record_id, content_json, quote_id, created_by, reaction_json
+      )
+      VALUES (
+        ${sqlValue(id)},
+        ${sqlValue(input.tableId)},
+        ${sqlValue(input.recordId)},
+        ${jsonValue(input.content ?? [])},
+        ${sqlValue(input.quoteId)},
+        ${sqlValue(input.createdBy ?? 'usr_mochi_local')},
+        ${jsonValue(input.reaction ?? [])}
+      );
+    `);
+    return this.getComment(input.tableId, input.recordId, id);
+  }
+
+  updateComment(tableId, recordId, commentId, patch = {}) {
+    const current = this.getComment(tableId, recordId, commentId);
+    if (!current) return null;
+    this.db.run(`
+      UPDATE mochi_comment
+      SET content_json = ${
+        patch.content === undefined ? jsonValue(current.content ?? []) : jsonValue(patch.content)
+      },
+          last_modified_time = ${nowExpr}
+      WHERE id = ${sqlValue(commentId)}
+        AND table_id = ${sqlValue(tableId)}
+        AND record_id = ${sqlValue(recordId)}
+        AND deleted_time IS NULL;
+    `);
+    return this.getComment(tableId, recordId, commentId);
+  }
+
+  deleteComment(tableId, recordId, commentId) {
+    const current = this.getComment(tableId, recordId, commentId);
+    if (!current) return null;
+    this.db.run(`
+      UPDATE mochi_comment
+      SET deleted_time = ${nowExpr},
+          last_modified_time = ${nowExpr}
+      WHERE id = ${sqlValue(commentId)}
+        AND table_id = ${sqlValue(tableId)}
+        AND record_id = ${sqlValue(recordId)}
+        AND deleted_time IS NULL;
+    `);
     return current;
   }
 

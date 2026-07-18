@@ -227,6 +227,52 @@ async function runSelectionSmoke(
   });
 }
 
+async function runDragHeavySmoke(
+  page,
+  origin,
+  tableId,
+  fieldId,
+  marker,
+  results,
+  createdRecordIds
+) {
+  const created = await postJson(`${origin}/api/table/${tableId}/record`, {
+    records: [
+      { fields: { [fieldId]: `Drag row A ${marker}` } },
+      { fields: { [fieldId]: `Drag row B ${marker}` } },
+    ],
+  });
+  const recordIds = created.records?.map((record) => record.id).filter(Boolean) ?? [];
+  recordIds.forEach((recordId) => createdRecordIds.add(recordId));
+  if (recordIds.length < 2) throw new Error('Failed to create drag-heavy smoke records.');
+
+  const beforeUrl = page.url();
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.getByRole('button', { name: 'Add record' }).waitFor();
+  const beforeDragRecords = await getJson(`${origin}/api/table/${tableId}/record?take=100000`);
+
+  await page.mouse.move(520, 145);
+  await page.mouse.down();
+  await page.mouse.move(820, 215, { steps: 12 });
+  await page.mouse.up();
+  await wait(500);
+
+  const copied = await postJson(`${origin}/api/table/${tableId}/selection/copy-by-id`, {
+    selection: { recordIds, fieldIds: [fieldId] },
+  });
+  results.push({
+    name: 'drag-heavy-row-range-stays-mounted',
+    ok:
+      page.url() === beforeUrl &&
+      (await page.getByRole('button', { name: 'Add record' }).isVisible()) &&
+      recordIds.every((recordId) =>
+        beforeDragRecords.records?.some((record) => record.id === recordId)
+      ) &&
+      copied.content.includes(`Drag row A ${marker}`) &&
+      copied.content.includes(`Drag row B ${marker}`),
+  });
+}
+
 async function runHistorySmoke(page, origin, appOrigin, tableId, viewId, fieldId, marker, results) {
   const created = await postJson(`${origin}/api/table/${tableId}/record`, {
     records: [{ fields: { [fieldId]: `History before ${marker}` } }],
@@ -329,6 +375,15 @@ async function main() {
     });
     await page.getByRole('button', { name: 'Add record' }).waitFor();
     await runSelectionSmoke(
+      page,
+      backendOrigin,
+      tableId,
+      fieldId,
+      marker,
+      results,
+      createdRecordIds
+    );
+    await runDragHeavySmoke(
       page,
       backendOrigin,
       tableId,

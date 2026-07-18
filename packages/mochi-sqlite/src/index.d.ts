@@ -114,6 +114,26 @@ export class MochiSqliteRepository {
     id: string,
     options?: { batchId?: string; label?: string; source?: string }
   ): unknown | null;
+  getComment(tableId: string, recordId: string, commentId: string): unknown | null;
+  listComments(tableId: string, recordId: string, options?: { limit?: number }): unknown[];
+  countComments(tableId: string): Array<{ recordId: string; count: number }>;
+  countRecordComments(tableId: string, recordId: string): number;
+  createComment(input: {
+    id?: string;
+    tableId: string;
+    recordId: string;
+    content?: unknown;
+    quoteId?: string;
+    createdBy?: string;
+    reaction?: unknown;
+  }): unknown;
+  updateComment(
+    tableId: string,
+    recordId: string,
+    commentId: string,
+    patch?: { content?: unknown }
+  ): unknown | null;
+  deleteComment(tableId: string, recordId: string, commentId: string): unknown | null;
   resolveLookupRollup(tableId: string, options?: { recordId?: string }): unknown;
   resolveFormulas(tableId: string, options?: { recordId?: string }): unknown;
   listTrash(): unknown[];

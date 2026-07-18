@@ -32,16 +32,18 @@ Implemented:
 - trash/restore for deleted records
 - SQLite-backed computed job queue scaffold
 - lookup/rollup resolver foundation
-- basic formula resolver foundation
+- expanded local formula resolver foundation
 - local grid compatibility endpoints for field/view/record/table duplication
 - local grid copy/paste/clear/delete/duplicate selection helpers
+- local record comment create/list/count/update/delete endpoints
+- advanced view type metadata lifecycle for kanban, gallery, calendar, and form
 - local SockJS/ShareDB realtime bridge for record updates and view filter/sort/group/options updates
 - SQLite-only local backend entrypoint through `make dev.backend`
 
 Not finished yet:
 
 - mapping the existing Teable API/controllers fully to SQLite
-- full parity with every upstream Teable collaboration/comment/share/admin path
+- full parity with every upstream Teable non-login table path
 - polished Mochi profile/workspace picker UI
 - replacing the legacy CSV/Excel import UI with a local SQLite-friendly import flow
 - advanced formulas beyond the current local evaluator
@@ -131,7 +133,7 @@ can create bases, tables, fields, views, and records; edit grid cells; run
 copy/paste/clear/delete/duplicate selection helpers; duplicate fields, views,
 records, and tables; search records; rebuild FTS; resolve lookup/rollup values;
 resolve basic formulas; import SQLite files through the local API; and run
-undo/redo and record history.
+undo/redo, record history, and local record comments.
 
 Verify the local view/header realtime path while `make dev.backend` is running:
 
@@ -172,7 +174,8 @@ make mochi.view-lifecycle.verify
 ```
 
 That verifier creates a temporary grid view, duplicates it, deletes both
-temporary views, and confirms they are gone.
+temporary views, then checks metadata create/update/delete for kanban, gallery,
+calendar, and form view types.
 
 Selection actions can be checked with:
 
@@ -193,6 +196,16 @@ make mochi.history.verify
 That verifier creates a temporary record, updates a field twice, checks both
 record-level and table-level history endpoints, verifies the local user filter,
 and removes the temporary record.
+
+Record comments can be checked with:
+
+```bash
+make mochi.comments.verify
+```
+
+That verifier creates a temporary record comment, checks table and record
+comment counts, lists the comment, updates it, deletes it, and removes the
+temporary record.
 
 To run the full non-browser local check suite while `make dev.backend` is
 running:

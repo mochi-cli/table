@@ -19,6 +19,7 @@ async function main() {
   const deletedOrphanViews = [];
   const renamedViews = [];
   const deletedHistoryRows = [];
+  const deletedCommentRows = [];
   const cleanedColumnMeta = [];
   const deletedImportSources = [];
 
@@ -129,6 +130,41 @@ async function main() {
     deletedHistoryRows.push({ count: historyCleanup.count });
   }
 
+  const commentCleanup = repo.db.get(`
+    SELECT COUNT(*) AS count
+    FROM mochi_comment c
+    LEFT JOIN mochi_record r ON r.id = c.record_id
+    LEFT JOIN mochi_table t ON t.id = c.table_id
+    WHERE c.deleted_time IS NULL
+      AND (
+        r.id IS NULL
+        OR r.deleted_time IS NOT NULL
+        OR t.id IS NULL
+        OR t.deleted_time IS NOT NULL
+      );
+  `);
+  repo.db.run(`
+    UPDATE mochi_comment
+    SET deleted_time = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+        last_modified_time = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    WHERE id IN (
+      SELECT c.id
+      FROM mochi_comment c
+      LEFT JOIN mochi_record r ON r.id = c.record_id
+      LEFT JOIN mochi_table t ON t.id = c.table_id
+      WHERE c.deleted_time IS NULL
+        AND (
+          r.id IS NULL
+          OR r.deleted_time IS NOT NULL
+          OR t.id IS NULL
+          OR t.deleted_time IS NOT NULL
+        )
+    );
+  `);
+  if (commentCleanup?.count) {
+    deletedCommentRows.push({ count: commentCleanup.count });
+  }
+
   const importSourceCleanup = repo.db.get(`
     SELECT COUNT(*) AS count
     FROM mochi_import_source s
@@ -162,6 +198,7 @@ async function main() {
         deletedOrphanViews,
         renamedViews,
         deletedHistoryRows,
+        deletedCommentRows,
         cleanedColumnMeta,
         deletedImportSources,
       },

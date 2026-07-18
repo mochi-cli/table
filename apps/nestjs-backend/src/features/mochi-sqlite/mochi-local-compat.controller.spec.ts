@@ -41,10 +41,35 @@ const createService = () =>
     })),
     deleteTable: vi.fn((id: string) => ({ id, name: 'Customers', sort_order: 0 })),
     permanentDeleteTable: vi.fn((id: string) => ({ id, name: 'Customers', sort_order: 0 })),
+    countComments: vi.fn(() => [{ recordId: 'rec_1', count: 1 }]),
+    countRecordComments: vi.fn((_tableId: string, recordId: string) =>
+      recordId === 'rec_1' ? 1 : 0
+    ),
+    listComments: vi.fn(() => [
+      {
+        id: 'com_1',
+        tableId: 'tbl_1',
+        recordId: 'rec_1',
+        content: [{ type: 'paragraph', children: [{ text: 'Local comment' }] }],
+      },
+    ]),
+    getComment: vi.fn(() => ({ id: 'com_1', tableId: 'tbl_1', recordId: 'rec_1' })),
+    createComment: vi.fn((input) => ({ id: 'com_1', ...input })),
+    updateComment: vi.fn((tableId: string, recordId: string, commentId: string, patch) => ({
+      id: commentId,
+      tableId,
+      recordId,
+      content: patch.content,
+    })),
+    deleteComment: vi.fn((tableId: string, recordId: string, commentId: string) => ({
+      id: commentId,
+      tableId,
+      recordId,
+    })),
   }) as unknown as MochiSqliteService;
 
 describe('MochiLocalCompatController', () => {
-  it('returns local-safe empty responses for collaboration, comments, indexes, and AI', () => {
+  it('returns local-safe responses for collaboration, indexes, AI, and local comments', () => {
     const controller = new MochiLocalCompatController(createService());
 
     expect(controller.listBaseShare()).toEqual([]);
@@ -60,8 +85,14 @@ describe('MochiLocalCompatController', () => {
     });
     expect(controller.getTableActivatedIndex()).toEqual([]);
     expect(controller.getTableAbnormalIndex()).toEqual([]);
-    expect(controller.getCommentCountsByQuery()).toEqual([]);
-    expect(controller.getRecordCommentCount('rec_1')).toEqual({ count: 0 });
+    expect(controller.getCommentCountsByQuery('tbl_1')).toEqual([{ recordId: 'rec_1', count: 1 }]);
+    expect(controller.getRecordCommentCount('tbl_1', 'rec_1')).toEqual({ count: 1 });
+    expect(controller.getCommentList('tbl_1', 'rec_1').comments).toHaveLength(1);
+    expect(
+      controller.createComment('tbl_1', 'rec_1', {
+        content: [{ type: 'paragraph', children: [{ text: 'Local comment' }] }],
+      })
+    ).toMatchObject({ id: 'com_1', tableId: 'tbl_1', recordId: 'rec_1' });
     expect(controller.getAiDisableActions()).toEqual({ disableActions: [] });
     expect(controller.getAiConfig()).toMatchObject({
       enable: false,
@@ -83,6 +114,7 @@ describe('MochiLocalCompatController', () => {
     expect(controller.getBasePermission()).toMatchObject({
       'table|read': true,
       'record|update': true,
+      'record|comment': true,
     });
     expect(controller.getTablePermission()).toMatchObject({
       table: { 'table|read': true },

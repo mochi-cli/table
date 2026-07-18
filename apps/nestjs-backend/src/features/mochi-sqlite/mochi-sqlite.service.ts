@@ -92,6 +92,24 @@ type MochiRepository = {
   getRecord: (id: string) => unknown;
   updateRecord: (id: string, patch: { fields?: JsonRecord; order?: unknown }) => unknown;
   deleteRecord: (id: string) => unknown;
+  getComment: (tableId: string, recordId: string, commentId: string) => unknown;
+  listComments: (tableId: string, recordId: string, options?: { limit?: number }) => unknown[];
+  countComments: (tableId: string) => Array<{ recordId: string; count: number }>;
+  countRecordComments: (tableId: string, recordId: string) => number;
+  createComment: (input: {
+    tableId: string;
+    recordId: string;
+    content?: unknown;
+    quoteId?: string;
+    createdBy?: string;
+  }) => unknown;
+  updateComment: (
+    tableId: string,
+    recordId: string,
+    commentId: string,
+    patch?: { content?: unknown }
+  ) => unknown;
+  deleteComment: (tableId: string, recordId: string, commentId: string) => unknown;
   resolveLookupRollup: (tableId: string, options?: { recordId?: string }) => unknown;
   resolveFormulas: (tableId: string, options?: { recordId?: string }) => unknown;
   listTrash: () => unknown[];
@@ -427,6 +445,45 @@ export class MochiSqliteService {
       this.emitMochiRecordDelete(tableId, id);
     }
     return deleted;
+  }
+
+  getComment(tableId: string, recordId: string, commentId: string) {
+    return this.repository.getComment(tableId, recordId, commentId);
+  }
+
+  listComments(tableId: string, recordId: string, options?: { limit?: number }) {
+    return this.repository.listComments(tableId, recordId, options);
+  }
+
+  countComments(tableId: string) {
+    return this.repository.countComments(tableId);
+  }
+
+  countRecordComments(tableId: string, recordId: string) {
+    return this.repository.countRecordComments(tableId, recordId);
+  }
+
+  createComment(input: {
+    tableId: string;
+    recordId: string;
+    content?: unknown;
+    quoteId?: string;
+    createdBy?: string;
+  }) {
+    return this.repository.createComment(input);
+  }
+
+  updateComment(
+    tableId: string,
+    recordId: string,
+    commentId: string,
+    patch?: { content?: unknown }
+  ) {
+    return this.repository.updateComment(tableId, recordId, commentId, patch);
+  }
+
+  deleteComment(tableId: string, recordId: string, commentId: string) {
+    return this.repository.deleteComment(tableId, recordId, commentId);
   }
 
   resolveLookupRollup(tableId: string, options?: { recordId?: string }) {

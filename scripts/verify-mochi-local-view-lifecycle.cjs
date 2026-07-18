@@ -22,6 +22,16 @@ const postJson = (url, body) =>
     method: 'POST',
     body: JSON.stringify(body),
   });
+const putJson = (url, body) =>
+  requestJson(url, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  });
+const patchJson = (url, body) =>
+  requestJson(url, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
 const deleteJson = (url) => requestJson(url, { method: 'DELETE' });
 
 async function discoverTarget(origin) {
@@ -60,7 +70,9 @@ async function main() {
     createdIds.push(created.id);
     results.push({ name: 'create', ok: Boolean(created?.id) && created.name === `Temp ${marker}` });
 
-    const duplicated = await postJson(`${origin}/api/table/${tableId}/view/${created.id}/duplicate`);
+    const duplicated = await postJson(
+      `${origin}/api/table/${tableId}/view/${created.id}/duplicate`
+    );
     createdIds.push(duplicated.id);
     results.push({
       name: 'duplicate',
@@ -79,6 +91,66 @@ async function main() {
       (viewId) => !views.some((view) => view.id === viewId)
     );
     results.push({ name: 'delete', ok: deleted });
+
+    const advancedViewInputs = [
+      {
+        type: 'kanban',
+        options: { stackFieldId: null, coverFit: 'crop' },
+        group: [{ fieldId: null, order: 'asc' }],
+      },
+      {
+        type: 'gallery',
+        options: { coverFieldId: null, titleFieldId: null, isCoverFit: true },
+        columnMeta: {},
+      },
+      {
+        type: 'calendar',
+        options: { startDateFieldId: null, endDateFieldId: null },
+        filter: { conjunction: 'and', filterSet: [] },
+      },
+      {
+        type: 'form',
+        options: { submitLabel: 'Submit', shareAnonymous: false },
+        sort: { sortObjs: [] },
+      },
+    ];
+
+    for (const input of advancedViewInputs) {
+      const advanced = await postJson(`${origin}/api/table/${tableId}/view`, {
+        name: `Temp ${input.type} ${marker}`,
+        type: input.type,
+        options: input.options,
+        columnMeta: input.columnMeta,
+        filter: input.filter,
+        sort: input.sort,
+        group: input.group,
+      });
+      createdIds.push(advanced.id);
+
+      const updatedOptions = await patchJson(
+        `${origin}/api/table/${tableId}/view/${advanced.id}/options`,
+        { options: { ...(input.options ?? {}), localParity: marker } }
+      );
+      const updatedFilter = await putJson(
+        `${origin}/api/table/${tableId}/view/${advanced.id}/filter`,
+        { filter: { conjunction: 'and', filterSet: [] } }
+      );
+      const updatedSort = await putJson(`${origin}/api/table/${tableId}/view/${advanced.id}/sort`, {
+        sort: { sortObjs: [] },
+      });
+
+      results.push({
+        name: `advanced-view-${input.type}-metadata`,
+        ok:
+          advanced.type === input.type &&
+          updatedOptions.options?.localParity === marker &&
+          updatedFilter.filter?.conjunction === 'and' &&
+          Array.isArray(updatedSort.sort?.sortObjs),
+      });
+
+      await deleteJson(`${origin}/api/table/${tableId}/view/${advanced.id}`);
+      createdIds.pop();
+    }
 
     const result = {
       ok: results.every((item) => item.ok),

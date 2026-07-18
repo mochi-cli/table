@@ -9,6 +9,7 @@ export const ids = {
   field: () => createId('fld'),
   view: () => createId('viw'),
   record: () => createId('rec'),
+  comment: () => createId('com'),
   attachment: () => createId('att'),
   attachmentRef: () => createId('arf'),
   trash: () => createId('trh'),

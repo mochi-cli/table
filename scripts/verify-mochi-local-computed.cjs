@@ -114,6 +114,43 @@ async function main() {
       isComputed: true,
       options: { expression: `({${qty.id}} + 2) * ({${price.id}} - 2.5)` },
     });
+    const trimmedLeft = await createField(origin, tableId, {
+      name: `Trimmed left ${marker}`,
+      type: 'formula',
+      cellValueType: 'string',
+      isComputed: true,
+      options: { expression: 'LEFT(TRIM("  Mochi  "), 3)' },
+    });
+    const rightRepeat = await createField(origin, tableId, {
+      name: `Right repeat ${marker}`,
+      type: 'formula',
+      cellValueType: 'string',
+      isComputed: true,
+      options: { expression: `REPT(RIGHT({${item.id}}, 1), 3)` },
+    });
+    const roundedAverage = await createField(origin, tableId, {
+      name: `Rounded average ${marker}`,
+      type: 'formula',
+      cellValueType: 'number',
+      isComputed: true,
+      options: { expression: `ROUND(AVERAGE({${qty.id}}, {${price.id}}, 10), 1)` },
+    });
+    const minMaxSpread = await createField(origin, tableId, {
+      name: `Min max spread ${marker}`,
+      type: 'formula',
+      cellValueType: 'number',
+      isComputed: true,
+      options: {
+        expression: `MAX({${qty.id}}, {${price.id}}, 10) - MIN({${qty.id}}, {${price.id}}, 10)`,
+      },
+    });
+    const absIf = await createField(origin, tableId, {
+      name: `Abs if ${marker}`,
+      type: 'formula',
+      cellValueType: 'number',
+      isComputed: true,
+      options: { expression: `IF({${qty.id}}, ABS(-7), SUM(1, 2))` },
+    });
     createdFieldIds.push(
       item.id,
       qty.id,
@@ -123,7 +160,12 @@ async function main() {
       upperItem.id,
       lowerItem.id,
       itemLength.id,
-      adjustedTotal.id
+      adjustedTotal.id,
+      trimmedLeft.id,
+      rightRepeat.id,
+      roundedAverage.id,
+      minMaxSpread.id,
+      absIf.id
     );
 
     const formulaRecord = await postJson(`${origin}/api/mochi/tables/${tableId}/records`, {
@@ -150,7 +192,12 @@ async function main() {
         fieldValue(firstFormulaRecord, upperItem.id) === 'TEA' &&
         fieldValue(firstFormulaRecord, lowerItem.id) === 'tea' &&
         fieldValue(firstFormulaRecord, itemLength.id) === 3 &&
-        fieldValue(firstFormulaRecord, adjustedTotal.id) === 50,
+        fieldValue(firstFormulaRecord, adjustedTotal.id) === 50 &&
+        fieldValue(firstFormulaRecord, trimmedLeft.id) === 'Moc' &&
+        fieldValue(firstFormulaRecord, rightRepeat.id) === 'aaa' &&
+        fieldValue(firstFormulaRecord, roundedAverage.id) === 8.5 &&
+        fieldValue(firstFormulaRecord, minMaxSpread.id) === 9.5 &&
+        fieldValue(firstFormulaRecord, absIf.id) === 7,
     });
 
     await patchJson(`${origin}/api/mochi/records/${formulaRecord.id}`, {

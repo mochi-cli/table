@@ -195,7 +195,8 @@ make mochi.browser-workflows.verify
 
 The browser verifiers cover the header table interactions that are easiest to
 regress visually, record expand edge-drag behavior, plus view-list, selection,
-history, and two-tab realtime workflows. Finish with:
+drag-heavy row-range stability, history, and two-tab realtime workflows. Finish
+with:
 
 ```bash
 make mochi.finalize.verify
@@ -204,8 +205,9 @@ make mochi.finalize.verify
 ## Remaining parity checks
 
 - Keep extending browser coverage for row/view drag-heavy edge cases as Mochi
-  local workflows grow. Header popovers, column resize/reorder, and record
-  expand edge-drag behavior are covered by `make mochi.browser.verify`.
+  local workflows grow. Header popovers, column resize/reorder, record expand
+  edge-drag behavior, and row-range drag stability are covered by
+  `make mochi.browser.verify` / `make mochi.browser-workflows.verify`.
 - Keep extending SQLite route coverage for local-only table behavior as new UI
   paths appear. Base-node create/rename/icon/description/duplicate/move/delete,
   permanent delete removal, local last-visit fallbacks, and read-only public
@@ -219,12 +221,14 @@ make mochi.finalize.verify
   `make mochi.base-node.verify`.
 - Expand formula parity beyond the current local evaluator as Mochi workflows
   require more Teable formula functions. The current API-level arithmetic,
-  grouping, text functions (`CONCATENATE`, `LOWER`, `UPPER`, `LEN`),
-  lookup/rollup, and computed-job paths are covered by the
-  `make mochi.computed.verify` target.
+  grouping, text functions (`CONCATENATE`, `LOWER`, `UPPER`, `LEN`, `TRIM`,
+  `LEFT`, `RIGHT`, `REPT`), numeric functions (`ABS`, `ROUND`, `SUM`,
+  `AVERAGE`, `MIN`, `MAX`, `IF`), lookup/rollup, and computed-job paths are
+  covered by the `make mochi.computed.verify` target.
 
 Later:
 
-- full comment create/update/delete support. Local-safe comment counts currently
-  return empty/zero responses and are covered by `make mochi.base-node.verify`.
-- advanced view types
+- richer comment reactions/subscriptions/notifications; local comment CRUD and
+  counts are covered by `make mochi.comments.verify`.
+- full advanced view rendering parity; advanced view metadata lifecycle is
+  covered by `make mochi.view-lifecycle.verify`.

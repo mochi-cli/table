@@ -67,13 +67,29 @@ async function main() {
     HAVING COUNT(*) > 1;
   `);
 
+  const orphanComments = repo.db.get(`
+    SELECT COUNT(*) AS count
+    FROM mochi_comment c
+    LEFT JOIN mochi_record r ON r.id = c.record_id
+    LEFT JOIN mochi_table t ON t.id = c.table_id
+    WHERE c.deleted_time IS NULL
+      AND (
+        r.id IS NULL
+        OR r.deleted_time IS NOT NULL
+        OR t.id IS NULL
+        OR t.deleted_time IS NOT NULL
+      );
+  `);
+
   const result = {
     ok:
       Number(orphanHistory?.count ?? 0) === 0 &&
+      Number(orphanComments?.count ?? 0) === 0 &&
       staleColumnMeta.length === 0 &&
       duplicateActiveViews.length === 0,
     dbPath,
     orphanHistory: Number(orphanHistory?.count ?? 0),
+    orphanComments: Number(orphanComments?.count ?? 0),
     staleColumnMeta,
     duplicateActiveViews,
   };

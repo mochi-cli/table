@@ -5,6 +5,7 @@ import {
   Get,
   NotFoundException,
   Param,
+  Patch,
   Post,
   Put,
   Query,
@@ -47,7 +48,7 @@ const localBasePermission = {
   'record|delete': true,
   'record|read': true,
   'record|update': true,
-  'record|comment': false,
+  'record|comment': true,
   'record|copy': true,
   'table_record_history|read': true,
   'automation|read': false,
@@ -90,7 +91,7 @@ const localTablePermission = {
     'record|delete': true,
     'record|read': true,
     'record|update': true,
-    'record|comment': false,
+    'record|comment': true,
     'record|copy': true,
   },
 };
@@ -487,18 +488,82 @@ export class MochiLocalCompatController {
 
   @Get('comment/:tableId/count')
   getCommentCountsByQuery(
+    @Param('tableId') tableId: string,
     @Query('skip') _skip?: string,
     @Query('take') _take?: string,
     @Query('filter') _filter?: string
   ) {
-    return [];
+    return this.mochiSqliteService.countComments(tableId);
   }
 
   @Get('comment/:tableId/:recordId/count')
-  getRecordCommentCount(@Param('recordId') _recordId: string) {
+  getRecordCommentCount(@Param('tableId') tableId: string, @Param('recordId') recordId: string) {
     return {
-      count: 0,
+      count: this.mochiSqliteService.countRecordComments(tableId, recordId),
     };
+  }
+
+  @Get('comment/:tableId/:recordId/list')
+  getCommentList(
+    @Param('tableId') tableId: string,
+    @Param('recordId') recordId: string,
+    @Query('take') take?: string
+  ) {
+    return {
+      comments: this.mochiSqliteService.listComments(tableId, recordId, {
+        limit: take ? Number(take) : undefined,
+      }),
+      nextCursor: null,
+    };
+  }
+
+  @Post('comment/:tableId/:recordId/create')
+  createComment(
+    @Param('tableId') tableId: string,
+    @Param('recordId') recordId: string,
+    @Body() body: { content?: unknown; quoteId?: string }
+  ) {
+    return this.mochiSqliteService.createComment({
+      tableId,
+      recordId,
+      content: body?.content ?? [],
+      quoteId: body?.quoteId,
+      createdBy: localUser.id,
+    });
+  }
+
+  @Get('comment/:tableId/:recordId/:commentId')
+  getCommentDetail(
+    @Param('tableId') tableId: string,
+    @Param('recordId') recordId: string,
+    @Param('commentId') commentId: string
+  ) {
+    return this.mochiSqliteService.getComment(tableId, recordId, commentId);
+  }
+
+  @Patch('comment/:tableId/:recordId/:commentId')
+  updateComment(
+    @Param('tableId') tableId: string,
+    @Param('recordId') recordId: string,
+    @Param('commentId') commentId: string,
+    @Body() body: { content?: unknown }
+  ) {
+    const updated = this.mochiSqliteService.updateComment(tableId, recordId, commentId, {
+      content: body?.content ?? [],
+    });
+    if (!updated) throw new NotFoundException('Comment not found');
+    return updated;
+  }
+
+  @Delete('comment/:tableId/:recordId/:commentId')
+  deleteComment(
+    @Param('tableId') tableId: string,
+    @Param('recordId') recordId: string,
+    @Param('commentId') commentId: string
+  ) {
+    const deleted = this.mochiSqliteService.deleteComment(tableId, recordId, commentId);
+    if (!deleted) throw new NotFoundException('Comment not found');
+    return deleted;
   }
 
   @Post('user/last-visit')

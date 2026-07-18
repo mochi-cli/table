@@ -4,7 +4,7 @@ SQLITE_DB ?= $(CURDIR)/data/mochi-table.sqlite
 
 .DEFAULT_GOAL := help
 
-.PHONY: help sqlite.init sqlite.smoke sqlite.verify mochi.test mochi.typecheck mochi.local.verify mochi.browser.verify mochi.browser-workflows.verify mochi.integrity.verify mochi.finalize.verify mochi.realtime.verify mochi.table-metadata.verify mochi.field-header.verify mochi.view-lifecycle.verify mochi.selection.verify mochi.history.verify mochi.base-node.verify mochi.computed.verify mochi.storage.verify mochi.cleanup sqlite.reset dev.backend dev.app
+.PHONY: help sqlite.init sqlite.smoke sqlite.verify mochi.test mochi.typecheck mochi.local.verify mochi.browser.verify mochi.browser-workflows.verify mochi.integrity.verify mochi.finalize.verify mochi.realtime.verify mochi.table-metadata.verify mochi.field-header.verify mochi.view-lifecycle.verify mochi.selection.verify mochi.history.verify mochi.comments.verify mochi.base-node.verify mochi.computed.verify mochi.storage.verify mochi.cleanup sqlite.reset dev.backend dev.app
 
 help:
 	@echo "Mochi Table local commands"
@@ -25,6 +25,7 @@ help:
 	@echo "  make mochi.view-lifecycle.verify Verify local view create/duplicate/delete path"
 	@echo "  make mochi.selection.verify Verify local selection copy/paste/clear/delete/duplicate path"
 	@echo "  make mochi.history.verify Verify local record history API path"
+	@echo "  make mochi.comments.verify Verify local record comment create/list/count/update/delete path"
 	@echo "  make mochi.base-node.verify Verify local base-node and login-free stub paths"
 	@echo "  make mochi.computed.verify Verify local formula, lookup/rollup, and computed job API paths"
 	@echo "  make mochi.storage.verify Verify local search, trash, attachment, and SQLite import API paths"
@@ -60,6 +61,7 @@ mochi.local.verify:
 	$(MAKE) mochi.view-lifecycle.verify
 	$(MAKE) mochi.selection.verify
 	$(MAKE) mochi.history.verify
+	$(MAKE) mochi.comments.verify
 	$(MAKE) mochi.base-node.verify
 	$(MAKE) mochi.computed.verify
 	$(MAKE) mochi.storage.verify
@@ -94,6 +96,9 @@ mochi.selection.verify:
 
 mochi.history.verify:
 	node scripts/verify-mochi-local-history.cjs
+
+mochi.comments.verify:
+	node scripts/verify-mochi-local-comments.cjs
 
 mochi.base-node.verify:
 	node scripts/verify-mochi-local-base-node.cjs

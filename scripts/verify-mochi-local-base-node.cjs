@@ -88,9 +88,9 @@ async function main() {
       ok:
         basePermission['table|read'] === true &&
         basePermission['view|share'] === false &&
-        basePermission['record|comment'] === false &&
+        basePermission['record|comment'] === true &&
         tablePermission.view?.['view|share'] === false &&
-        tablePermission.record?.['record|comment'] === false,
+        tablePermission.record?.['record|comment'] === true,
     });
 
     const created = await postJson(`${origin}/api/base/${baseId}/node`, {
@@ -192,7 +192,7 @@ async function main() {
         getJson(`${origin}/api/${baseId}/ai/disable-ai-actions`),
       ]);
     results.push({
-      name: 'local-safe-share-admin-comment-ai-stubs',
+      name: 'local-safe-share-admin-ai-stubs-and-empty-comment-counts',
       ok:
         Array.isArray(shareList) &&
         shareList.length === 0 &&

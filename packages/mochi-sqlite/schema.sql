@@ -111,6 +111,24 @@ CREATE TABLE IF NOT EXISTS mochi_record (
 CREATE INDEX IF NOT EXISTS idx_mochi_record_table_id ON mochi_record(table_id);
 CREATE INDEX IF NOT EXISTS idx_mochi_record_deleted_time ON mochi_record(table_id, deleted_time);
 
+CREATE TABLE IF NOT EXISTS mochi_comment (
+  id TEXT PRIMARY KEY,
+  table_id TEXT NOT NULL,
+  record_id TEXT NOT NULL,
+  content_json TEXT,
+  quote_id TEXT,
+  created_by TEXT NOT NULL DEFAULT 'usr_mochi_local',
+  reaction_json TEXT,
+  created_time TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  last_modified_time TEXT,
+  deleted_time TEXT,
+  FOREIGN KEY (table_id) REFERENCES mochi_table(id) ON DELETE CASCADE,
+  FOREIGN KEY (record_id) REFERENCES mochi_record(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_mochi_comment_record
+  ON mochi_comment(table_id, record_id, deleted_time, created_time);
+
 CREATE VIRTUAL TABLE IF NOT EXISTS mochi_record_fts USING fts5(
   table_id UNINDEXED,
   record_id UNINDEXED,
