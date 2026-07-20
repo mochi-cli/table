@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { rewriteLocalRouterUrl } from '@/features/mochi/local-router';
+import { rewriteLocalRouterUrl } from './local-router';
 
 describe('rewriteLocalRouterUrl', () => {
   it('preserves record query params when rewriting Teable table route objects', () => {

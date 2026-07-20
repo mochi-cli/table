@@ -33,9 +33,12 @@ import { BaseNodeProvider } from '@/features/app/blocks/base/base-node/BaseNodeP
 import { BaseSideBar } from '@/features/app/blocks/base/base-side-bar/BaseSideBar';
 import { Sidebar } from '@/features/app/components/sidebar/Sidebar';
 import { tableConfig } from '@/features/i18n/table.config';
+import {
+  getLocalDataMutationScope,
+  type LocalDataMutationScope,
+} from '@/features/mochi/local-data-mutation';
 import { getLocalTableHref, rewriteLocalRouterUrl } from '@/features/mochi/local-router';
 import { getServerSideTranslations } from '@/lib/i18n/getServerSideTranslations';
-import { getLocalDataMutationScope, type LocalDataMutationScope } from './local-data-mutation';
 
 const DynamicTable = dynamic(
   () => import('@/features/app/blocks/table/Table').then((mod) => mod.Table),
