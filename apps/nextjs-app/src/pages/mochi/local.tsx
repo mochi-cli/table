@@ -28,7 +28,7 @@ import dynamic from 'next/dynamic';
 import type { NextRouter } from 'next/router';
 import { useRouter } from 'next/router';
 import { useTranslation } from 'next-i18next';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { BaseNodeProvider } from '@/features/app/blocks/base/base-node/BaseNodeProvider';
 import { BaseSideBar } from '@/features/app/blocks/base/base-side-bar/BaseSideBar';
 import { Sidebar } from '@/features/app/components/sidebar/Sidebar';
@@ -95,7 +95,9 @@ type LocalRecord = {
   id: string;
   table_id?: string;
   auto_number?: number;
-  fields: Record<string, unknown>;
+  fields?: Record<string, unknown>;
+  data?: Record<string, unknown>;
+  title?: string | null;
   created_time?: string;
   last_modified_time?: string;
 };
@@ -184,6 +186,40 @@ const defaultOptionsFor = (type: string) => {
   return {};
 };
 
+const normalizeRecordFields = (record: LocalRecord): Record<string, unknown> =>
+  record.fields ?? record.data ?? {};
+
+const inferFieldType = (value: unknown): Pick<LocalField, 'cell_value_type' | 'type'> => {
+  if (typeof value === 'number') {
+    return { cell_value_type: CellValueType.Number, type: FieldType.Number };
+  }
+  if (typeof value === 'boolean') {
+    return { cell_value_type: CellValueType.Boolean, type: FieldType.Checkbox };
+  }
+  return { cell_value_type: CellValueType.String, type: FieldType.SingleLineText };
+};
+
+const buildExtraDataFields = (records: LocalRecord[], schemaFields: LocalField[]): LocalField[] => {
+  const schemaFieldIds = new Set(schemaFields.map((field) => field.id));
+  const schemaFieldNames = new Set(schemaFields.map((field) => field.name));
+  const extraFields = new Map<string, LocalField>();
+
+  for (const record of records) {
+    for (const [key, value] of Object.entries(normalizeRecordFields(record))) {
+      if (schemaFieldIds.has(key) || schemaFieldNames.has(key) || extraFields.has(key)) {
+        continue;
+      }
+      extraFields.set(key, {
+        id: key,
+        name: key,
+        ...inferFieldType(value),
+      });
+    }
+  }
+
+  return Array.from(extraFields.values());
+};
+
 const mapField = (field: LocalField): IFieldVo => {
   const type = Object.values(FieldType).includes(field.type as FieldType)
     ? (field.type as FieldType)
@@ -210,6 +246,15 @@ const mapField = (field: LocalField): IFieldVo => {
     recordRead: true,
     recordCreate: true,
   };
+};
+
+const buildFields = (schemaFields: LocalField[], records: LocalRecord[]): IFieldVo[] => {
+  const sortedSchemaFields = [...schemaFields].sort(
+    (left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0)
+  );
+  return [...sortedSchemaFields, ...buildExtraDataFields(records, sortedSchemaFields)].map(
+    mapField
+  );
 };
 
 const normalizeColumnMeta = (
@@ -333,12 +378,29 @@ const mapTable = (table: LocalTable, defaultViewId?: string): LocalTableVo => ({
   permission: localTablePermission,
 });
 
-const mapRecord = (record: LocalRecord, primaryFieldId?: string): IRecord => {
+const mapRecord = (record: LocalRecord, schemaFields: IFieldVo[]): IRecord => {
+  const rawFields = normalizeRecordFields(record);
+  const fieldIds = new Set(schemaFields.map((field) => field.id));
+  const fieldByName = new Map(schemaFields.map((field) => [field.name, field]));
+  const fields = Object.entries(rawFields).reduce<Record<string, unknown>>((acc, [key, value]) => {
+    const schemaField = fieldIds.has(key) ? undefined : fieldByName.get(key);
+    acc[schemaField?.id ?? key] = value;
+    return acc;
+  }, {});
+  const primaryFieldId = schemaFields.find((field) => field.isPrimary)?.id ?? schemaFields[0]?.id;
+  if (
+    primaryFieldId &&
+    (fields[primaryFieldId] === undefined ||
+      fields[primaryFieldId] === null ||
+      fields[primaryFieldId] === '')
+  ) {
+    fields[primaryFieldId] = record.title || record.id;
+  }
   const mappedRecord: IRecord & { tableId?: string } = {
     id: record.id,
     tableId: record.table_id,
-    name: primaryFieldId ? String(record.fields[primaryFieldId] ?? '') : undefined,
-    fields: record.fields ?? {},
+    name: primaryFieldId ? String(fields[primaryFieldId] ?? record.title ?? record.id) : undefined,
+    fields,
     autoNumber: record.auto_number,
     createdTime: record.created_time,
     lastModifiedTime: record.last_modified_time,
@@ -459,71 +521,112 @@ function MochiLocalGridPageInner() {
   const router = useRouter();
   const [data, setData] = useState<GridData>();
   const [status, setStatus] = useState('Loading Mochi SQLite table');
+  const lastDataFingerprintRef = useRef<string>();
+  const isLoadingRef = useRef(false);
   const selectedTableId =
     typeof router.query.tableId === 'string' ? router.query.tableId : undefined;
   const selectedViewId = typeof router.query.viewId === 'string' ? router.query.viewId : undefined;
 
-  const loadData = useCallback(async () => {
-    setStatus('Loading Mochi SQLite table');
-    const bases = await api<LocalBase[]>(`/api/mochi/bases?spaceId=${localSpaceId}`);
-    let base = bases[0];
-    if (!base) {
-      base = await api<LocalBase>('/api/mochi/bases', {
-        method: 'POST',
-        body: JSON.stringify({ name: 'Local Base', spaceId: localSpaceId }),
-      });
-    }
+  const loadData = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (isLoadingRef.current) {
+        return;
+      }
+      isLoadingRef.current = true;
+      if (!options?.silent) {
+        setStatus('Loading Mochi SQLite table');
+      }
+      try {
+        const bases = await api<LocalBase[]>(`/api/mochi/bases?spaceId=${localSpaceId}`);
+        let base = bases[0];
+        if (!base) {
+          base = await api<LocalBase>('/api/mochi/bases', {
+            method: 'POST',
+            body: JSON.stringify({ name: 'Local Base', spaceId: localSpaceId }),
+          });
+        }
 
-    let tables = await api<LocalTable[]>(`/api/mochi/bases/${base.id}/tables`);
-    let table = tables[0];
-    if (!table) {
-      table = await api<LocalTable>(`/api/mochi/bases/${base.id}/tables`, {
-        method: 'POST',
-        body: JSON.stringify({ name: 'Customers', primaryFieldName: 'Name' }),
-      });
-      tables = [table];
-    }
-    table = tables.find((candidate) => candidate.id === selectedTableId) ?? table;
+        let tables = await api<LocalTable[]>(`/api/mochi/bases/${base.id}/tables`);
+        let table = tables[0];
+        if (!table) {
+          table = await api<LocalTable>(`/api/mochi/bases/${base.id}/tables`, {
+            method: 'POST',
+            body: JSON.stringify({ name: 'Customers', primaryFieldName: 'Name' }),
+          });
+          tables = [table];
+        }
+        table = tables.find((candidate) => candidate.id === selectedTableId) ?? table;
 
-    const tableViewPairs = await Promise.all(
-      tables.map(async (candidate) => [
-        candidate.id,
-        await api<LocalView[]>(`/api/mochi/tables/${candidate.id}/views`),
-      ])
-    );
-    const viewsByTableId = new Map(tableViewPairs as Array<[string, LocalView[]]>);
-    const localViews = viewsByTableId.get(table.id) ?? [];
-    const selectedView = localViews.find((view) => view.id === selectedViewId) ?? localViews[0];
+        const tableViewPairs = await Promise.all(
+          tables.map(async (candidate) => [
+            candidate.id,
+            await api<LocalView[]>(`/api/mochi/tables/${candidate.id}/views`),
+          ])
+        );
+        const viewsByTableId = new Map(tableViewPairs as Array<[string, LocalView[]]>);
+        const localViews = viewsByTableId.get(table.id) ?? [];
+        const selectedView = localViews.find((view) => view.id === selectedViewId) ?? localViews[0];
 
-    const [localFields, localRecords] = await Promise.all([
-      api<LocalField[]>(`/api/mochi/tables/${table.id}/fields`),
-      api<LocalRecord[]>(`/api/mochi/tables/${table.id}/records?limit=1000`),
-    ]);
-    const fields = localFields.map(mapField);
-    const primaryFieldId = fields.find((field) => field.isPrimary)?.id ?? fields[0]?.id;
-    const views = localViews.map((view) => mapView(view, fields));
-    const viewId = selectedView?.id;
+        const [localFields, localRecords] = await Promise.all([
+          api<LocalField[]>(`/api/mochi/tables/${table.id}/fields`),
+          api<LocalRecord[]>(`/api/mochi/tables/${table.id}/records?limit=1000`),
+        ]);
+        const fields = buildFields(localFields, localRecords);
+        const views = localViews.map((view) => mapView(view, fields));
+        const viewId = selectedView?.id;
 
-    if (!viewId) {
-      throw new Error('Mochi table has no grid view');
-    }
+        if (!viewId) {
+          throw new Error('Mochi table has no grid view');
+        }
 
-    setData({
-      baseId: base.id,
-      tableId: table.id,
-      viewId,
-      tables: tables.map((candidate) => {
-        const defaultViewId =
-          viewsByTableId.get(candidate.id)?.[0]?.id ??
-          (candidate.id === table.id ? viewId : undefined);
-        return mapTable(candidate, defaultViewId);
-      }),
-      fields,
-      views,
-      records: localRecords.map((record) => mapRecord(record, primaryFieldId)),
-    });
-    setStatus('Ready');
-  }, [selectedTableId, selectedViewId]);
+        const nextData = {
+          baseId: base.id,
+          tableId: table.id,
+          viewId,
+          tables: tables.map((candidate) => {
+            const defaultViewId =
+              viewsByTableId.get(candidate.id)?.[0]?.id ??
+              (candidate.id === table.id ? viewId : undefined);
+            return mapTable(candidate, defaultViewId);
+          }),
+          fields,
+          views,
+          records: localRecords.map((record) => mapRecord(record, fields)),
+        };
+        const nextFingerprint = [
+          nextData.baseId,
+          nextData.tableId,
+          nextData.viewId,
+          nextData.tables
+            .map((item) => `${item.id}:${item.name}:${item.lastModifiedTime ?? ''}`)
+            .join('|'),
+          nextData.fields
+            .map((item) => `${item.id}:${item.name}:${item.type}:${item.isPrimary ? '1' : '0'}`)
+            .join('|'),
+          nextData.views
+            .map(
+              (item) =>
+                `${item.id}:${item.name}:${JSON.stringify(item.filter)}:${JSON.stringify(item.sort)}:${JSON.stringify(item.group)}:${JSON.stringify(item.columnMeta)}`
+            )
+            .join('|'),
+          nextData.records
+            .map(
+              (item) =>
+                `${item.id}:${item.lastModifiedTime ?? item.createdTime ?? ''}:${Object.keys(item.fields).join(',')}`
+            )
+            .join('|'),
+        ].join('::');
+        if (nextFingerprint !== lastDataFingerprintRef.current) {
+          lastDataFingerprintRef.current = nextFingerprint;
+          setData(nextData);
+        }
+        setStatus('Ready');
+      } finally {
+        isLoadingRef.current = false;
+      }
+    },
+    [selectedTableId, selectedViewId]
+  );
 
   useEffect(() => {
     loadData().catch((error) => setStatus(error instanceof Error ? error.message : String(error)));
@@ -532,16 +635,26 @@ function MochiLocalGridPageInner() {
   useEffect(() => {
     const refreshLocalData = (event: Event) => {
       const scope = (event as CustomEvent<{ scope?: LocalDataMutationScope }>).detail?.scope;
-      if (scope === 'record' || scope === 'table') {
+      if (!scope) {
         return;
       }
-      loadData().catch((error) =>
+      loadData({ silent: true }).catch((error) =>
         setStatus(error instanceof Error ? error.message : String(error))
       );
     };
 
     window.addEventListener(localDataMutatedEvent, refreshLocalData);
     return () => window.removeEventListener(localDataMutatedEvent, refreshLocalData);
+  }, [loadData]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      loadData({ silent: true }).catch((error) =>
+        setStatus(error instanceof Error ? error.message : String(error))
+      );
+    }, 1500);
+
+    return () => window.clearInterval(intervalId);
   }, [loadData]);
 
   useEffect(() => {
