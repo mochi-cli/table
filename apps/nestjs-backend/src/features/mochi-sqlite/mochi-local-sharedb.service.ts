@@ -83,6 +83,42 @@ const dbFieldTypeFor = (cellValueType?: string) => {
   return 'TEXT';
 };
 
+const defaultOptionsFor = (type: string) => {
+  if (type === 'singleSelect' || type === 'multipleSelect') return { choices: [] };
+  if (type === 'number') return { formatting: { type: 'decimal', precision: 2 } };
+  if (type === 'date') return { formatting: { date: 'YYYY-MM-DD', time: 'None' } };
+  return {};
+};
+
+const normalizeFieldOptions = (type: string, options: unknown) => {
+  const defaultOptions = defaultOptionsFor(type);
+  const currentOptions =
+    options && typeof options === 'object' && !Array.isArray(options)
+      ? (options as Record<string, unknown>)
+      : {};
+  const defaultFormatting =
+    'formatting' in defaultOptions &&
+    defaultOptions.formatting &&
+    typeof defaultOptions.formatting === 'object' &&
+    !Array.isArray(defaultOptions.formatting)
+      ? (defaultOptions.formatting as Record<string, unknown>)
+      : undefined;
+  const currentFormatting =
+    currentOptions.formatting &&
+    typeof currentOptions.formatting === 'object' &&
+    !Array.isArray(currentOptions.formatting)
+      ? (currentOptions.formatting as Record<string, unknown>)
+      : undefined;
+
+  return {
+    ...defaultOptions,
+    ...currentOptions,
+    ...(defaultFormatting || currentFormatting
+      ? { formatting: { ...(defaultFormatting ?? {}), ...(currentFormatting ?? {}) } }
+      : {}),
+  };
+};
+
 const toSnapshot = (
   id: string,
   data?: Record<string, unknown>,
@@ -114,7 +150,7 @@ const toFieldData = (field: LocalField) => {
     name: field.name,
     description: field.description ?? undefined,
     type,
-    options: field.options ?? {},
+    options: normalizeFieldOptions(type, field.options),
     meta: field.meta ?? undefined,
     aiConfig: field.aiConfig ?? undefined,
     isPrimary: toBool(field.is_primary),

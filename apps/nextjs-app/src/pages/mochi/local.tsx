@@ -190,6 +190,34 @@ const defaultOptionsFor = (type: string) => {
   return {};
 };
 
+const normalizeFieldOptions = (type: string, options: unknown): IFieldVo['options'] => {
+  const defaultOptions = defaultOptionsFor(type) as Record<string, unknown>;
+  const currentOptions =
+    options && typeof options === 'object' && !Array.isArray(options)
+      ? (options as Record<string, unknown>)
+      : {};
+  const defaultFormatting =
+    defaultOptions.formatting &&
+    typeof defaultOptions.formatting === 'object' &&
+    !Array.isArray(defaultOptions.formatting)
+      ? (defaultOptions.formatting as Record<string, unknown>)
+      : undefined;
+  const currentFormatting =
+    currentOptions.formatting &&
+    typeof currentOptions.formatting === 'object' &&
+    !Array.isArray(currentOptions.formatting)
+      ? (currentOptions.formatting as Record<string, unknown>)
+      : undefined;
+
+  return {
+    ...defaultOptions,
+    ...currentOptions,
+    ...(defaultFormatting || currentFormatting
+      ? { formatting: { ...(defaultFormatting ?? {}), ...(currentFormatting ?? {}) } }
+      : {}),
+  } as IFieldVo['options'];
+};
+
 const normalizeRecordFields = (record: LocalRecord): Record<string, unknown> =>
   record.fields ?? record.data ?? {};
 
@@ -235,7 +263,7 @@ const mapField = (field: LocalField): IFieldVo => {
     name: field.name,
     type,
     description: field.description ?? undefined,
-    options: (field.options ?? defaultOptionsFor(type)) as IFieldVo['options'],
+    options: normalizeFieldOptions(type, field.options),
     meta: (field.meta ?? undefined) as IFieldVo['meta'],
     aiConfig: (field.aiConfig ?? undefined) as IFieldVo['aiConfig'],
     isPrimary: toBool(field.is_primary),

@@ -314,6 +314,34 @@ const defaultOptionsFor = (type: string) => {
   return {};
 };
 
+const normalizeFieldOptions = (type: string, options: unknown): IFieldVo['options'] => {
+  const defaultOptions = defaultOptionsFor(type) as Record<string, unknown>;
+  const currentOptions =
+    options && typeof options === 'object' && !Array.isArray(options)
+      ? (options as Record<string, unknown>)
+      : {};
+  const defaultFormatting =
+    defaultOptions.formatting &&
+    typeof defaultOptions.formatting === 'object' &&
+    !Array.isArray(defaultOptions.formatting)
+      ? (defaultOptions.formatting as Record<string, unknown>)
+      : undefined;
+  const currentFormatting =
+    currentOptions.formatting &&
+    typeof currentOptions.formatting === 'object' &&
+    !Array.isArray(currentOptions.formatting)
+      ? (currentOptions.formatting as Record<string, unknown>)
+      : undefined;
+
+  return {
+    ...defaultOptions,
+    ...currentOptions,
+    ...(defaultFormatting || currentFormatting
+      ? { formatting: { ...(defaultFormatting ?? {}), ...(currentFormatting ?? {}) } }
+      : {}),
+  } as IFieldVo['options'];
+};
+
 const toTeableField = (field: LocalField | null | undefined): IFieldVo | null => {
   if (!field) return null;
   const type = Object.values(FieldType).includes(field.type as FieldTypeValue)
@@ -326,7 +354,7 @@ const toTeableField = (field: LocalField | null | undefined): IFieldVo | null =>
     name: field.name,
     description: field.description ?? undefined,
     type: type as IFieldVo['type'],
-    options: (field.options ?? defaultOptionsFor(type)) as IFieldVo['options'],
+    options: normalizeFieldOptions(type, field.options),
     meta: field.meta as IFieldVo['meta'],
     aiConfig: field.aiConfig as IFieldVo['aiConfig'],
     isPrimary: toBool(field.is_primary),
