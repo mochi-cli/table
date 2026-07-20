@@ -10,9 +10,13 @@ type JsonRecord = Record<string, unknown>;
 
 type LocalRecord = {
   id: string;
-  table_id?: string;
   fields?: JsonRecord;
-};
+} & Record<string, unknown>;
+
+type LocalViewRecord = Record<string, unknown>;
+
+const getSqliteTableId = (value?: Record<string, unknown> | null) =>
+  typeof value?.['table_id'] === 'string' ? value['table_id'] : undefined;
 
 type MochiRepository = {
   listSpaces: () => unknown[];
@@ -275,6 +279,12 @@ export class MochiSqliteService {
     ]);
   }
 
+  publishProjectedRecordRefresh(tableId: string, actionKey: 'addRecord' | 'setRecord') {
+    publishMochiLocalActionTrigger(tableId, [
+      { actionKey, payload: { tableId, skipRealtime: true } },
+    ]);
+  }
+
   listSpaces() {
     return this.repository.listSpaces();
   }
@@ -401,9 +411,9 @@ export class MochiSqliteService {
   }
 
   updateView(id: string, patch: JsonRecord, tableIdOverride?: string) {
-    const before = this.repository.getView(id) as { table_id?: string } | null;
-    const updated = this.repository.updateView(id, patch) as { table_id?: string } | null;
-    const tableId = tableIdOverride ?? updated?.table_id ?? before?.table_id;
+    const before = this.repository.getView(id) as LocalViewRecord | null;
+    const updated = this.repository.updateView(id, patch) as LocalViewRecord | null;
+    const tableId = tableIdOverride ?? getSqliteTableId(updated) ?? getSqliteTableId(before);
     if (tableId && Object.keys(patch).length) {
       this.emitMochiViewUpdate(tableId, id, Object.keys(patch));
     }
@@ -448,7 +458,7 @@ export class MochiSqliteService {
   ) {
     const before = this.repository.getRecord(id) as LocalRecord | null;
     const updated = this.repository.updateRecord(id, patch) as LocalRecord | null;
-    const tableId = tableIdOverride ?? updated?.table_id ?? before?.table_id;
+    const tableId = tableIdOverride ?? getSqliteTableId(updated) ?? getSqliteTableId(before);
     if (tableId && patch.fields && Object.keys(patch.fields).length) {
       this.emitMochiRecordUpdate(tableId, id, patch.fields);
     }
@@ -458,7 +468,7 @@ export class MochiSqliteService {
   deleteRecord(id: string, tableIdOverride?: string) {
     const before = this.repository.getRecord(id) as LocalRecord | null;
     const deleted = this.repository.deleteRecord(id) as LocalRecord | null;
-    const tableId = tableIdOverride ?? before?.table_id ?? deleted?.table_id;
+    const tableId = tableIdOverride ?? getSqliteTableId(before) ?? getSqliteTableId(deleted);
     if (tableId) {
       this.emitMochiRecordDelete(tableId, id);
     }
