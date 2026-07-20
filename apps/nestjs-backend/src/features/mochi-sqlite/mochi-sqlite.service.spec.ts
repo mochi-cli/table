@@ -1,4 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { Events } from '../../event-emitter/events/event.enum';
 import { MochiSqliteService } from './mochi-sqlite.service';
 
@@ -81,5 +85,46 @@ describe('MochiSqliteService realtime events', () => {
     expect(repository.updateView).toHaveBeenCalledWith('viw_1', {
       filter: { filterSet: [{ fieldId: 'fld_1', operator: 'contains', value: 'A' }] },
     });
+  });
+
+  it('reads records written by another process to the same Mochi workspace database', async () => {
+    const moduleUrl = pathToFileURL(
+      path.resolve(process.cwd(), '../../packages/mochi-sqlite/src/index.mjs')
+    ).href;
+    const { MochiSqliteRepository } = (await import(/* webpackIgnore: true */ moduleUrl)) as {
+      MochiSqliteRepository: new (dbPath: string) => {
+        init: () => void;
+        createRecord: (input: { tableId: string; fields: Record<string, unknown> }) => unknown;
+      };
+    };
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mochi-service-external-'));
+    const dbPath = path.join(tmpDir, 'workspace.mochi', 'data.sqlite');
+    const uiRepository = new MochiSqliteRepository(dbPath);
+    uiRepository.init();
+    const service = new MochiSqliteService(uiRepository as never);
+    const base = service.createBase({ name: 'Inventory' }) as { id: string };
+    const table = service.createTable({
+      baseId: base.id,
+      name: 'Products',
+      primaryFieldName: 'Product_Name',
+    }) as { id: string };
+    const primaryField = (
+      service.listFields(table.id) as Array<{ id: string; is_primary?: number }>
+    ).find((field) => field.is_primary);
+
+    expect(service.listRecords(table.id)).toHaveLength(0);
+
+    const externalRepository = new MochiSqliteRepository(dbPath);
+    externalRepository.init();
+    externalRepository.createRecord({
+      tableId: table.id,
+      fields: { [primaryField?.id ?? 'fld_missing']: 'External Product' },
+    });
+
+    expect(service.listRecords(table.id)).toEqual([
+      expect.objectContaining({
+        fields: { [primaryField?.id ?? 'fld_missing']: 'External Product' },
+      }),
+    ]);
   });
 });

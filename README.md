@@ -125,7 +125,7 @@ make dev.app
 Then open:
 
 ```text
-http://localhost:3000/mochi/local
+http://localhost:3910/mochi/local
 ```
 
 The local page reuses the existing Teable grid surface with a local SQLite

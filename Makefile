@@ -121,8 +121,10 @@ dev.backend:
 	NEXT_PUBLIC_MOCHI_LOCAL_AUTH_DISABLED=true \
 	MOCHI_SQLITE_ENABLED=true \
 	MOCHI_SQLITE_DATABASE_PATH="$(SQLITE_DB)" \
+	PORT=3911 \
 	pnpm -F @teable/backend mochi:dev
 
 dev.app:
-	MOCHI_BACKEND_API_URL=http://localhost:3001 \
+	PORT=3910 \
+	MOCHI_BACKEND_API_URL=http://localhost:3911 \
 	pnpm -C apps/nextjs-app exec next dev

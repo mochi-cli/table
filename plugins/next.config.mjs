@@ -76,13 +76,13 @@ const nextConfig = {
   async rewrites() {
     const socketProxy = {
       source: '/socket/:path*',
-      destination: `http://localhost:3000/socket/:path*`,
+      destination: `http://localhost:3910/socket/:path*`,
       basePath: !Boolean(basePath),
     };
 
     const httpProxy = {
       source: '/api/:path*',
-      destination: `http://localhost:3000/api/:path*`,
+      destination: `http://localhost:3910/api/:path*`,
       basePath: !Boolean(basePath),
     };
 

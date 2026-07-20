@@ -56,9 +56,9 @@ make switch-db-mode
 ### Known Issues
 
 Port conflict: In dev mode, code changes trigger hot reloading. If changes affect app/nestjs-backend (packages/core, packages/db-main-prisma), nodejs may restart, potentially causing port conflicts.
-If backend code changes seem ineffective, check if the port is occupied with `lsof -i:3000`. If so, kill the old process with `kill -9 [pid]` and restart the application with `pnpm dev`.
+If backend code changes seem ineffective, check if the port is occupied with `lsof -i:3910`. If so, kill the old process with `kill -9 [pid]` and restart the application with `pnpm dev`.
 
-Websocket: In development, Next.js occupies port 3000 for websocket to trigger hot reloading. To avoid conflicts, the application's websocket uses port 3001. That's why you see SOCKET_PORT=3001 in .env.development.local, while in production, port 3000 is used by default for websocket requests.
+Websocket: In development, Next.js occupies port 3910 for websocket to trigger hot reloading. To avoid conflicts, the application's websocket uses port 3911. That's why you see SOCKET_PORT=3911 in .env.development.local, while in production, port 3910 is used by default for websocket requests.
 
 ## Database Migration Workflow
 

@@ -14,7 +14,7 @@ async function bootstrap() {
   app.use(json({ limit: '50mb' }));
   app.use(urlencoded({ limit: '50mb', extended: true }));
 
-  const port = Number(process.env.PORT || 3001);
+  const port = Number(process.env.PORT || 3911);
   await app.listen(port);
   console.log(`Mochi local SQLite API ready on http://localhost:${port}/api/mochi`);
 }

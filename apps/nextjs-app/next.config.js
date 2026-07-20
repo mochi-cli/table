@@ -45,8 +45,8 @@ const NEXT_BUILD_ENV_SENTRY_SOURCEMAPS_UPLOAD = trueEnv.includes(
   process.env?.NEXT_BUILD_ENV_SENTRY_SOURCEMAPS_UPLOAD ?? 'false'
 );
 
-const NEXTJS_SOCKET_PORT = process.env.SOCKET_PORT || '3001';
-const MOCHI_BACKEND_API_URL = process.env.MOCHI_BACKEND_API_URL || 'http://localhost:3001';
+const NEXTJS_SOCKET_PORT = process.env.SOCKET_PORT || '3911';
+const MOCHI_BACKEND_API_URL = process.env.MOCHI_BACKEND_API_URL || 'http://localhost:3911';
 
 if (!NEXT_BUILD_ENV_SOURCEMAPS) {
   console.log(
