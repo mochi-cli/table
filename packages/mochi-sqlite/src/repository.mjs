@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ids } from './ids.mjs';
@@ -19,6 +20,52 @@ const parseJson = (value, fallback = null) => {
 const nowExpr = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')";
 
 const normalizeText = (value) => String(value ?? '').toLocaleLowerCase();
+
+const stableId = (prefix, ...parts) =>
+  `${prefix}_${createHash('sha1').update(parts.map(String).join('\0')).digest('hex').slice(0, 18)}`;
+
+const normalizeMochiKitFieldType = (type) => {
+  const normalized = String(type ?? '').toLocaleLowerCase();
+  if (['number', 'integer', 'float', 'currency', 'percent'].includes(normalized)) {
+    return { type: 'number', cellValueType: 'number' };
+  }
+  if (['boolean', 'bool', 'checkbox'].includes(normalized)) {
+    return { type: 'checkbox', cellValueType: 'boolean' };
+  }
+  if (['date', 'datetime', 'dateTime', 'time'].includes(type) || normalized.includes('date')) {
+    return { type: 'date', cellValueType: 'dateTime' };
+  }
+  if (['select', 'singleSelect', 'enum'].includes(type)) {
+    return { type: 'singleSelect', cellValueType: 'string' };
+  }
+  if (['multiSelect', 'multipleSelect', 'tags'].includes(type)) {
+    return { type: 'multipleSelect', cellValueType: 'string' };
+  }
+  if (['longText', 'textarea', 'markdown', 'text'].includes(type)) {
+    return { type: 'longText', cellValueType: 'string' };
+  }
+  return { type: 'singleLineText', cellValueType: 'string' };
+};
+
+const normalizeMochiKitSchemaFields = (schema) => {
+  const fields = schema?.fields;
+  if (Array.isArray(fields)) {
+    return fields
+      .map((field) => {
+        if (typeof field === 'string') return { name: field };
+        if (!field?.name) return undefined;
+        return { name: String(field.name), type: field.type };
+      })
+      .filter(Boolean);
+  }
+  if (fields && typeof fields === 'object') {
+    return Object.entries(fields).map(([name, definition]) => ({
+      name,
+      type: typeof definition === 'string' ? definition : definition?.type,
+    }));
+  }
+  return [];
+};
 
 const remapJsonIds = (value, idMap) => {
   if (typeof value === 'string') return idMap.get(value) ?? value;
@@ -662,6 +709,7 @@ export class MochiSqliteRepository {
   constructor(dbPath) {
     this.dbPath = dbPath;
     this.db = new SqliteCli(dbPath);
+    this.mochiKitSyncing = false;
   }
 
   init() {
@@ -671,9 +719,178 @@ export class MochiSqliteRepository {
       `INSERT OR IGNORE INTO mochi_space (id, name) VALUES ('spc_local', 'Mochi Local');
        INSERT OR IGNORE INTO mochi_migration (version, name) VALUES ('000_schema_sql', 'schema.sql baseline');`
     );
+    this.syncMochiKitWorkspace();
+  }
+
+  tableExists(name) {
+    return Boolean(
+      this.db.get(`
+        SELECT name
+        FROM sqlite_master
+        WHERE type = 'table' AND name = ${sqlValue(name)};
+      `)
+    );
+  }
+
+  syncMochiKitWorkspace() {
+    if (this.mochiKitSyncing) return;
+    if (!this.tableExists('collections') || !this.tableExists('records')) return;
+    const collections = this.db.all(`SELECT * FROM collections ORDER BY name;`);
+    if (!collections.length) return;
+
+    this.mochiKitSyncing = true;
+    try {
+      const baseId = stableId('bas', 'mochikit', 'local');
+      const statements = [
+        `INSERT INTO mochi_space (id, name)
+         VALUES ('spc_local', 'Mochi Local')
+         ON CONFLICT(id) DO UPDATE SET name = excluded.name;`,
+        `INSERT INTO mochi_base (id, space_id, name, icon, sort_order)
+         VALUES (${sqlValue(baseId)}, 'spc_local', 'Local Base', NULL, 0)
+         ON CONFLICT(id) DO UPDATE SET
+           space_id = excluded.space_id,
+           name = excluded.name,
+           deleted_time = NULL;`,
+      ];
+
+      collections.forEach((collection, collectionIndex) => {
+        const collectionName = String(collection.name);
+        const tableId = stableId('tbl', 'mochikit', collectionName);
+        const viewId = stableId('viw', 'mochikit', collectionName, 'grid');
+        const schema = parseJson(collection.schema_json, {});
+        const sourceRecords = this.db.all(
+          `SELECT * FROM records WHERE collection = ${sqlValue(collectionName)} ORDER BY updated_at DESC, title ASC;`
+        );
+        const parsedRecords = sourceRecords.map((record) => ({
+          ...record,
+          data: parseJson(record.data_json, {}),
+        }));
+        const schemaFields = normalizeMochiKitSchemaFields(schema);
+        const fieldNames = new Set(schemaFields.map((field) => field.name));
+        parsedRecords.forEach((record) => {
+          Object.keys(record.data ?? {}).forEach((fieldName) => fieldNames.add(fieldName));
+        });
+        const titleField =
+          schema?.titleField ??
+          schema?.title_field ??
+          [...fieldNames].find(
+            (fieldName) => fieldName === `${collectionName.replace(/s$/, '')}_Name`
+          ) ??
+          [...fieldNames].find((fieldName) => fieldName.toLocaleLowerCase() === 'name') ??
+          [...fieldNames].find((fieldName) => fieldName.toLocaleLowerCase().endsWith('_name')) ??
+          [...fieldNames][0] ??
+          'title';
+        fieldNames.add(titleField);
+        const fieldDefinitions = [...fieldNames].map((fieldName, fieldIndex) => {
+          const schemaField = schemaFields.find((field) => field.name === fieldName);
+          const sampleValue = parsedRecords.find((record) =>
+            Object.prototype.hasOwnProperty.call(record.data ?? {}, fieldName)
+          )?.data?.[fieldName];
+          const inferred = schemaField?.type
+            ? normalizeMochiKitFieldType(schemaField.type)
+            : inferFieldType(sampleValue);
+          return {
+            id: stableId('fld', 'mochikit', collectionName, fieldName),
+            name: fieldName,
+            order: fieldIndex,
+            isPrimary: fieldName === titleField,
+            ...inferred,
+          };
+        });
+
+        statements.push(
+          `INSERT INTO mochi_table (id, base_id, name, description, icon, sort_order)
+           VALUES (${sqlValue(tableId)}, ${sqlValue(baseId)}, ${sqlValue(collectionName)}, NULL, NULL, ${sqlValue(collectionIndex)})
+           ON CONFLICT(id) DO UPDATE SET
+             base_id = excluded.base_id,
+             name = excluded.name,
+             sort_order = excluded.sort_order,
+             deleted_time = NULL,
+             last_modified_time = ${nowExpr};`,
+          `INSERT INTO mochi_view (id, table_id, name, type, sort_order)
+           VALUES (${sqlValue(viewId)}, ${sqlValue(tableId)}, 'Grid view', 'grid', 0)
+           ON CONFLICT(id) DO UPDATE SET
+             table_id = excluded.table_id,
+             name = excluded.name,
+             type = excluded.type,
+             deleted_time = NULL,
+             last_modified_time = ${nowExpr};`
+        );
+
+        fieldDefinitions.forEach((field) => {
+          statements.push(
+            `INSERT INTO mochi_field (
+               id, table_id, name, type, cell_value_type, is_primary, sort_order
+             )
+             VALUES (
+               ${sqlValue(field.id)},
+               ${sqlValue(tableId)},
+               ${sqlValue(field.name)},
+               ${sqlValue(field.type)},
+               ${sqlValue(field.cellValueType)},
+               ${sqlValue(field.isPrimary)},
+               ${sqlValue(field.order)}
+             )
+             ON CONFLICT(id) DO UPDATE SET
+               table_id = excluded.table_id,
+               name = excluded.name,
+               type = excluded.type,
+               cell_value_type = excluded.cell_value_type,
+               is_primary = excluded.is_primary,
+               sort_order = excluded.sort_order,
+               deleted_time = NULL,
+               last_modified_time = ${nowExpr};`
+          );
+        });
+
+        parsedRecords.forEach((record, recordIndex) => {
+          const recordId = stableId('rec', 'mochikit', collectionName, record.id);
+          const fields = Object.fromEntries(
+            fieldDefinitions.map((field) => {
+              const value = Object.prototype.hasOwnProperty.call(record.data ?? {}, field.name)
+                ? record.data[field.name]
+                : field.name === titleField
+                  ? record.title
+                  : undefined;
+              return [field.id, value ?? null];
+            })
+          );
+          statements.push(
+            `INSERT INTO mochi_record (
+               id, table_id, auto_number, fields_json, order_json, created_time, last_modified_time
+             )
+             VALUES (
+               ${sqlValue(recordId)},
+               ${sqlValue(tableId)},
+               ${sqlValue(recordIndex + 1)},
+               ${jsonValue(fields)},
+               NULL,
+               ${sqlValue(record.created_at)},
+               ${sqlValue(record.updated_at)}
+             )
+             ON CONFLICT(id) DO UPDATE SET
+               table_id = excluded.table_id,
+               auto_number = excluded.auto_number,
+               fields_json = excluded.fields_json,
+               last_modified_time = excluded.last_modified_time,
+               deleted_time = NULL;`
+          );
+          statements.push(...this.recordSearchStatements(tableId, recordId, fields));
+        });
+      });
+
+      this.db.transaction(statements);
+    } finally {
+      this.mochiKitSyncing = false;
+    }
+  }
+
+  syncMochiKitWorkspaceIfPresent() {
+    this.syncMochiKitWorkspace();
   }
 
   listSpaces() {
+    this.syncMochiKitWorkspaceIfPresent();
     return this.db.all(`SELECT * FROM mochi_space WHERE deleted_time IS NULL ORDER BY name;`);
   }
 
@@ -691,6 +908,7 @@ export class MochiSqliteRepository {
   }
 
   listBases(spaceId = 'spc_local') {
+    this.syncMochiKitWorkspaceIfPresent();
     return this.db.all(`
       SELECT * FROM mochi_base
       WHERE space_id = ${sqlValue(spaceId)} AND deleted_time IS NULL
@@ -719,6 +937,7 @@ export class MochiSqliteRepository {
   }
 
   listTables(baseId) {
+    this.syncMochiKitWorkspaceIfPresent();
     return this.db.all(`
       SELECT * FROM mochi_table
       WHERE base_id = ${sqlValue(baseId)} AND deleted_time IS NULL
@@ -760,6 +979,7 @@ export class MochiSqliteRepository {
   }
 
   getTable(id) {
+    this.syncMochiKitWorkspaceIfPresent();
     return this.db.get(`SELECT * FROM mochi_table WHERE id = ${sqlValue(id)};`);
   }
 
@@ -914,6 +1134,7 @@ export class MochiSqliteRepository {
   }
 
   listFields(tableId) {
+    this.syncMochiKitWorkspaceIfPresent();
     return this.db
       .all(
         `
@@ -1009,6 +1230,7 @@ export class MochiSqliteRepository {
   }
 
   getField(id) {
+    this.syncMochiKitWorkspaceIfPresent();
     const field = this.db.get(
       `SELECT * FROM mochi_field WHERE id = ${sqlValue(id)} AND deleted_time IS NULL;`
     );
@@ -1063,6 +1285,7 @@ export class MochiSqliteRepository {
   }
 
   listViews(tableId) {
+    this.syncMochiKitWorkspaceIfPresent();
     return this.db
       .all(
         `
@@ -1105,6 +1328,7 @@ export class MochiSqliteRepository {
   }
 
   getView(id) {
+    this.syncMochiKitWorkspaceIfPresent();
     const view = this.db.get(`SELECT * FROM mochi_view WHERE id = ${sqlValue(id)};`);
     if (!view) return null;
     return {
@@ -1148,6 +1372,7 @@ export class MochiSqliteRepository {
   }
 
   listRecords(tableId, options = {}) {
+    this.syncMochiKitWorkspaceIfPresent();
     const limit = Math.min(options.limit ?? 100, 100000);
     const offset = options.offset ?? 0;
     let records = this.db
