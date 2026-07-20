@@ -19,6 +19,7 @@ const trueEnv = ['true', '1', 'yes'];
 
 const isProd = process.env.NODE_ENV === 'production';
 const isCI = trueEnv.includes(process.env?.CI ?? 'false');
+const isMochiLocalRuntime = trueEnv.includes(process.env?.MOCHI_LOCAL_RUNTIME ?? 'false');
 
 const NEXT_BUILD_ENV_OUTPUT = process.env?.NEXT_BUILD_ENV_OUTPUT ?? 'classic';
 const NEXT_BUILD_ENV_TSCONFIG = process.env?.NEXT_BUILD_ENV_TSCONFIG ?? 'tsconfig.json';
@@ -164,7 +165,7 @@ const nextConfig = {
   // Standalone build
   // @link https://nextjs.org/docs/advanced-features/output-file-tracing#automatically-copying-traced-files-experimental
   ...(NEXT_BUILD_ENV_OUTPUT === 'standalone'
-    ? { output: 'standalone', outputFileTracing: true }
+    ? { output: 'standalone', outputFileTracingRoot: workspaceRoot }
     : {}),
 
   // Server-only packages that should not be bundled for the browser
@@ -172,9 +173,6 @@ const nextConfig = {
   serverExternalPackages: ['next-i18next', 'i18next-fs-backend'],
 
   experimental: {
-    // @link https://nextjs.org/docs/advanced-features/output-file-tracing#caveats
-    ...(NEXT_BUILD_ENV_OUTPUT === 'standalone' ? { outputFileTracingRoot: workspaceRoot } : {}),
-
     // Prefer loading of ES Modules over CommonJS
     // @link {https://nextjs.org/blog/next-11-1#es-modules-support|Blog 11.1.0}
     // @link {https://github.com/vercel/next.js/discussions/27876|Discussion}
@@ -262,7 +260,7 @@ const nextConfig = {
       destination: `${MOCHI_BACKEND_API_URL}/api/:baseId/ai/:path*`,
     };
 
-    return isProd
+    return isProd && !isMochiLocalRuntime
       ? []
       : [
           mochiApiProxy,

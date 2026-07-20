@@ -1654,6 +1654,8 @@ importers:
 
   packages/mochi-sqlite: {}
 
+  packages/mochi-table-runtime: {}
+
   packages/openapi:
     dependencies:
       '@asteasolutions/zod-to-openapi':

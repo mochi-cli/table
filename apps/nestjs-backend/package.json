@@ -36,6 +36,8 @@
     "dev": "nest start --webpackPath ./webpack.dev.js -w",
     "dev:swc": "nest start --webpackPath ./webpack.swc.js -w",
     "mochi:dev": "nest start --webpackPath ./webpack.mochi-local.js --entryFile mochi-local -w",
+    "mochi:build": "nest build -c nest-cli.mochi-local.json",
+    "mochi:start": "node dist/mochi-local.js",
     "start": "nest start",
     "check-dist": "es-check -v",
     "start-debug": "nest start --webpackPath ./webpack.dev.js --debug -w",

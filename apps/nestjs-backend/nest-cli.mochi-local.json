@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json.schemastore.org/nest-cli",
+  "collection": "@nestjs/schematics",
+  "sourceRoot": "src",
+  "entryFile": "mochi-local",
+  "flat": true,
+  "compilerOptions": {
+    "builder": "webpack",
+    "webpackConfigPath": "webpack.mochi-local.prod.js"
+  }
+}

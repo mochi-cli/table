@@ -1,0 +1,32 @@
+{
+  "name": "@mochi-cli/table-runtime",
+  "version": "0.1.0",
+  "description": "Runtime manager for Mochi Table workspace servers",
+  "license": "AGPL-3.0",
+  "type": "module",
+  "bin": {
+    "mochi-table": "./bin/mochi-table.mjs",
+    "mochi-table-runtime": "./bin/mochi-table.mjs"
+  },
+  "files": [
+    "bin",
+    "runtime",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node ./bin/mochi-table.mjs --help && MOCHI_TABLE_STATE_DIR=/tmp/mochi-table-runtime-test node ./bin/mochi-table.mjs list",
+    "pack:runtime": "node ./scripts/prepare-runtime-package.mjs"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mochi-cli/table.git",
+    "directory": "packages/mochi-table-runtime"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

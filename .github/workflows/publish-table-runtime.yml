@@ -1,0 +1,63 @@
+name: Publish Table Runtime
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Package version to publish, e.g. 0.1.0'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.13.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://npm.pkg.github.com
+          scope: '@mochi-cli'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Mochi local backend
+        run: pnpm -F @teable/backend mochi:build
+
+      - name: Build Mochi local frontend
+        env:
+          NEXT_BUILD_ENV_OUTPUT: standalone
+          NEXT_BUILD_ENV_CSP: 'false'
+          NEXT_BUILD_ENV_SENTRY_ENABLED: 'false'
+          NEXT_BUILD_ENV_SENTRY_UPLOAD_DRY_RUN: 'true'
+          NEXT_BUILD_ENV_TYPECHECK: 'false'
+          MOCHI_LOCAL_RUNTIME: 'true'
+          MOCHI_BACKEND_API_URL: http://127.0.0.1:3911
+          SOCKET_PORT: '3911'
+        run: pnpm -C apps/nextjs-app build
+
+      - name: Prepare runtime package
+        run: pnpm -F @mochi-cli/table-runtime pack:runtime
+
+      - name: Set package version
+        run: pnpm -F @mochi-cli/table-runtime version "${{ inputs.version }}" --no-git-tag-version
+
+      - name: Publish private GitHub package
+        env:
+          NODE_AUTH_TOKEN: ${{ github.token }}
+        run: pnpm -F @mochi-cli/table-runtime publish --no-git-checks

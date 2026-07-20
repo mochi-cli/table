@@ -20,7 +20,8 @@ type MochiSqliteRuntimeModule = {
       provide: MOCHI_SQLITE_REPOSITORY,
       useFactory: async () => {
         const moduleUrl = pathToFileURL(
-          resolve(process.cwd(), '../../packages/mochi-sqlite/src/index.mjs')
+          process.env.MOCHI_SQLITE_RUNTIME_MODULE_PATH ||
+            resolve(process.cwd(), '../../packages/mochi-sqlite/src/index.mjs')
         ).href;
         const { MochiSqliteRepository } = (await import(
           /* webpackIgnore: true */ moduleUrl
