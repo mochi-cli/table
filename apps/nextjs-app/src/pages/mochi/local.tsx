@@ -670,6 +670,9 @@ function MochiLocalGridPageInner() {
       if (!scope) {
         return;
       }
+      if (scope === 'record') {
+        return;
+      }
       loadData({ silent: true }).catch((error) =>
         setStatus(error instanceof Error ? error.message : String(error))
       );
