@@ -109,6 +109,7 @@ const apiBase = process.env.NEXT_PUBLIC_MOCHI_API_BASE_URL ?? '';
 const localUserId = 'usr_mochi_local';
 const localSpaceId = 'spc_local';
 const localDataMutatedEvent = 'mochi-local-data-mutated';
+const localDataRefreshIntervalMs = 5 * 60 * 1000;
 type LocalTableVo = ITableVo & { permission: Record<string, boolean> };
 
 const localTablePermission = {
@@ -655,7 +656,7 @@ function MochiLocalGridPageInner() {
       loadData({ silent: true }).catch((error) =>
         setStatus(error instanceof Error ? error.message : String(error))
       );
-    }, 1500);
+    }, localDataRefreshIntervalMs);
 
     return () => window.clearInterval(intervalId);
   }, [loadData]);
@@ -691,9 +692,6 @@ function MochiLocalGridPageInner() {
       (view) =>
         `${view.id}:${view.name}:${JSON.stringify(view.filter)}:${JSON.stringify(view.sort)}:${JSON.stringify(view.group)}:${JSON.stringify(view.columnMeta)}`
     )
-    .join('|');
-  const gridDataKey = data.records
-    .map((record) => `${record.id}:${record.lastModifiedTime ?? record.createdTime ?? ''}`)
     .join('|');
   const tableRoute = `/base/${data.baseId}/table/${data.tableId}/${data.viewId}`;
   const localRouter = {
@@ -745,7 +743,7 @@ function MochiLocalGridPageInner() {
                     </Sidebar>
                     <section className="min-w-80 flex-1 overflow-hidden">
                       <DynamicTable
-                        key={`${fieldDataKey}:${viewDataKey}:${gridDataKey}`}
+                        key={`${fieldDataKey}:${viewDataKey}`}
                         fieldServerData={data.fields}
                         viewServerData={data.views}
                         recordsServerData={{ records: data.records }}
