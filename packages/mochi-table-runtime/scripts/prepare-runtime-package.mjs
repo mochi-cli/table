@@ -67,7 +67,8 @@ const packageTargetPath = (nodeModulesRoot, packageName) => {
 
 const unhashedExternalName = (packageName) => packageName.replace(/-[a-f0-9]{16}$/, '');
 
-const collectHashedExternalPackages = (frontendRoot) => {
+const collectHashedExternalReferences = (frontendRoot) => {
+  const references = new Map();
   const packages = new Set();
   const textExtensions = new Set(['.js', '.json', '.mjs', '.cjs']);
   const scanDir = (dir) => {
@@ -81,20 +82,26 @@ const collectHashedExternalPackages = (frontendRoot) => {
       if (!entry.isFile() || !textExtensions.has(path.extname(entry.name))) continue;
       const content = fs.readFileSync(entryPath, 'utf8');
       const packagePattern =
-        /(?<![\w@./-])((?:@[a-z0-9._-]+\/)?[a-z0-9._-]+-[a-f0-9]{16})(?![\w./-])/gi;
+        /(?<![\w@./-])((?:@[a-z0-9._-]+\/)?[a-z0-9._-]+-[a-f0-9]{16})(\/[a-z0-9._~+/@-][^"'`\\\s),\]]*)?/gi;
       for (const match of content.matchAll(packagePattern)) {
-        packages.add(match[1]);
+        const packageName = match[1];
+        const specifier = `${packageName}${match[2] ?? ''}`;
+        packages.add(packageName);
+        references.set(specifier, packageName);
       }
     }
   };
 
   scanDir(path.join(frontendRoot, 'apps', 'nextjs-app', '.next'));
-  return [...packages].sort();
+  return {
+    packages: [...packages].sort(),
+    specifiers: [...references.keys()].sort(),
+  };
 };
 
 const copyHashedExternalAliases = (frontendRoot) => {
   const frontendNodeModules = path.join(frontendRoot, 'node_modules');
-  const hashedPackages = collectHashedExternalPackages(frontendRoot);
+  const { packages: hashedPackages } = collectHashedExternalReferences(frontendRoot);
 
   for (const hashedPackageName of hashedPackages) {
     const packageName = unhashedExternalName(hashedPackageName);
@@ -120,6 +127,60 @@ const copyHashedExternalAliases = (frontendRoot) => {
       dereference: true,
       filter: (source) => packageCopyFilter(sourceDir, source),
     });
+  }
+};
+
+const splitPackageSpecifier = (specifier) => {
+  const parts = specifier.split('/');
+  const packageName = specifier.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0];
+  return {
+    packageName,
+    subpath: parts.slice(specifier.startsWith('@') ? 2 : 1).join('/'),
+  };
+};
+
+const exportedTarget = (exportEntry) => {
+  if (typeof exportEntry === 'string') return exportEntry;
+  if (!exportEntry || typeof exportEntry !== 'object') return undefined;
+  return exportEntry.import ?? exportEntry.default;
+};
+
+const canResolveHashedSpecifier = (frontendRoot, requireFromFrontendServer, specifier) => {
+  try {
+    requireFromFrontendServer.resolve(specifier);
+    return true;
+  } catch (error) {
+    if (error?.code !== 'ERR_PACKAGE_PATH_NOT_EXPORTED') return false;
+  }
+
+  const { packageName, subpath } = splitPackageSpecifier(specifier);
+  const packageDir = packageTargetPath(path.join(frontendRoot, 'node_modules'), packageName);
+  const packageJsonPath = path.join(packageDir, 'package.json');
+  if (!fs.existsSync(packageJsonPath)) return false;
+
+  const packageJson = readJson(packageJsonPath);
+  const exportKey = subpath ? `./${subpath}` : '.';
+  const exportEntry = packageJson.exports?.[exportKey];
+  const target =
+    exportedTarget(exportEntry) ?? (!subpath ? packageJson.module ?? packageJson.main : undefined);
+  return Boolean(target && fs.existsSync(path.join(packageDir, target)));
+};
+
+const assertHashedExternalAliases = (frontendRoot) => {
+  const requireFromFrontendServer = createRequire(
+    path.join(frontendRoot, 'apps', 'nextjs-app', 'server.js')
+  );
+  const { specifiers } = collectHashedExternalReferences(frontendRoot);
+  const missing = specifiers.filter(
+    (specifier) => !canResolveHashedSpecifier(frontendRoot, requireFromFrontendServer, specifier)
+  );
+
+  if (missing.length) {
+    throw new Error(
+      `Frontend runtime is missing hashed external aliases:\n${missing
+        .map((specifier) => `- ${specifier}`)
+        .join('\n')}`
+    );
   }
 };
 
@@ -244,6 +305,7 @@ copyDir(sqlitePackage, path.join(runtimeRoot, 'mochi-sqlite-source'));
 copyDir(frontendStandalone, path.join(runtimeRoot, 'frontend'));
 copyFrontendDependencyClosure(path.join(runtimeRoot, 'frontend'));
 copyHashedExternalAliases(path.join(runtimeRoot, 'frontend'));
+assertHashedExternalAliases(path.join(runtimeRoot, 'frontend'));
 
 const standaloneAppDir = path.join(runtimeRoot, 'frontend', 'apps', 'nextjs-app');
 fs.mkdirSync(path.join(standaloneAppDir, '.next'), { recursive: true });
