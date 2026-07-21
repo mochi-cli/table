@@ -22,6 +22,7 @@ const isCI = trueEnv.includes(process.env?.CI ?? 'false');
 const isMochiLocalRuntime = trueEnv.includes(process.env?.MOCHI_LOCAL_RUNTIME ?? 'false');
 
 const NEXT_BUILD_ENV_OUTPUT = process.env?.NEXT_BUILD_ENV_OUTPUT ?? 'classic';
+const isMochiLocalStandalone = NEXT_BUILD_ENV_OUTPUT === 'standalone';
 const NEXT_BUILD_ENV_TSCONFIG = process.env?.NEXT_BUILD_ENV_TSCONFIG ?? 'tsconfig.json';
 
 const NEXT_BUILD_ENV_TYPECHECK = trueEnv.includes(process.env?.NEXT_BUILD_ENV_TYPECHECK ?? 'true');
@@ -260,7 +261,7 @@ const nextConfig = {
       destination: `${MOCHI_BACKEND_API_URL}/api/:baseId/ai/:path*`,
     };
 
-    return isProd && !isMochiLocalRuntime
+    return isProd && !isMochiLocalRuntime && !isMochiLocalStandalone
       ? []
       : [
           mochiApiProxy,

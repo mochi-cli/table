@@ -83,3 +83,6 @@ pnpm-debug.log*
 # Mochi local SQLite runtime data
 apps/nestjs-backend/data/
 /data/
+
+# Generated Mochi table runtime package artifacts
+packages/mochi-table-runtime/runtime/

@@ -116,26 +116,32 @@ const findPort = async (preferred, used) => {
   throw new Error(`No free port found near ${preferred}`);
 };
 
-const healthCheck = (url) =>
+const requestStatus = (url) =>
   new Promise((resolve) => {
     const request = http.get(url, (response) => {
       response.resume();
-      resolve(response.statusCode && response.statusCode < 500);
+      resolve({ ok: true, statusCode: response.statusCode ?? 0 });
     });
-    request.on('error', () => resolve(false));
+    request.on('error', (error) => resolve({ ok: false, error }));
     request.setTimeout(1000, () => {
       request.destroy();
-      resolve(false);
+      resolve({ ok: false, error: new Error(`Timed out requesting ${url}`) });
     });
   });
 
-const waitForHealth = async (url, timeoutMs = 30000) => {
+const waitForHttpOk = async (url, timeoutMs = 30000, isProcessHealthy = () => true) => {
   const start = Date.now();
+  let lastStatus;
   while (Date.now() - start < timeoutMs) {
-    if (await healthCheck(url)) return true;
+    if (!isProcessHealthy()) return { ok: false, reason: 'process-exited', lastStatus };
+    const status = await requestStatus(url);
+    lastStatus = status;
+    if (status.ok && status.statusCode >= 200 && status.statusCode < 300) {
+      return { ok: true, status };
+    }
     await wait(500);
   }
-  return false;
+  return { ok: false, reason: 'timeout', lastStatus };
 };
 
 const runtimePaths = () => ({
@@ -163,6 +169,11 @@ const assertRuntimeFiles = () => {
 const openLog = (workspacePath, name) => {
   const safeName = workspacePath.replaceAll(/[^\w.-]+/g, '_').replace(/^_+|_+$/g, '');
   return fs.openSync(path.join(logDir, `${safeName}.${name}.log`), 'a');
+};
+
+const logPath = (workspacePath, name) => {
+  const safeName = workspacePath.replaceAll(/[^\w.-]+/g, '_').replace(/^_+|_+$/g, '');
+  return path.join(logDir, `${safeName}.${name}.log`);
 };
 
 const stopRuntime = async (runtime) => {
@@ -199,6 +210,14 @@ const removeRuntimeFromState = (workspacePath) => {
   writeState(state);
 };
 
+const describeHttpFailure = (result) => {
+  if (result.reason === 'process-exited') return 'process exited before becoming healthy';
+  const lastStatus = result.lastStatus;
+  if (!lastStatus) return result.reason || 'unknown failure';
+  if (lastStatus.ok) return `last HTTP status was ${lastStatus.statusCode}`;
+  return lastStatus.error?.message || result.reason || 'request failed';
+};
+
 const waitForeground = (runtime) =>
   new Promise((resolve) => {
     let stopping = false;
@@ -223,9 +242,22 @@ const commandOpen = async (options) => {
   let state = pruneState(readState());
   const existing = state.runtimes[workspacePath];
   if (existing) {
+    const frontendHealth = await waitForHttpOk(existing.url, 3000, () =>
+      isAlive(existing.frontendPid)
+    );
+    const backendHealth = await waitForHttpOk(
+      `${existing.backendUrl}/api/mochi/bases?spaceId=spc_local`,
+      3000,
+      () => isAlive(existing.backendPid)
+    );
+    if (frontendHealth.ok && backendHealth.ok) {
+      writeState(state);
+      console.log(existing.url);
+      return;
+    }
+    await stopRuntime(existing);
+    delete state.runtimes[workspacePath];
     writeState(state);
-    console.log(existing.url);
-    return;
   }
 
   if (!options.keepExisting) {
@@ -245,6 +277,8 @@ const commandOpen = async (options) => {
   const url = `http://${defaultHost}:${frontendPort}/mochi/local`;
   const backendLog = openLog(workspacePath, 'backend');
   const frontendLog = openLog(workspacePath, 'frontend');
+  let backendExit;
+  let frontendExit;
 
   const backend = spawn(process.execPath, [paths.backendEntry], {
     detached: true,
@@ -263,6 +297,9 @@ const commandOpen = async (options) => {
       MOCHI_SQLITE_ENABLED: 'true',
     },
   });
+  backend.once('exit', (code, signal) => {
+    backendExit = { code, signal };
+  });
   backend.unref();
 
   const frontend = spawn(process.execPath, [paths.frontendEntry], {
@@ -280,6 +317,9 @@ const commandOpen = async (options) => {
       NEXT_PUBLIC_MOCHI_LOCAL_AUTH_DISABLED: 'true',
     },
   });
+  frontend.once('exit', (code, signal) => {
+    frontendExit = { code, signal };
+  });
   frontend.unref();
 
   const runtime = {
@@ -290,12 +330,42 @@ const commandOpen = async (options) => {
     backendUrl,
     backendPid: backend.pid,
     frontendPid: frontend.pid,
+    backendLogPath: logPath(workspacePath, 'backend'),
+    frontendLogPath: logPath(workspacePath, 'frontend'),
     startedAt: new Date().toISOString(),
   };
   state.runtimes[workspacePath] = runtime;
   writeState(state);
 
-  await waitForHealth(`${backendUrl}/api/mochi/bases?spaceId=spc_local`, 30000);
+  const backendHealth = await waitForHttpOk(
+    `${backendUrl}/api/mochi/bases?spaceId=spc_local`,
+    30000,
+    () => !backendExit && isAlive(backend.pid)
+  );
+  if (!backendHealth.ok) {
+    await stopRuntime(runtime);
+    removeRuntimeFromState(workspacePath);
+    throw new Error(
+      `Backend failed to start: ${describeHttpFailure(backendHealth)}.\n` +
+        `Backend log: ${runtime.backendLogPath}`
+    );
+  }
+
+  const frontendHealth = await waitForHttpOk(
+    url,
+    30000,
+    () => !frontendExit && isAlive(frontend.pid)
+  );
+  if (!frontendHealth.ok) {
+    await stopRuntime(runtime);
+    removeRuntimeFromState(workspacePath);
+    throw new Error(
+      `Frontend failed to start: ${describeHttpFailure(frontendHealth)}.\n` +
+        `Frontend log: ${runtime.frontendLogPath}\n` +
+        `Backend log: ${runtime.backendLogPath}`
+    );
+  }
+
   console.log(url);
   if (options.foreground) {
     await waitForeground(runtime);
