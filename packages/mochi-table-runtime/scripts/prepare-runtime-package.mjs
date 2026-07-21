@@ -12,6 +12,8 @@ const appRoot = path.join(repoRoot, 'apps', 'nextjs-app');
 const pnpmPublicHoistRoot = path.join(repoRoot, 'node_modules', '.pnpm', 'node_modules');
 const requireFromApp = createRequire(path.join(appRoot, 'package.json'));
 
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 const copyDir = (from, to) => {
   if (!fs.existsSync(from)) {
     throw new Error(`Missing build output: ${from}`);
@@ -67,6 +69,43 @@ const packageTargetPath = (nodeModulesRoot, packageName) => {
 
 const unhashedExternalName = (packageName) => packageName.replace(/-[a-f0-9]{16}$/, '');
 
+const pnpmPackagePrefix = (packageName) =>
+  packageName.startsWith('@') ? packageName.replace('/', '+') : packageName;
+
+const compareSemverDesc = (left, right) => {
+  const leftParts = String(left).split(/[.-]/).map(Number);
+  const rightParts = String(right).split(/[.-]/).map(Number);
+  for (let index = 0; index < Math.max(leftParts.length, rightParts.length); index += 1) {
+    const difference = (rightParts[index] || 0) - (leftParts[index] || 0);
+    if (difference) return difference;
+  }
+  return 0;
+};
+
+const findPnpmPackageDirs = (packageName) => {
+  const pnpmRoot = path.join(repoRoot, 'node_modules', '.pnpm');
+  if (!fs.existsSync(pnpmRoot)) return [];
+  const prefix = `${pnpmPackagePrefix(packageName)}@`;
+  return fs
+    .readdirSync(pnpmRoot)
+    .filter((entry) => entry.startsWith(prefix))
+    .map((entry) => path.join(pnpmRoot, entry, 'node_modules', ...packageName.split('/')))
+    .filter((packageDir) => fs.existsSync(path.join(packageDir, 'package.json')))
+    .map((packageDir) => ({
+      packageDir,
+      version: readJson(path.join(packageDir, 'package.json')).version,
+    }))
+    .sort((left, right) => compareSemverDesc(left.version, right.version));
+};
+
+const resolveHashedExternalSourceDir = (packageName) => {
+  const pnpmPackageDirs = findPnpmPackageDirs(packageName);
+  if (pnpmPackageDirs.length) return fs.realpathSync(pnpmPackageDirs[0].packageDir);
+
+  const packageJsonPath = resolvePackageJson(packageName);
+  return packageJsonPath ? fs.realpathSync(path.dirname(packageJsonPath)) : undefined;
+};
+
 const collectHashedExternalReferences = (frontendRoot) => {
   const references = new Map();
   const packages = new Set();
@@ -102,18 +141,19 @@ const collectHashedExternalReferences = (frontendRoot) => {
 const copyHashedExternalAliases = (frontendRoot) => {
   const frontendNodeModules = path.join(frontendRoot, 'node_modules');
   const { packages: hashedPackages } = collectHashedExternalReferences(frontendRoot);
+  const aliasByPackageName = new Map(
+    hashedPackages.map((hashedPackageName) => [
+      unhashedExternalName(hashedPackageName),
+      hashedPackageName,
+    ])
+  );
 
   for (const hashedPackageName of hashedPackages) {
     const packageName = unhashedExternalName(hashedPackageName);
     const targetDir = packageTargetPath(frontendNodeModules, hashedPackageName);
     if (fs.existsSync(targetDir)) continue;
 
-    const copiedPackageDir = packageTargetPath(frontendNodeModules, packageName);
-    const sourceDir = fs.existsSync(copiedPackageDir)
-      ? copiedPackageDir
-      : resolvePackageJson(packageName)
-        ? fs.realpathSync(path.dirname(resolvePackageJson(packageName)))
-        : undefined;
+    const sourceDir = resolveHashedExternalSourceDir(packageName);
 
     if (!sourceDir) {
       throw new Error(
@@ -127,6 +167,40 @@ const copyHashedExternalAliases = (frontendRoot) => {
       dereference: true,
       filter: (source) => packageCopyFilter(sourceDir, source),
     });
+  }
+
+  rewriteHashedExternalAliasImports(frontendNodeModules, aliasByPackageName);
+};
+
+const rewriteHashedExternalAliasImports = (frontendNodeModules, aliasByPackageName) => {
+  const textExtensions = new Set(['.js', '.mjs', '.cjs']);
+  for (const hashedPackageName of aliasByPackageName.values()) {
+    const packageDir = packageTargetPath(frontendNodeModules, hashedPackageName);
+    if (!fs.existsSync(packageDir)) continue;
+
+    const rewriteDir = (dir) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const entryPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          rewriteDir(entryPath);
+          continue;
+        }
+        if (!entry.isFile() || !textExtensions.has(path.extname(entry.name))) continue;
+
+        const before = fs.readFileSync(entryPath, 'utf8');
+        let after = before;
+        for (const [packageName, aliasName] of aliasByPackageName) {
+          if (aliasName === hashedPackageName) continue;
+          after = after.replace(
+            new RegExp(`(["'])${escapeRegExp(packageName)}(?=/|\\1)`, 'g'),
+            `$1${aliasName}`
+          );
+        }
+        if (after !== before) fs.writeFileSync(entryPath, after);
+      }
+    };
+
+    rewriteDir(packageDir);
   }
 };
 
