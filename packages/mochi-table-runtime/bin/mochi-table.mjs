@@ -76,20 +76,42 @@ const normalizeWorkspacePath = (value) => {
   return path.resolve(input);
 };
 
-const isAlive = (pid) => {
-  if (!pid) return false;
+const getPidStatus = (pid) => {
+  if (!pid) return 'missing';
   try {
     process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
+    return 'alive';
+  } catch (error) {
+    return error?.code === 'ESRCH' ? 'dead' : 'unknown';
   }
 };
 
-const pruneState = (state) => {
+const isAlive = (pid) => getPidStatus(pid) === 'alive';
+
+const backendHealthUrl = (backendUrl) => `${backendUrl}/api/mochi/bases?spaceId=spc_local`;
+
+const isHealthyHttpStatus = (status) =>
+  Boolean(status?.ok && status.statusCode >= 200 && status.statusCode < 300);
+
+const isInconclusiveHttpStatus = (status) =>
+  Boolean(!status?.ok && ['EPERM', 'EACCES'].includes(status?.error?.code));
+
+const shouldKeepRuntime = async (runtime) => {
+  const pidStatuses = [getPidStatus(runtime.backendPid), getPidStatus(runtime.frontendPid)];
+  if (pidStatuses.includes('alive') || pidStatuses.includes('unknown')) return true;
+
+  const [frontendStatus, backendStatus] = await Promise.all([
+    requestStatus(runtime.url),
+    requestStatus(backendHealthUrl(runtime.backendUrl)),
+  ]);
+  if (isHealthyHttpStatus(frontendStatus) && isHealthyHttpStatus(backendStatus)) return true;
+  return isInconclusiveHttpStatus(frontendStatus) || isInconclusiveHttpStatus(backendStatus);
+};
+
+const pruneState = async (state) => {
   const runtimes = {};
   for (const [workspacePath, runtime] of Object.entries(state.runtimes || {})) {
-    if (isAlive(runtime.backendPid) || isAlive(runtime.frontendPid)) {
+    if (await shouldKeepRuntime(runtime)) {
       runtimes[workspacePath] = runtime;
     }
   }
@@ -209,30 +231,26 @@ const logPath = (workspacePath, name) => {
 };
 
 const stopRuntime = async (runtime) => {
-  for (const pid of [runtime.frontendPid, runtime.backendPid]) {
-    if (!isAlive(pid)) continue;
+  const signalPid = (pid, signal) => {
+    if (!pid) return;
     try {
-      process.kill(-pid, 'SIGTERM');
+      process.kill(-pid, signal);
     } catch {
-      try {
-        process.kill(pid, 'SIGTERM');
-      } catch {
-        // already gone
-      }
+      // process group may already be gone
     }
+    try {
+      process.kill(pid, signal);
+    } catch {
+      // leader may already be gone
+    }
+  };
+
+  for (const pid of [runtime.frontendPid, runtime.backendPid]) {
+    signalPid(pid, 'SIGTERM');
   }
   await wait(500);
   for (const pid of [runtime.frontendPid, runtime.backendPid]) {
-    if (!isAlive(pid)) continue;
-    try {
-      process.kill(-pid, 'SIGKILL');
-    } catch {
-      try {
-        process.kill(pid, 'SIGKILL');
-      } catch {
-        // already gone
-      }
-    }
+    signalPid(pid, 'SIGKILL');
   }
 };
 
@@ -253,35 +271,47 @@ const describeHttpFailure = (result) => {
 const waitForeground = (runtime) =>
   new Promise((resolve) => {
     let stopping = false;
+    let checking = false;
+    let monitor;
     const stop = async (signal) => {
       if (stopping) return;
       stopping = true;
+      if (monitor) clearInterval(monitor);
       console.log(`\nStopping Mochi table runtime for ${runtime.workspacePath} (${signal})...`);
       await stopRuntime(runtime);
       removeRuntimeFromState(runtime.workspacePath);
       resolve();
     };
 
+    const monitorRuntime = async () => {
+      if (stopping || checking) return;
+      checking = true;
+      try {
+        if (await shouldKeepRuntime(runtime)) return;
+        if (monitor) clearInterval(monitor);
+        removeRuntimeFromState(runtime.workspacePath);
+        console.log(`\nMochi table runtime stopped for ${runtime.workspacePath}.`);
+        resolve();
+      } finally {
+        checking = false;
+      }
+    };
+
     process.once('SIGINT', () => void stop('SIGINT'));
     process.once('SIGTERM', () => void stop('SIGTERM'));
     process.once('SIGHUP', () => void stop('SIGHUP'));
     console.log('Runtime is running in foreground. Press Ctrl+C to stop frontend and backend.');
+    monitor = setInterval(() => void monitorRuntime(), 1000);
   });
 
 const commandOpen = async (options) => {
   const workspacePath = normalizeWorkspacePath(options.db);
   const paths = assertRuntimeFiles();
-  let state = pruneState(readState());
+  let state = await pruneState(readState());
   const existing = state.runtimes[workspacePath];
   if (existing) {
-    const frontendHealth = await waitForHttpOk(existing.url, 3000, () =>
-      isAlive(existing.frontendPid)
-    );
-    const backendHealth = await waitForHttpOk(
-      `${existing.backendUrl}/api/mochi/bases?spaceId=spc_local`,
-      3000,
-      () => isAlive(existing.backendPid)
-    );
+    const frontendHealth = await waitForHttpOk(existing.url, 3000);
+    const backendHealth = await waitForHttpOk(backendHealthUrl(existing.backendUrl), 3000);
     if (frontendHealth.ok && backendHealth.ok) {
       writeState(state);
       console.log(existing.url);
@@ -370,11 +400,7 @@ const commandOpen = async (options) => {
   state.runtimes[workspacePath] = runtime;
   writeState(state);
 
-  const backendHealth = await waitForHttpOk(
-    `${backendUrl}/api/mochi/bases?spaceId=spc_local`,
-    30000,
-    () => !backendExit && isAlive(backend.pid)
-  );
+  const backendHealth = await waitForHttpOk(backendHealthUrl(backendUrl), 30000);
   if (!backendHealth.ok) {
     await stopRuntime(runtime);
     removeRuntimeFromState(workspacePath);
@@ -384,11 +410,7 @@ const commandOpen = async (options) => {
     );
   }
 
-  const frontendHealth = await waitForHttpOk(
-    url,
-    30000,
-    () => !frontendExit && isAlive(frontend.pid)
-  );
+  const frontendHealth = await waitForHttpOk(url, 30000);
   if (!frontendHealth.ok) {
     await stopRuntime(runtime);
     removeRuntimeFromState(workspacePath);
@@ -405,8 +427,8 @@ const commandOpen = async (options) => {
   }
 };
 
-const commandList = (options) => {
-  const state = pruneState(readState());
+const commandList = async (options) => {
+  const state = await pruneState(readState());
   writeState(state);
   const runtimes = Object.values(state.runtimes);
   if (options.json) {
@@ -429,7 +451,7 @@ const commandStop = async (options) => {
   const workspacePath = options.db
     ? normalizeWorkspacePath(options.db)
     : process.env.MOCHI_PROFILE_DB;
-  let state = pruneState(readState());
+  let state = await pruneState(readState());
   const entries = workspacePath
     ? Object.entries(state.runtimes).filter(([key]) => key === path.resolve(workspacePath))
     : Object.entries(state.runtimes).slice(0, 1);
@@ -442,7 +464,7 @@ const commandStop = async (options) => {
 };
 
 const commandStopAll = async () => {
-  const state = pruneState(readState());
+  const state = await pruneState(readState());
   for (const runtime of Object.values(state.runtimes)) {
     await stopRuntime(runtime);
   }
@@ -466,7 +488,7 @@ const main = async () => {
   } else if (command === 'open') {
     await commandOpen(options);
   } else if (command === 'list') {
-    commandList(options);
+    await commandList(options);
   } else if (command === 'stop' || command === 'close') {
     await commandStop(options);
   } else if (command === 'stop-all' || command === 'close-all') {
