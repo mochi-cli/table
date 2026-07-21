@@ -30,7 +30,7 @@ export const Branding = ({
               id="brand-name"
               type="text"
               className="rounded-md border px-3 py-2"
-              placeholder="Teable"
+              placeholder="Mochi"
               value={name}
               disabled={disabled}
               onChange={(e) => {

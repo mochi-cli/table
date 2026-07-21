@@ -2,10 +2,10 @@ import Script from 'next/script';
 import { useEffect, useState } from 'react';
 import { syncMarketingAttributionFromUrl } from '@/lib/marketing-attribution';
 
-const GOOGLE_LINKER_DOMAINS = ['teable.ai', 'app.teable.ai'];
+const GOOGLE_LINKER_DOMAINS = ['mochi-cli.com'];
 
 const POSTHOG_DEFAULT_HOST = 'https://us.i.posthog.com';
-const INTERNAL_EMAIL_REGEX = /@teable\.(?:io|ai|cn)$/i;
+const INTERNAL_EMAIL_REGEX = /@mochii?\.(?:io|ai|cn|com)$/i;
 
 interface IPostHog {
   init: (key: string, config: Record<string, unknown>) => void;

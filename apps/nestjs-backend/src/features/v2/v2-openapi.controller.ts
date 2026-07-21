@@ -39,7 +39,7 @@ const buildDocsCsp = (nonce: string): string =>
 const buildScalarHtml = (specUrl: string, nonce: string): string => `<!doctype html>
 <html>
   <head>
-    <title>Teable v2 API</title>
+    <title>Mochi v2 API</title>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
   </head>

@@ -3,7 +3,7 @@
   "title": {
     "add": "New OAuth Apps",
     "edit": "Edit OAuth Apps",
-    "description": "Teable Apps can act on their own behalf, directly performing operations through the API, without impersonating a user. See our <a>Help documentation</a> for more information."
+    "description": "Mochi apps can act on their own behalf, directly performing operations through the API, without impersonating a user. See our <a>Help documentation</a> for more information."
   },
   "form": {
     "name": {
@@ -57,7 +57,7 @@
     "authorize": "Authorize"
   },
   "help": {
-    "link": "https://help.teable.ai/en/api-doc/oauth",
+    "link": "https://mochi-cli.com",
     "title": "Learn more"
   },
   "deleteConfirm": {

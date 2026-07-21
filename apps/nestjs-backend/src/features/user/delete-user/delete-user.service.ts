@@ -49,7 +49,7 @@ export class DeleteUserService {
     await this.prismaService.txClient().user.update({
       where: { id: userId, permanentDeletedTime: null },
       data: {
-        email: `deleted-${getRandomString(10)}@teable.ai`,
+        email: `deleted-${getRandomString(10)}@mochi-cli.com`,
         name: 'Deleted User',
         permanentDeletedTime: new Date().toISOString(),
         deletedTime: new Date().toISOString(),

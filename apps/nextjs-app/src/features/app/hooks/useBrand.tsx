@@ -20,7 +20,7 @@ export const useBrand = (): { brandName: string; brandLogo?: string } => {
   const env = useEnv();
 
   return {
-    brandName: env.brandName || 'Teable',
+    brandName: env.brandName || 'Mochi',
     brandLogo: env.brandLogo,
   };
 };

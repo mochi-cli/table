@@ -1,4 +1,4 @@
-const ATTRIBUTION_STORAGE_KEY = 'teable_marketing_attribution';
+const ATTRIBUTION_STORAGE_KEY = 'mochi_marketing_attribution';
 const ATTRIBUTION_STORAGE_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 const ATTRIBUTION_VALUE_MAX_LENGTH = 500;
 

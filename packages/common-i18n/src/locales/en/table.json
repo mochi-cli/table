@@ -315,7 +315,7 @@
       "enableValidateFieldUnique": "Unique values only",
       "enableValidateFieldNotNull": "Required",
       "knowMore": "know more",
-      "linkFieldKnowMoreLink": "https://help.teable.ai/en/basic/field/advanced/link",
+      "linkFieldKnowMoreLink": "https://mochi-cli.com",
       "showByField": "Show records by field",
       "filterByView": "Filter records by view",
       "filter": "Filter records",
@@ -1082,7 +1082,7 @@
     "noPermission": "You don't have permission to access the database",
     "connectionCountTip": "The maximum number of database connections is <b>{{max}}</b> and the current connections is <b>{{current}}</b>",
     "createFailed": "Please ensure that the PUBLIC_DATABASE_PROXY environment variable is set correctly",
-    "readonlyUnavailable": "Readonly database sharing is unavailable for this data database. Grant the Teable database user permission to create roles and grants, or use a target database that supports readonly roles."
+    "readonlyUnavailable": "Readonly database sharing is unavailable for this data database. Grant the Mochi database user permission to create roles and grants, or use a target database that supports readonly roles."
   },
   "view": {
     "addRecord": "Add record",
@@ -1106,7 +1106,7 @@
     },
     "crash": {
       "title": "Crash!",
-      "description": "This view is broken. If the refresh still fails, please contact us. support@teable.ai"
+      "description": "This view is broken. If the refresh still fails, please contact us. support-cli.com"
     },
     "addPluginView": "Add plugin view",
     "search": {

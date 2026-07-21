@@ -27,7 +27,7 @@ export async function setupSwagger(
   const redocOptions: RedocOptions = {
     logo: {
       backgroundColor: '#F0F0F0',
-      altText: 'Teable logo',
+      altText: 'Mochi logo',
     },
   };
   await RedocModule.setup('/redocs', app, openApiDocumentation as OpenAPIObject, redocOptions);

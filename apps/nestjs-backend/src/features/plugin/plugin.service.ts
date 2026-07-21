@@ -103,8 +103,8 @@ export class PluginService {
     const systemUser = userIds.find((id) => id === 'system')
       ? {
           id: 'system',
-          name: 'Teable',
-          email: 'support@teable.ai',
+          name: 'Mochi',
+          email: 'support@mochi-cli.com',
           avatar: undefined,
         }
       : undefined;
@@ -114,8 +114,8 @@ export class PluginService {
         if (user.id === 'system') {
           acc[user.id] = {
             id: user.id,
-            name: 'Teable',
-            email: 'support@teable.ai',
+            name: 'Mochi',
+            email: 'support@mochi-cli.com',
             avatar: undefined,
           };
           return acc;

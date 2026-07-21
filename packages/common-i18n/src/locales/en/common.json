@@ -102,16 +102,16 @@
     "allTemplatesLoaded": "All templates loaded",
     "createTemplate": "Create template",
     "promptBox": {
-      "placeholder": "Build your business app with Teable",
+      "placeholder": "Build your business app with Mochi",
       "start": "Start it",
       "carouselGuides": {
-        "guide1": "Paste receipts → Ask Teable to auto-extract key data",
+        "guide1": "Paste receipts → Ask Mochi to auto-extract key data",
         "guide2": "Build an AI CRM with lead & follow-up tables",
-        "guide3": "Paste customer feedback → Ask Teable to find insights & generate reports",
+        "guide3": "Paste customer feedback → Ask Mochi to find insights & generate reports",
         "guide4": "Create a project tracker with tasks & deadlines",
-        "guide5": "Paste leads spreadsheet → Ask Teable to build a smart CRM",
+        "guide5": "Paste leads spreadsheet → Ask Mochi to build a smart CRM",
         "guide6": "Build a content planner with posts & publish dates",
-        "guide7": "Paste resumes → Ask Teable to organize and shortlist candidates"
+        "guide7": "Paste resumes → Ask Mochi to organize and shortlist candidates"
       }
     },
     "useTemplateDialog": {
@@ -251,7 +251,7 @@
       "title": "Profile",
       "tab": "Profile",
       "updatePhoto": "Update photo",
-      "updateNameDesc": "Nickname or first name, however you want to be called in Teable",
+      "updateNameDesc": "Nickname or first name, however you want to be called in Mochi",
       "securityTitle": "Account security",
       "email": "Email",
       "password": "Password",
@@ -339,7 +339,7 @@
       "touchMode": "Touch mode",
       "systemMode": "Follow system",
       "buySelfHostedLicense": "Buy self-hosted license",
-      "teableSkill": "Teable skill"
+      "teableSkill": "Mochi skill"
     },
     "teableSkill": {
       "intro": "Let your AI Agent connect to your Base to query data, manage tables, fields, and views, import or update records, and create automations and apps.",
@@ -348,10 +348,10 @@
       "copy": "Copy",
       "installPromptLabel": "Skill install prompt",
       "installCommandLabel": "Skill install command",
-      "installPrompt": "Please read https://github.com/teableio/agent-skills, follow the guide to help me install the Teable agent skill, and complete Teable CLI authentication.",
+      "installPrompt": "Please read https://github.com/teableio/agent-skills, follow the guide to help me install the Mochi agent skill, and complete Mochi CLI authentication.",
       "step1Title": "Install Skill",
-      "step1Description": "Copy this prompt into your AI Agent. It will install the Teable skill and open the browser to complete Teable CLI authentication.",
-      "step3Title": "Try using Teable skill",
+      "step1Description": "Copy this prompt into your AI Agent. It will install the Mochi skill and open the browser to complete Mochi CLI authentication.",
+      "step3Title": "Try using Mochi skill",
       "step3Description": "After the skill is installed, try these prompts.",
       "tryPrompts": {
         "schema": {
@@ -360,15 +360,15 @@
         },
         "template": {
           "prompt": "Upload all invoices in this local folder to <Receipt Table> {paste table URL} and extract key fields.",
-          "note": "Local Files → Teable"
+          "note": "Local Files → Mochi"
         },
         "validate": {
           "prompt": "Import new GitHub issues into <Bug Tracker> {paste table URL}.",
-          "note": "Cross-Platform Data → Teable"
+          "note": "Cross-Platform Data → Mochi"
         },
         "trace": {
           "prompt": "Check <Task Table> {paste table URL} and mark overdue tasks.",
-          "note": "Clean Or Organize Teable Data"
+          "note": "Clean Or Organize Mochi Data"
         }
       }
     },
@@ -386,13 +386,13 @@
         "revoke": "Revoke",
         "owner": "Owner by {{user}}",
         "revokeTitle": "Are you sure you want to revoke authorization?",
-        "revokeDesc": "{{name}} will no longer be able to access the Teable API. You cannot undo this action.",
+        "revokeDesc": "{{name}} will no longer be able to access the Mochi API. You cannot undo this action.",
         "scopeTitle": "Permissions",
         "scopeDesc": "This application will be able to get the following scopes:"
       },
       "userIntegration": {
         "title": "Connected accounts",
-        "description": "Connect external accounts to authorize Teable to access and sync your resources.",
+        "description": "Connect external accounts to authorize Mochi to access and sync your resources.",
         "emptyDescription": "No connected accounts",
         "actions": {
           "reconnect": "Reconnect"
@@ -488,7 +488,7 @@
     "viewGroupingTooltipTitle": "Grouping records",
     "viewGroupingTooltipContent": "Group records by conditions to categorize and organize your dataset within a view.",
     "apiButtonTooltipTitle": "API",
-    "apiButtonTooltipContent": "Access Teable's powerful API with nearly all product features using an <a>Token</a>."
+    "apiButtonTooltipContent": "Access Mochi's powerful API with nearly all product features using an <a>Token</a>."
   },
   "token": "Token",
   "poweredBy": "Powered by <0></0>",
@@ -552,9 +552,9 @@
   },
   "help": {
     "title": "Help",
-    "appLink": "https://app.teable.ai",
-    "mainLink": "https://help.teable.ai/en",
-    "apiLink": "https://help.teable.ai/en/api-doc/token"
+    "appLink": "https://mochi-cli.com",
+    "mainLink": "https://mochi-cli.com",
+    "apiLink": "https://mochi-cli.com"
   },
   "pagePermissionChangeTip": "Page permissions have been updated. Refresh required.",
   "listEmptyTips": "The list is empty",
@@ -573,7 +573,7 @@
     "billableByAuthorityMatrix": "Billing generated by authority matrix",
     "licenseExpiredGracePeriod": "Your self-hosted license has expired and will downgrade to the free plan on {{expiredTime}}. Please update your license promptly to retain access to premium features.",
     "licenseAutoFetchFailed": "License auto-renewal failed. {{days}} day(s) remaining in grace period before downgrade.",
-    "licenseAutoFetchRetryFailed": "Auto-renewal still failed. Please check the connection to the Teable server, or update the license manually.",
+    "licenseAutoFetchRetryFailed": "Auto-renewal still failed. Please check the connection to the Mochi server, or update the license manually.",
     "licenseExpiredGracePeriodDays": "License has expired. {{days}} day(s) remaining in grace period before downgrade.",
     "spaceSubscriptionModal": {
       "title": "Upgrade space's subscription plan",
@@ -919,7 +919,7 @@
             "inaccessible": "Unavailable",
             "urlNotAccessibleWarning": "AI service cannot access attachment URLs. This is common for intranet deployments. Base64 mode has been auto-enabled.",
             "useBase64Mode": "Use Base64 Mode",
-            "base64ModeDescription": "Convert attachments to Base64 before sending (Teable cannot be accessed from the public network)",
+            "base64ModeDescription": "Convert attachments to Base64 before sending (Mochi cannot be accessed from the public network)",
             "originChanged": "PUBLIC_ORIGIN has changed",
             "originChangedDesc": "The server address has changed since the last test. Please re-test to verify attachment accessibility."
           },
@@ -986,8 +986,8 @@
       "goToConfiguration": "Go to configuration"
     },
     "tips": {
-      "thankYouForUsingTeable": "Thank you for using teable",
-      "pleaseGoToConfiguration": "Please go to the settings page to complete some initial configurations to enjoy the full functionality and a better user experience of teable",
+      "thankYouForUsingTeable": "Thank you for using Mochi",
+      "pleaseGoToConfiguration": "Please go to the settings page to complete some initial configurations to enjoy the full functionality and a better Mochi experience",
       "pleaseContactAdmin": "Please contact the administrator"
     },
     "configuration": {
@@ -1016,7 +1016,7 @@
         "databaseProxy": {
           "title": "PUBLIC_DATABASE_PROXY environment variable",
           "description": "The <strong>PUBLIC_DATABASE_PROXY</strong> is not configured, the external database connection feature will not be available, please refer to the <a>help document</a>",
-          "href": "https://help.teable.ai/en/deploy/database-connection#enable-external-database-connection"
+          "href": "https://mochi-cli.com/deploy/database-connection#enable-external-database-connection"
         },
         "llmApi": {
           "title": "LLM API",
@@ -1180,9 +1180,9 @@
     "sourceApiSend": "API send email",
     "processing": "Processing...",
     "unsubscribeH1": "Confirm unsubscribe?",
-    "unsubscribeH2": "You're about to unsubscribe from future Teable promotions and product updates. Are you sure you want to unsubscribe?",
+    "unsubscribeH2": "You're about to unsubscribe from future Mochi promotions and product updates. Are you sure you want to unsubscribe?",
     "subscribeH1": "Confirm subscribe?",
-    "subscribeH2": "You're about to subscribe from future Teable promotions and product updates. Are you sure you want to subscribe?",
+    "subscribeH2": "You're about to subscribe from future Mochi promotions and product updates. Are you sure you want to subscribe?",
     "unsubscribeListTip": "The following users in the current base have unsubscribed, you will no longer be able to send them emails. When importing emails, please place the email addresses in the first column, and name the header \"email\".",
     "templates": {
       "resetPassword": {
@@ -1415,7 +1415,7 @@
       "title": "Share a positive review to earn",
       "freeCredits": "1000 free credits",
       "guidelinesTitle": "Sharing checklist",
-      "tagTeableio": "Tag <bold>@teableio</bold>",
+      "tagTeableio": "Tag <bold>@mochi-cli</bold>",
       "minCharacters": "Write  <bold>80+</bold> characters review",
       "minFollowers": "Have <bold>10+</bold> followers",
       "limitPerWeek": "500 credits per post, up to 2 posts weekly (X + LinkedIn)",
@@ -1654,7 +1654,7 @@
   "changelog": {
     "newUpdate": "JUL 15 UPDATE",
     "title": "AI Memory and File Downloads",
-    "url": "https://help.teable.ai/en/changelog#jul-15-2026",
+    "url": "https://mochi-cli.com/changelog#jul-15-2026",
     "id": "changelog-2026-07-15-ai-memory-and-file-downloads"
   },
   "resourceDescription": {

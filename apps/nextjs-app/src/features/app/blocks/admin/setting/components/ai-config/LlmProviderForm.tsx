@@ -66,7 +66,7 @@ import { testImageModelCapability, TEXT_MODEL_TIMEOUT_MS, withTimeout } from './
 import { useGatewayModelsQuery } from './useGatewayModelsQuery';
 import { generateByokProviderName } from './utils';
 
-const CUSTOM_MODEL_DOC_URL = 'https://help.teable.ai/en/basic/ai/custom-model';
+const CUSTOM_MODEL_DOC_URL = 'https://mochi-cli.com';
 
 interface TestResult {
   success: boolean;

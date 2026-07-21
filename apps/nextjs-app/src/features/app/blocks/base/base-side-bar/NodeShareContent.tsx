@@ -40,7 +40,7 @@ import { BaseShareContent } from './BaseShareContent';
 import { useBaseSharePermissionOptions } from './useBaseSharePermissionOptions';
 
 export const getShareUrl = (shareId: string) => {
-  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://app.teable.ai';
+  const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost';
   return `${origin}/share/${shareId}/base`;
 };
 

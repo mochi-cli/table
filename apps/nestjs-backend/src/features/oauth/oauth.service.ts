@@ -385,7 +385,7 @@ export class OAuthService {
         createdUser:
           userMap[c.createdBy] ??
           (c.createdBy === 'system'
-            ? { name: 'System', email: 'system@teable.ai' }
+            ? { name: 'System', email: 'system@mochi-cli.com' }
             : { name: 'Unknown', email: '' }),
       })
     );

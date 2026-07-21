@@ -45,7 +45,7 @@ const getShareUrl = ({
   theme?: string;
   hideToolBar?: boolean;
 }) => {
-  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://app.teable.ai';
+  const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost';
   const url = new URL(`/share/${shareId}/view`, origin);
   if (theme && theme !== 'system') {
     url.searchParams.append('theme', theme);

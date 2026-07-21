@@ -12,12 +12,12 @@ export const mailConfig = registerAs('mail', () => {
   const isConfigured = Boolean(host && authUser && authPass);
 
   return {
-    origin: process.env.PUBLIC_ORIGIN ?? 'https://teable.ai',
+    origin: process.env.PUBLIC_ORIGIN ?? 'https://mochi-cli.com',
     host: host ?? 'smtp.teable.ai',
     port: parseInt(process.env.BACKEND_MAIL_PORT ?? '465', 10),
     secure: Object.is(process.env.BACKEND_MAIL_SECURE ?? 'true', 'true'),
-    sender: process.env.BACKEND_MAIL_SENDER ?? 'noreply.teable.ai',
-    senderName: process.env.BACKEND_MAIL_SENDER_NAME ?? 'Teable',
+    sender: process.env.BACKEND_MAIL_SENDER ?? 'noreply@mochi-cli.com',
+    senderName: process.env.BACKEND_MAIL_SENDER_NAME ?? 'Mochi',
     auth: {
       user: authUser,
       pass: authPass,

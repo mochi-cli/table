@@ -1,7 +1,6 @@
-import { Trash, TeableNew } from '@teable/icons';
+import { Trash } from '@teable/icons';
 import { Button, cn, Progress } from '@teable/ui-lib';
 import { filesize } from 'filesize';
-import { renderToString } from 'react-dom/server';
 
 interface IFileItemProps {
   file: File;
@@ -13,14 +12,12 @@ export const Process = (props: IFileItemProps) => {
   const { file, onClose, process } = props;
   const { name, size } = file;
 
-  const teaIcon = 'data:image/svg+xml,' + encodeURIComponent(renderToString(TeableNew({})));
-
   return (
     <>
       <div className="max-w-100 group relative flex flex-col items-center gap-4 rounded-lg border px-6 py-8 text-sm">
         <img
           className="size-24 rounded-lg border bg-secondary object-contain p-4"
-          src={teaIcon}
+          src="/images/mochi/logo-icon.svg"
           alt={name}
         />
         <div className="flex flex-col items-center gap-2 text-center">

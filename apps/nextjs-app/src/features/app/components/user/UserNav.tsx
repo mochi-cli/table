@@ -63,11 +63,7 @@ export const UserNav: React.FC<React.PropsWithChildren> = (props) => {
           </a>
         </DropdownMenuItem>
         <DropdownMenuItem className="flex gap-2" asChild>
-          <a
-            href="https://app.teable.ai/share/shrX1qxpciRUj1Jww2b/view"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
+          <a href="https://mochi-cli.com" target="_blank" rel="noopener noreferrer">
             <MessageSquare className="size-4 shrink-0" />
             {t('settings.nav.contactSupport')}
           </a>

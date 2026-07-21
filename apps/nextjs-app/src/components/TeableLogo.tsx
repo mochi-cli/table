@@ -1,17 +1,14 @@
-import { TeableNew } from '@teable/icons';
 import { cn } from '@teable/ui-lib/shadcn';
 import { useBrand } from '@/features/app/hooks/useBrand';
+
+const MOCHI_LOGO_ICON = '/images/mochi/logo-icon.svg';
 
 export const TeableLogo = ({ className }: { className: string }) => {
   const { brandName, brandLogo } = useBrand();
 
-  if (!brandLogo) {
-    return <TeableNew className={cn('text-black', className)} />;
-  }
-
   return (
     <img
-      src={brandLogo}
+      src={brandLogo || MOCHI_LOGO_ICON}
       alt={brandName}
       width={64}
       height={64}

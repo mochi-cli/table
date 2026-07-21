@@ -39,7 +39,7 @@ function getCookie(name: string): string | null {
 function hasAdConsent(): boolean {
   if (typeof window === 'undefined') return false;
 
-  const CONSENT_COOKIE_NAME = 'teable_consent';
+  const CONSENT_COOKIE_NAME = 'mochi_consent';
   const savedConsent = getCookie(CONSENT_COOKIE_NAME);
 
   if (!savedConsent) {
