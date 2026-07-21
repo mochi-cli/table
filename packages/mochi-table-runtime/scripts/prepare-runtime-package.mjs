@@ -20,6 +20,44 @@ const copyDir = (from, to) => {
   fs.cpSync(from, to, { recursive: true });
 };
 
+const packageCopyFilter = (packageRoot, source) => {
+  if (source === packageRoot) return true;
+  const relativePath = path.relative(packageRoot, source);
+  const parts = relativePath.split(path.sep);
+  const basename = path.basename(source);
+
+  if (
+    parts.includes('node_modules') ||
+    parts.includes('.git') ||
+    parts.includes('.idea') ||
+    parts.includes('.turbo') ||
+    parts.includes('.cache') ||
+    parts.includes('coverage') ||
+    parts.includes('__tests__') ||
+    parts.includes('__mocks__') ||
+    parts.includes('test') ||
+    parts.includes('tests') ||
+    parts.includes('docs') ||
+    parts.includes('examples') ||
+    parts.includes('example')
+  ) {
+    return false;
+  }
+
+  if (
+    basename.endsWith('.map') ||
+    basename.endsWith('.tsbuildinfo') ||
+    basename === '.eslintcache' ||
+    basename === 'pnpm-lock.yaml' ||
+    basename === 'yarn.lock' ||
+    basename === 'package-lock.json'
+  ) {
+    return false;
+  }
+
+  return true;
+};
+
 const readJson = (filePath) => JSON.parse(fs.readFileSync(filePath, 'utf8'));
 
 const packageTargetPath = (nodeModulesRoot, packageName) => {
@@ -102,7 +140,7 @@ const copyFrontendDependencyClosure = (frontendRoot) => {
     fs.cpSync(sourceDir, targetDir, {
       recursive: true,
       dereference: true,
-      filter: (source) => !source.includes(`${path.sep}.cache${path.sep}`),
+      filter: (source) => packageCopyFilter(sourceDir, source),
     });
   }
 };
