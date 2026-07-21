@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(dirname, '..');
@@ -338,6 +338,47 @@ const copyFrontendDependencyClosure = (frontendRoot) => {
   }
 };
 
+const copyLatestRadixPackages = (frontendRoot) => {
+  const radixRoot = path.join(frontendRoot, 'node_modules', '@radix-ui');
+  if (!fs.existsSync(radixRoot)) return;
+
+  const queue = fs
+    .readdirSync(radixRoot, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && !/-[a-f0-9]{16}$/.test(entry.name))
+    .map((entry) => `@radix-ui/${entry.name}`);
+  const seen = new Set();
+
+  while (queue.length) {
+    const packageName = queue.shift();
+    if (seen.has(packageName)) continue;
+    seen.add(packageName);
+
+    const [latestPackageDir] = findPnpmPackageDirs(packageName);
+    if (!latestPackageDir) continue;
+
+    const targetDir = packageTargetPath(path.join(frontendRoot, 'node_modules'), packageName);
+    fs.rmSync(targetDir, { recursive: true, force: true });
+    fs.mkdirSync(path.dirname(targetDir), { recursive: true });
+    fs.cpSync(latestPackageDir.packageDir, targetDir, {
+      recursive: true,
+      dereference: true,
+      filter: (source) => packageCopyFilter(latestPackageDir.packageDir, source),
+    });
+
+    const packageJson = readJson(path.join(targetDir, 'package.json'));
+    const dependencies = {
+      ...packageJson.dependencies,
+      ...packageJson.optionalDependencies,
+      ...packageJson.peerDependencies,
+    };
+    for (const dependencyName of Object.keys(dependencies)) {
+      if (dependencyName.startsWith('@radix-ui/') && !seen.has(dependencyName)) {
+        queue.push(dependencyName);
+      }
+    }
+  }
+};
+
 const assertFrontendModules = (frontendRoot) => {
   const frontendNodeModules = path.join(frontendRoot, 'node_modules');
   const requiredEntries = {
@@ -353,6 +394,43 @@ const assertFrontendModules = (frontendRoot) => {
     .map(([packageName]) => packageName);
   if (missing.length) {
     throw new Error(`Frontend runtime is missing dependencies: ${missing.join(', ')}`);
+  }
+};
+
+const assertHashedRadixExternalImports = async (frontendRoot) => {
+  const { packages: hashedPackages } = collectHashedExternalReferences(frontendRoot);
+  const failures = [];
+
+  for (const hashedPackageName of hashedPackages) {
+    if (!hashedPackageName.startsWith('@radix-ui/')) continue;
+
+    const packageDir = packageTargetPath(
+      path.join(frontendRoot, 'node_modules'),
+      hashedPackageName
+    );
+    const packageJsonPath = path.join(packageDir, 'package.json');
+    if (!fs.existsSync(packageJsonPath)) continue;
+
+    const packageJson = readJson(packageJsonPath);
+    const moduleEntry =
+      packageJson.exports?.['.']?.import?.default ??
+      packageJson.exports?.['.']?.import ??
+      packageJson.module;
+    if (!moduleEntry) continue;
+
+    try {
+      await import(pathToFileURL(path.join(packageDir, moduleEntry)).href);
+    } catch (error) {
+      failures.push(`${hashedPackageName}: ${error.message}`);
+    }
+  }
+
+  if (failures.length) {
+    throw new Error(
+      `Frontend runtime has invalid Radix hashed external imports:\n${failures
+        .map((failure) => `- ${failure}`)
+        .join('\n')}`
+    );
   }
 };
 
@@ -378,8 +456,10 @@ copyDir(path.join(backendDist, 'mochi-sqlite'), path.join(runtimeRoot, 'mochi-sq
 copyDir(sqlitePackage, path.join(runtimeRoot, 'mochi-sqlite-source'));
 copyDir(frontendStandalone, path.join(runtimeRoot, 'frontend'));
 copyFrontendDependencyClosure(path.join(runtimeRoot, 'frontend'));
+copyLatestRadixPackages(path.join(runtimeRoot, 'frontend'));
 copyHashedExternalAliases(path.join(runtimeRoot, 'frontend'));
 assertHashedExternalAliases(path.join(runtimeRoot, 'frontend'));
+await assertHashedRadixExternalImports(path.join(runtimeRoot, 'frontend'));
 
 const standaloneAppDir = path.join(runtimeRoot, 'frontend', 'apps', 'nextjs-app');
 fs.mkdirSync(path.join(standaloneAppDir, '.next'), { recursive: true });
