@@ -62,6 +62,14 @@ const packageCopyFilter = (packageRoot, source) => {
 
 const readJson = (filePath) => JSON.parse(fs.readFileSync(filePath, 'utf8'));
 
+const escapeNonAscii = (value) =>
+  value.replace(/[^\x00-\x7F]/g, (character) =>
+    character
+      .split('')
+      .map((unit) => `\\u${unit.charCodeAt(0).toString(16).padStart(4, '0')}`)
+      .join('')
+  );
+
 const packageTargetPath = (nodeModulesRoot, packageName) => {
   const parts = packageName.split('/');
   return path.join(nodeModulesRoot, ...parts);
@@ -379,6 +387,95 @@ const copyLatestRadixPackages = (frontendRoot) => {
   }
 };
 
+const copyLatestDependencyClosure = (frontendRoot, packageNames) => {
+  const frontendNodeModules = path.join(frontendRoot, 'node_modules');
+  const queue = [...packageNames];
+  const seen = new Set();
+
+  while (queue.length) {
+    const packageName = queue.shift();
+    if (seen.has(packageName)) continue;
+    seen.add(packageName);
+
+    const [latestPackageDir] = findPnpmPackageDirs(packageName);
+    if (!latestPackageDir) continue;
+
+    const targetDir = packageTargetPath(frontendNodeModules, packageName);
+    fs.rmSync(targetDir, { recursive: true, force: true });
+    fs.mkdirSync(path.dirname(targetDir), { recursive: true });
+    fs.cpSync(latestPackageDir.packageDir, targetDir, {
+      recursive: true,
+      dereference: true,
+      filter: (source) => packageCopyFilter(latestPackageDir.packageDir, source),
+    });
+
+    const packageJson = readJson(path.join(targetDir, 'package.json'));
+    const dependencies = {
+      ...packageJson.dependencies,
+      ...packageJson.optionalDependencies,
+      ...packageJson.peerDependencies,
+    };
+    for (const dependencyName of Object.keys(dependencies)) {
+      if (!seen.has(dependencyName) && findPnpmPackageDirs(dependencyName).length) {
+        queue.push(dependencyName);
+      }
+    }
+  }
+};
+
+const patchJsonOnlyEntityPackage = (frontendRoot, packageName, exportName) => {
+  const packageDir = packageTargetPath(path.join(frontendRoot, 'node_modules'), packageName);
+  const packageJsonPath = path.join(packageDir, 'package.json');
+  const jsonPath = path.join(packageDir, 'index.json');
+  if (!fs.existsSync(packageJsonPath) || !fs.existsSync(jsonPath)) return;
+
+  const dataLiteral = escapeNonAscii(JSON.stringify(readJson(jsonPath)));
+  fs.writeFileSync(
+    path.join(packageDir, 'index.js'),
+    `export const ${exportName} = ${dataLiteral};\nexport default ${exportName};\n`
+  );
+  fs.writeFileSync(
+    path.join(packageDir, 'index.cjs'),
+    `const ${exportName} = ${dataLiteral};\nmodule.exports = ${exportName};\nmodule.exports.${exportName} = ${exportName};\nmodule.exports.default = ${exportName};\n`
+  );
+
+  const packageJson = readJson(packageJsonPath);
+  fs.writeFileSync(
+    packageJsonPath,
+    `${JSON.stringify(
+      {
+        ...packageJson,
+        type: 'module',
+        main: 'index.cjs',
+        module: 'index.js',
+        exports: {
+          '.': {
+            import: './index.js',
+            require: './index.cjs',
+            default: './index.js',
+          },
+          './index.js': './index.js',
+          './index.cjs': './index.cjs',
+          './index.json': {
+            import: './index.js',
+            require: './index.cjs',
+            default: './index.js',
+          },
+          './package.json': './package.json',
+        },
+        files: [...new Set([...(packageJson.files ?? []), 'index.js', 'index.cjs'])],
+      },
+      null,
+      2
+    )}\n`
+  );
+};
+
+const patchJsonOnlyEntityPackages = (frontendRoot) => {
+  patchJsonOnlyEntityPackage(frontendRoot, 'character-entities', 'characterEntities');
+  patchJsonOnlyEntityPackage(frontendRoot, 'character-entities-legacy', 'characterEntitiesLegacy');
+};
+
 const assertFrontendModules = (frontendRoot) => {
   const frontendNodeModules = path.join(frontendRoot, 'node_modules');
   const requiredEntries = {
@@ -434,6 +531,43 @@ const assertHashedRadixExternalImports = async (frontendRoot) => {
   }
 };
 
+const assertHashedMilkdownExternalImports = async (frontendRoot) => {
+  const { packages: hashedPackages } = collectHashedExternalReferences(frontendRoot);
+  const failures = [];
+
+  for (const hashedPackageName of hashedPackages) {
+    if (!hashedPackageName.startsWith('@milkdown/')) continue;
+
+    const packageDir = packageTargetPath(
+      path.join(frontendRoot, 'node_modules'),
+      hashedPackageName
+    );
+    const packageJsonPath = path.join(packageDir, 'package.json');
+    if (!fs.existsSync(packageJsonPath)) continue;
+
+    const packageJson = readJson(packageJsonPath);
+    const moduleEntry =
+      packageJson.exports?.['.']?.import?.default ??
+      packageJson.exports?.['.']?.import ??
+      packageJson.module;
+    if (!moduleEntry) continue;
+
+    try {
+      await import(pathToFileURL(path.join(packageDir, moduleEntry)).href);
+    } catch (error) {
+      failures.push(`${hashedPackageName}: ${error.message}`);
+    }
+  }
+
+  if (failures.length) {
+    throw new Error(
+      `Frontend runtime has invalid Milkdown hashed external imports:\n${failures
+        .map((failure) => `- ${failure}`)
+        .join('\n')}`
+    );
+  }
+};
+
 fs.rmSync(runtimeRoot, { recursive: true, force: true });
 fs.mkdirSync(runtimeRoot, { recursive: true });
 
@@ -457,9 +591,12 @@ copyDir(sqlitePackage, path.join(runtimeRoot, 'mochi-sqlite-source'));
 copyDir(frontendStandalone, path.join(runtimeRoot, 'frontend'));
 copyFrontendDependencyClosure(path.join(runtimeRoot, 'frontend'));
 copyLatestRadixPackages(path.join(runtimeRoot, 'frontend'));
+copyLatestDependencyClosure(path.join(runtimeRoot, 'frontend'), ['mdast-util-from-markdown']);
+patchJsonOnlyEntityPackages(path.join(runtimeRoot, 'frontend'));
 copyHashedExternalAliases(path.join(runtimeRoot, 'frontend'));
 assertHashedExternalAliases(path.join(runtimeRoot, 'frontend'));
 await assertHashedRadixExternalImports(path.join(runtimeRoot, 'frontend'));
+await assertHashedMilkdownExternalImports(path.join(runtimeRoot, 'frontend'));
 
 const standaloneAppDir = path.join(runtimeRoot, 'frontend', 'apps', 'nextjs-app');
 fs.mkdirSync(path.join(standaloneAppDir, '.next'), { recursive: true });
