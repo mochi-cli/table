@@ -1,40 +1,19 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Res } from '@nestjs/common';
-import type { IFieldVo, IRecord, IViewVo } from '@teable/core';
+import {
+  CellValueType,
+  DbFieldType,
+  FieldType,
+  Relationship,
+  ViewType,
+  getDbFieldType,
+  type IAttachmentItem,
+  type IFieldVo,
+  type IRecord,
+  type IViewVo,
+} from '@teable/core';
 import type { Response } from 'express';
 import { Public } from '../auth/decorators/public.decorator';
 import { MochiSqliteService } from './mochi-sqlite.service';
-
-const CellValueType = {
-  String: 'string',
-  Number: 'number',
-  Boolean: 'boolean',
-  DateTime: 'dateTime',
-} as const;
-
-type CellValueType = (typeof CellValueType)[keyof typeof CellValueType];
-
-const DbFieldType = {
-  Text: 'TEXT',
-  DateTime: 'DATETIME',
-  Real: 'REAL',
-  Boolean: 'BOOLEAN',
-} as const;
-
-const FieldType = {
-  SingleLineText: 'singleLineText',
-  Attachment: 'attachment',
-  Checkbox: 'checkbox',
-  Date: 'date',
-  MultipleSelect: 'multipleSelect',
-  Number: 'number',
-  SingleSelect: 'singleSelect',
-} as const;
-
-const ViewType = {
-  Grid: 'grid',
-} as const;
-
-type FieldTypeValue = (typeof FieldType)[keyof typeof FieldType];
 type FieldKeyType = string;
 
 const parseJsonQuery = <T>(value: unknown, fallback: T): T => {
@@ -134,6 +113,11 @@ type CreateRecordsBody = {
   order?: unknown;
 };
 
+type InsertAttachmentBody = {
+  attachments?: IAttachmentItem[];
+  anchorId?: string;
+};
+
 type FieldBody = {
   name?: string;
   description?: string;
@@ -182,6 +166,13 @@ type SelectionIdBody = {
 type PasteByIdBody = SelectionIdBody & {
   content?: string | unknown[][];
   header?: unknown[];
+};
+
+type UndoRedoMode = 'undo' | 'redo';
+
+type UndoRedoResponse = {
+  status: 'fulfilled' | 'failed' | 'empty';
+  errorMessage?: string;
 };
 
 type RangeBody = {
@@ -279,11 +270,56 @@ const normalizeCellValueType = (cellValueType?: string): CellValueType => {
   return CellValueType.String;
 };
 
-const defaultCellValueTypeFor = (type?: string) => {
-  if (type === FieldType.Number || type === 'number') return CellValueType.Number;
-  if (type === FieldType.Checkbox || type === 'checkbox') return CellValueType.Boolean;
-  if (type === FieldType.Date || type === 'date') return CellValueType.DateTime;
-  return CellValueType.String;
+const normalizeFieldType = (type?: string): FieldType =>
+  Object.values(FieldType).includes(type as FieldType)
+    ? (type as FieldType)
+    : FieldType.SingleLineText;
+
+const defaultCellValueTypeFor = (type?: string): CellValueType => {
+  switch (normalizeFieldType(type)) {
+    case FieldType.Number:
+    case FieldType.Rating:
+    case FieldType.AutoNumber:
+      return CellValueType.Number;
+    case FieldType.Checkbox:
+      return CellValueType.Boolean;
+    case FieldType.Date:
+    case FieldType.CreatedTime:
+    case FieldType.LastModifiedTime:
+      return CellValueType.DateTime;
+    default:
+      return CellValueType.String;
+  }
+};
+
+const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+
+const isMultipleCellValueFor = (type: FieldType, options: unknown): boolean => {
+  if (type === FieldType.MultipleSelect || type === FieldType.Attachment) return true;
+  if (!isObjectRecord(options)) return false;
+  if (type === FieldType.User) return options.isMultiple === true;
+  if (type === FieldType.Link) {
+    return (
+      options.relationship === Relationship.ManyMany ||
+      options.relationship === Relationship.OneMany
+    );
+  }
+  return false;
+};
+
+const getFieldMetadata = (field: LocalField) => {
+  const type = normalizeFieldType(field.type);
+  const cellValueType = field.cell_value_type
+    ? normalizeCellValueType(field.cell_value_type)
+    : defaultCellValueTypeFor(type);
+  const isMultipleCellValue = isMultipleCellValueFor(type, field.options);
+  return {
+    type,
+    cellValueType,
+    isMultipleCellValue,
+    dbFieldType: getDbFieldType(type, cellValueType, isMultipleCellValue),
+  };
 };
 
 const emptyFieldPlan = (): FieldPlan => ({
@@ -292,20 +328,6 @@ const emptyFieldPlan = (): FieldPlan => ({
   updateCellCount: 0,
   linkFieldCount: 0,
 });
-
-const dbFieldTypeFor = (cellValueType: CellValueType) => {
-  switch (cellValueType) {
-    case CellValueType.Number:
-      return DbFieldType.Real;
-    case CellValueType.Boolean:
-      return DbFieldType.Boolean;
-    case CellValueType.DateTime:
-      return DbFieldType.DateTime;
-    case CellValueType.String:
-    default:
-      return DbFieldType.Text;
-  }
-};
 
 const defaultOptionsFor = (type: string) => {
   if (type === FieldType.SingleSelect || type === FieldType.MultipleSelect) return { choices: [] };
@@ -344,16 +366,13 @@ const normalizeFieldOptions = (type: string, options: unknown): IFieldVo['option
 
 const toTeableField = (field: LocalField | null | undefined): IFieldVo | null => {
   if (!field) return null;
-  const type = Object.values(FieldType).includes(field.type as FieldTypeValue)
-    ? (field.type as FieldTypeValue)
-    : FieldType.SingleLineText;
-  const cellValueType = normalizeCellValueType(field.cell_value_type);
+  const { type, cellValueType, isMultipleCellValue, dbFieldType } = getFieldMetadata(field);
 
   return {
     id: field.id,
     name: field.name,
     description: field.description ?? undefined,
-    type: type as IFieldVo['type'],
+    type,
     options: normalizeFieldOptions(type, field.options),
     meta: field.meta as IFieldVo['meta'],
     aiConfig: field.aiConfig as IFieldVo['aiConfig'],
@@ -362,9 +381,9 @@ const toTeableField = (field: LocalField | null | undefined): IFieldVo | null =>
     isLookup: toBool(field.is_lookup),
     notNull: toBool(field.not_null),
     unique: toBool(field.unique_value),
-    cellValueType: cellValueType as IFieldVo['cellValueType'],
-    isMultipleCellValue: type === FieldType.MultipleSelect || type === FieldType.Attachment,
-    dbFieldType: dbFieldTypeFor(cellValueType) as IFieldVo['dbFieldType'],
+    cellValueType,
+    isMultipleCellValue,
+    dbFieldType,
     dbFieldName: field.id.replace(/\W/g, '_').slice(0, 63),
     recordRead: true,
     recordCreate: true,
@@ -429,6 +448,28 @@ const toTeableRecord = (record: LocalRecord | null | undefined): IRecord | null 
   };
 };
 
+const getAttachmentId = (attachment: unknown) =>
+  isObjectRecord(attachment) && typeof attachment.id === 'string' ? attachment.id : undefined;
+
+const insertAttachmentsAtAnchor = (
+  currentValue: unknown,
+  attachments: IAttachmentItem[],
+  anchorId?: string
+) => {
+  const current = Array.isArray(currentValue) ? [...currentValue] : [];
+  if (!attachments.length) return current;
+
+  const anchorIndex = anchorId
+    ? current.findIndex((attachment) => getAttachmentId(attachment) === anchorId)
+    : -1;
+  const insertIndex = anchorIndex >= 0 ? anchorIndex + 1 : current.length;
+  return [
+    ...current.slice(0, insertIndex),
+    ...attachments,
+    ...current.slice(insertIndex),
+  ] as IAttachmentItem[];
+};
+
 const toRecordHistoryVo = (history: {
   rows: unknown[];
   nextCursor: string | null;
@@ -479,6 +520,56 @@ export class MochiTeableApiController {
   private finishSelectionStream(response: Response) {
     if (!response.writableEnded && !response.destroyed) {
       response.end();
+    }
+  }
+
+  private runUndoRedo(tableId: string, mode: UndoRedoMode): UndoRedoResponse {
+    try {
+      const batch =
+        mode === 'undo'
+          ? this.mochiSqliteService.undo(tableId)
+          : this.mochiSqliteService.redo(tableId);
+      return { status: batch ? 'fulfilled' : 'empty' };
+    } catch (error) {
+      return {
+        status: 'failed',
+        errorMessage: error instanceof Error ? error.message : `${mode} failed`,
+      };
+    }
+  }
+
+  private streamUndoRedo(tableId: string, mode: UndoRedoMode, response: Response) {
+    this.prepareSelectionStream(response);
+    try {
+      this.sendSelectionStreamEvent(response, {
+        id: 'progress',
+        mode,
+        phase: 'preparing',
+        totalCount: 1,
+        processedCount: 0,
+        engine: 'v1',
+      });
+
+      const result = this.runUndoRedo(tableId, mode);
+
+      if (result.status === 'failed') {
+        this.sendSelectionStreamEvent(response, {
+          id: 'error',
+          mode,
+          message: result.errorMessage ?? `${mode} failed`,
+          engine: 'v1',
+        });
+        return;
+      }
+
+      this.sendSelectionStreamEvent(response, {
+        id: 'done',
+        mode,
+        status: result.status,
+        engine: 'v1',
+      });
+    } finally {
+      this.finishSelectionStream(response);
     }
   }
 
@@ -775,7 +866,7 @@ export class MochiTeableApiController {
 
   @Post(':tableId/field')
   createField(@Param('tableId') tableId: string, @Body() body: FieldBody): IFieldVo | null {
-    const type = body.type ?? FieldType.SingleLineText;
+    const type = normalizeFieldType(body.type);
     const created = this.mochiSqliteService.createField({
       tableId,
       name: body.name ?? 'New field',
@@ -854,9 +945,11 @@ export class MochiTeableApiController {
 
   @Put(':tableId/field/:fieldId/convert')
   convertField(@Param('fieldId') fieldId: string, @Body() body: FieldBody): IFieldVo | null {
+    const type = normalizeFieldType(body.type);
     const updated = this.mochiSqliteService.updateField(fieldId, {
       ...body,
-      cellValueType: body.cellValueType ?? defaultCellValueTypeFor(body.type),
+      type,
+      cellValueType: body.cellValueType ?? defaultCellValueTypeFor(type),
     }) as LocalField | null;
     return toTeableField(updated);
   }
@@ -1016,6 +1109,34 @@ export class MochiTeableApiController {
     return toTeableRecord(updated);
   }
 
+  @Post(':tableId/record/:recordId/:fieldId/insertAttachment')
+  insertAttachment(
+    @Param('tableId') tableId: string,
+    @Param('recordId') recordId: string,
+    @Param('fieldId') fieldId: string,
+    @Body() body: InsertAttachmentBody = {}
+  ): IRecord | null {
+    const record = this.mochiSqliteService.getRecord(recordId) as LocalRecord | null;
+    if (!record) return null;
+
+    const attachments = Array.isArray(body.attachments) ? body.attachments : [];
+    const nextValue = insertAttachmentsAtAnchor(
+      record.fields?.[fieldId],
+      attachments,
+      body.anchorId
+    );
+    const updated = this.mochiSqliteService.updateRecord(
+      recordId,
+      {
+        fields: {
+          [fieldId]: nextValue,
+        },
+      },
+      tableId
+    ) as LocalRecord | null;
+    return toTeableRecord(updated);
+  }
+
   @Delete(':tableId/record/:recordId')
   deleteRecord(
     @Param('tableId') tableId: string,
@@ -1023,6 +1144,26 @@ export class MochiTeableApiController {
   ): IRecord | null {
     const deleted = this.mochiSqliteService.deleteRecord(recordId, tableId) as LocalRecord | null;
     return toTeableRecord(deleted);
+  }
+
+  @Post(':tableId/undo-redo/undo')
+  undo(@Param('tableId') tableId: string): UndoRedoResponse {
+    return this.runUndoRedo(tableId, 'undo');
+  }
+
+  @Post(':tableId/undo-redo/redo')
+  redo(@Param('tableId') tableId: string): UndoRedoResponse {
+    return this.runUndoRedo(tableId, 'redo');
+  }
+
+  @Post(':tableId/undo-redo/undo-stream')
+  undoStream(@Param('tableId') tableId: string, @Res() response: Response): void {
+    this.streamUndoRedo(tableId, 'undo', response);
+  }
+
+  @Post(':tableId/undo-redo/redo-stream')
+  redoStream(@Param('tableId') tableId: string, @Res() response: Response): void {
+    this.streamUndoRedo(tableId, 'redo', response);
   }
 
   @Get(':tableId/selection/range-to-id')

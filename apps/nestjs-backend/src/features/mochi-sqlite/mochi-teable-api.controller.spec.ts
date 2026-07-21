@@ -63,6 +63,8 @@ const createService = () =>
     getRecord: vi.fn((id) => ({ id, auto_number: 1, fields: { fld_1: 'Alice' } })),
     updateRecord: vi.fn((id, patch) => ({ id, auto_number: 1, fields: patch.fields ?? {} })),
     deleteRecord: vi.fn((id) => ({ id, fields: {} })),
+    undo: vi.fn(() => ({ id: 'opb_undo' })),
+    redo: vi.fn(() => ({ id: 'opb_redo' })),
   }) as unknown as MochiSqliteService;
 
 const createStreamResponse = () => {
@@ -118,6 +120,88 @@ describe('MochiTeableApiController', () => {
     );
   });
 
+  it.each([
+    ['singleLineText', undefined, 'string', 'TEXT', false],
+    ['longText', undefined, 'string', 'TEXT', false],
+    ['user', undefined, 'string', 'JSON', false],
+    ['user', { isMultiple: true }, 'string', 'JSON', true],
+    ['attachment', undefined, 'string', 'JSON', true],
+    ['checkbox', undefined, 'boolean', 'BOOLEAN', false],
+    ['multipleSelect', undefined, 'string', 'JSON', true],
+    ['singleSelect', undefined, 'string', 'TEXT', false],
+    ['date', undefined, 'dateTime', 'DATETIME', false],
+    ['number', undefined, 'number', 'REAL', false],
+    ['rating', undefined, 'number', 'REAL', false],
+    ['formula', undefined, 'string', 'TEXT', false],
+    ['rollup', undefined, 'string', 'TEXT', false],
+    ['conditionalRollup', undefined, 'string', 'TEXT', false],
+    ['link', undefined, 'string', 'JSON', false],
+    ['link', { relationship: 'manyMany' }, 'string', 'JSON', true],
+    ['link', { relationship: 'oneMany' }, 'string', 'JSON', true],
+    ['createdTime', undefined, 'dateTime', 'DATETIME', false],
+    ['lastModifiedTime', undefined, 'dateTime', 'DATETIME', false],
+    ['createdBy', undefined, 'string', 'JSON', false],
+    ['lastModifiedBy', undefined, 'string', 'JSON', false],
+    ['autoNumber', undefined, 'number', 'INTEGER', false],
+    ['button', undefined, 'string', 'JSON', false],
+  ])(
+    'maps %s field metadata to the expected Teable contract',
+    (type, options, cellValueType, dbFieldType, isMultipleCellValue) => {
+      const service = createService();
+      vi.mocked(service.listFields).mockReturnValue([
+        {
+          id: 'fld_meta',
+          name: String(type),
+          type,
+          options,
+        },
+      ]);
+      const controller = new MochiTeableApiController(service);
+
+      expect(controller.listFields('tbl_1')[0]).toMatchObject({
+        type,
+        cellValueType,
+        dbFieldType,
+        isMultipleCellValue,
+      });
+    }
+  );
+
+  it.each([
+    ['singleLineText', 'string'],
+    ['longText', 'string'],
+    ['user', 'string'],
+    ['attachment', 'string'],
+    ['checkbox', 'boolean'],
+    ['multipleSelect', 'string'],
+    ['singleSelect', 'string'],
+    ['date', 'dateTime'],
+    ['number', 'number'],
+    ['rating', 'number'],
+    ['formula', 'string'],
+    ['rollup', 'string'],
+    ['conditionalRollup', 'string'],
+    ['link', 'string'],
+    ['createdTime', 'dateTime'],
+    ['lastModifiedTime', 'dateTime'],
+    ['createdBy', 'string'],
+    ['lastModifiedBy', 'string'],
+    ['autoNumber', 'number'],
+    ['button', 'string'],
+  ])('creates %s fields with default cellValueType=%s', (type, cellValueType) => {
+    const service = createService();
+    const controller = new MochiTeableApiController(service);
+
+    controller.createField('tbl_1', { type, name: String(type) });
+
+    expect(service.createField).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type,
+        cellValueType,
+      })
+    );
+  });
+
   it('routes write operations to SQLite service with Teable request shapes', () => {
     const service = createService();
     const controller = new MochiTeableApiController(service);
@@ -158,6 +242,105 @@ describe('MochiTeableApiController', () => {
 
     controller.deleteFields(['fld_2', 'fld_3']);
     expect(service.deleteField).toHaveBeenCalledTimes(2);
+  });
+
+  it('inserts uploaded attachments into an attachment cell without replacing existing files', () => {
+    const service = createService();
+    const oldAttachment = {
+      id: 'att_old',
+      name: 'old.txt',
+      token: 'tok_old',
+      path: '/attachments/old.txt',
+      size: 10,
+      mimetype: 'text/plain',
+    };
+    const newAttachment = {
+      id: 'att_new',
+      name: 'new.txt',
+      token: 'tok_new',
+      path: '/attachments/new.txt',
+      size: 20,
+      mimetype: 'text/plain',
+    };
+    vi.mocked(service.getRecord).mockReturnValue({
+      id: 'rec_1',
+      auto_number: 1,
+      fields: { fld_file: [oldAttachment] },
+    });
+    vi.mocked(service.updateRecord).mockImplementation((id, patch) => ({
+      id,
+      auto_number: 1,
+      fields: patch.fields ?? {},
+    }));
+    const controller = new MochiTeableApiController(service);
+
+    expect(
+      controller.insertAttachment('tbl_1', 'rec_1', 'fld_file', {
+        attachments: [newAttachment],
+      })
+    ).toMatchObject({
+      id: 'rec_1',
+      fields: { fld_file: [oldAttachment, newAttachment] },
+    });
+    expect(service.updateRecord).toHaveBeenCalledWith(
+      'rec_1',
+      {
+        fields: { fld_file: [oldAttachment, newAttachment] },
+      },
+      'tbl_1'
+    );
+  });
+
+  it('inserts uploaded attachments after the requested anchor file', () => {
+    const service = createService();
+    const firstAttachment = {
+      id: 'att_first',
+      name: 'first.txt',
+      token: 'tok_first',
+      path: '/attachments/first.txt',
+      size: 10,
+      mimetype: 'text/plain',
+    };
+    const lastAttachment = {
+      id: 'att_last',
+      name: 'last.txt',
+      token: 'tok_last',
+      path: '/attachments/last.txt',
+      size: 30,
+      mimetype: 'text/plain',
+    };
+    const newAttachment = {
+      id: 'att_new',
+      name: 'new.txt',
+      token: 'tok_new',
+      path: '/attachments/new.txt',
+      size: 20,
+      mimetype: 'text/plain',
+    };
+    vi.mocked(service.getRecord).mockReturnValue({
+      id: 'rec_1',
+      auto_number: 1,
+      fields: { fld_file: [firstAttachment, lastAttachment] },
+    });
+    vi.mocked(service.updateRecord).mockImplementation((id, patch) => ({
+      id,
+      auto_number: 1,
+      fields: patch.fields ?? {},
+    }));
+    const controller = new MochiTeableApiController(service);
+
+    controller.insertAttachment('tbl_1', 'rec_1', 'fld_file', {
+      attachments: [newAttachment],
+      anchorId: 'att_first',
+    });
+
+    expect(service.updateRecord).toHaveBeenCalledWith(
+      'rec_1',
+      {
+        fields: { fld_file: [firstAttachment, newAttachment, lastAttachment] },
+      },
+      'tbl_1'
+    );
   });
 
   it.each([
@@ -561,5 +744,31 @@ describe('MochiTeableApiController', () => {
     ]);
     expect(service.deleteRecord).toHaveBeenCalledWith('rec_1', 'tbl_1');
     expect(service.deleteRecord).toHaveBeenCalledWith('rec_2', 'tbl_1');
+  });
+
+  it('serves Teable-compatible undo and redo endpoints for local UI shortcuts', () => {
+    const service = createService();
+    const controller = new MochiTeableApiController(service);
+
+    expect(controller.undo('tbl_1')).toEqual({ status: 'fulfilled' });
+    expect(service.undo).toHaveBeenCalledWith('tbl_1');
+
+    vi.mocked(service.redo).mockReturnValueOnce(null);
+    expect(controller.redo('tbl_1')).toEqual({ status: 'empty' });
+    expect(service.redo).toHaveBeenCalledWith('tbl_1');
+
+    const undoStream = createStreamResponse();
+    controller.undoStream('tbl_1', undoStream.response as never);
+    expect(parseStreamEvents(undoStream.chunks)).toMatchObject([
+      { id: 'progress', mode: 'undo', phase: 'preparing', engine: 'v1' },
+      { id: 'done', mode: 'undo', status: 'fulfilled', engine: 'v1' },
+    ]);
+
+    const redoStream = createStreamResponse();
+    controller.redoStream('tbl_1', redoStream.response as never);
+    expect(parseStreamEvents(redoStream.chunks)).toMatchObject([
+      { id: 'progress', mode: 'redo', phase: 'preparing', engine: 'v1' },
+      { id: 'done', mode: 'redo', status: 'fulfilled', engine: 'v1' },
+    ]);
   });
 });

@@ -86,6 +86,16 @@ const removeFieldColumnMeta = (columnMeta, fieldId) => {
   return nextColumnMeta;
 };
 
+const mapFieldRow = (field) =>
+  field
+    ? {
+        ...field,
+        options: parseJson(field.options_json),
+        meta: parseJson(field.meta_json),
+        aiConfig: parseJson(field.ai_config_json),
+      }
+    : null;
+
 const remapRecordFields = (fields, fieldIdMap, recordIdMap) =>
   Object.fromEntries(
     Object.entries(fields ?? {}).map(([fieldId, value]) => [
@@ -1074,6 +1084,7 @@ export class MochiSqliteRepository {
         aiConfig: remapJsonIds(primaryField.aiConfig, fieldIdMap),
         notNull: Boolean(primaryField.not_null),
         unique: Boolean(primaryField.unique_value),
+        skipHistory: true,
       });
     }
 
@@ -1094,6 +1105,7 @@ export class MochiSqliteRepository {
         notNull: Boolean(field.not_null),
         unique: Boolean(field.unique_value),
         order: field.sort_order,
+        skipHistory: true,
       });
     }
 
@@ -1154,6 +1166,7 @@ export class MochiSqliteRepository {
   updateField(id, patch) {
     const current = this.getField(id);
     if (!current) return null;
+    const before = patch.skipHistory ? null : this.getFieldUndoSnapshot(id);
     const nextType = patch.type ?? current.type;
     const nextCellValueType = patch.cellValueType ?? current.cell_value_type;
     const statements = [
@@ -1192,7 +1205,20 @@ export class MochiSqliteRepository {
     }
 
     this.db.transaction(statements);
-    return this.getField(id);
+    const updated = this.getField(id);
+    if (!patch.skipHistory) {
+      this.insertFieldOp({
+        tableId: current.table_id,
+        fieldId: id,
+        opType: 'field.update',
+        before,
+        after: this.getFieldUndoSnapshot(id),
+        label: patch.label ?? 'Update field',
+        source: patch.source ?? 'user',
+        batchId: patch.batchId,
+      });
+    }
+    return updated;
   }
 
   createField(input) {
@@ -1226,26 +1252,36 @@ export class MochiSqliteRepository {
         ${sqlValue(input.order ?? maxOrder?.next_order ?? 0)}
       );
     `);
-    return this.getField(id);
+    const created = this.getField(id);
+    if (!input.skipHistory) {
+      this.insertFieldOp({
+        tableId: input.tableId,
+        fieldId: id,
+        opType: 'field.create',
+        before: null,
+        after: this.getFieldUndoSnapshot(id),
+        label: input.label ?? 'Create field',
+        source: input.source ?? 'user',
+        batchId: input.batchId,
+      });
+    }
+    return created;
   }
 
-  getField(id) {
+  getField(id, options = {}) {
     this.syncMochiKitWorkspaceIfPresent();
     const field = this.db.get(
-      `SELECT * FROM mochi_field WHERE id = ${sqlValue(id)} AND deleted_time IS NULL;`
+      `SELECT * FROM mochi_field WHERE id = ${sqlValue(id)}${
+        options.includeDeleted ? '' : ' AND deleted_time IS NULL'
+      };`
     );
-    if (!field) return null;
-    return {
-      ...field,
-      options: parseJson(field.options_json),
-      meta: parseJson(field.meta_json),
-      aiConfig: parseJson(field.ai_config_json),
-    };
+    return mapFieldRow(field);
   }
 
   deleteField(id) {
     const current = this.getField(id);
     if (!current || current.is_primary) return null;
+    const before = this.getFieldUndoSnapshot(id);
     const records = this.listRecords(current.table_id, { limit: 100000 });
     const statements = [
       `UPDATE mochi_field
@@ -1281,7 +1317,137 @@ export class MochiSqliteRepository {
     }
 
     this.db.transaction(statements);
+    const after = this.getFieldUndoSnapshot(id);
+    if (after) {
+      after.records = (before?.records ?? []).map((record) => {
+        const nextFields = { ...(record.fields ?? {}) };
+        delete nextFields[id];
+        return { ...record, fields: nextFields };
+      });
+    }
+    this.insertFieldOp({
+      tableId: current.table_id,
+      fieldId: id,
+      opType: 'field.delete',
+      before,
+      after,
+      label: 'Delete field',
+      source: 'user',
+    });
     return current;
+  }
+
+  getFieldUndoSnapshot(id) {
+    const field = this.getField(id, { includeDeleted: true });
+    if (!field) return null;
+    const records = this.listRecords(field.table_id, { limit: 100000 })
+      .filter((record) => Object.prototype.hasOwnProperty.call(record.fields ?? {}, id))
+      .map((record) => ({
+        id: record.id,
+        fields: record.fields ?? {},
+        order: record.order ?? null,
+      }));
+    const views = this.listViews(field.table_id).map((view) => ({
+      id: view.id,
+      columnMeta: view.columnMeta,
+    }));
+    return { field, records, views };
+  }
+
+  insertFieldOp({ tableId, fieldId, opType, before, after, label, source, batchId }) {
+    const opBatchId = batchId ?? ids.opBatch();
+    this.db.transaction([
+      `INSERT INTO mochi_op_batch (id, label, source)
+       VALUES (${sqlValue(opBatchId)}, ${sqlValue(label)}, ${sqlValue(source)})
+       ON CONFLICT(id) DO NOTHING;`,
+      `INSERT INTO mochi_op (id, batch_id, table_id, field_id, op_type, before_json, after_json)
+       VALUES (
+         ${sqlValue(ids.op())},
+         ${sqlValue(opBatchId)},
+         ${sqlValue(tableId)},
+         ${sqlValue(fieldId)},
+         ${sqlValue(opType)},
+         ${before === null || before === undefined ? 'NULL' : jsonValue(before)},
+         ${after === null || after === undefined ? 'NULL' : jsonValue(after)}
+       );`,
+    ]);
+  }
+
+  restoreFieldSnapshotStatements(snapshot) {
+    if (!snapshot?.field) return [];
+    const field = snapshot.field;
+    return [
+      `INSERT INTO mochi_field (
+         id, table_id, name, description, type, cell_value_type,
+         options_json, meta_json, ai_config_json, is_primary, is_computed,
+         is_lookup, not_null, unique_value, sort_order, version,
+         created_time, last_modified_time, deleted_time
+       )
+       VALUES (
+         ${sqlValue(field.id)},
+         ${sqlValue(field.table_id)},
+         ${sqlValue(field.name)},
+         ${sqlValue(field.description)},
+         ${sqlValue(field.type)},
+         ${sqlValue(field.cell_value_type)},
+         ${sqlValue(field.options_json)},
+         ${sqlValue(field.meta_json)},
+         ${sqlValue(field.ai_config_json)},
+         ${sqlValue(Boolean(field.is_primary))},
+         ${sqlValue(Boolean(field.is_computed))},
+         ${sqlValue(Boolean(field.is_lookup))},
+         ${sqlValue(Boolean(field.not_null))},
+         ${sqlValue(Boolean(field.unique_value))},
+         ${sqlValue(field.sort_order ?? 0)},
+         ${sqlValue(field.version ?? 1)},
+         ${sqlValue(field.created_time)},
+         ${sqlValue(field.last_modified_time)},
+         ${sqlValue(field.deleted_time)}
+       )
+       ON CONFLICT(id) DO UPDATE SET
+         table_id = excluded.table_id,
+         name = excluded.name,
+         description = excluded.description,
+         type = excluded.type,
+         cell_value_type = excluded.cell_value_type,
+         options_json = excluded.options_json,
+         meta_json = excluded.meta_json,
+         ai_config_json = excluded.ai_config_json,
+         is_primary = excluded.is_primary,
+         is_computed = excluded.is_computed,
+         is_lookup = excluded.is_lookup,
+         not_null = excluded.not_null,
+         unique_value = excluded.unique_value,
+         sort_order = excluded.sort_order,
+         version = excluded.version + 1,
+         created_time = excluded.created_time,
+         last_modified_time = ${nowExpr},
+         deleted_time = excluded.deleted_time;`,
+      ...this.restoreRecordSnapshotsStatements(field.table_id, snapshot.records ?? []),
+      ...this.restoreViewSnapshotsStatements(snapshot.views ?? []),
+    ];
+  }
+
+  restoreRecordSnapshotsStatements(tableId, records) {
+    return records.flatMap((record) => [
+      `UPDATE mochi_record
+       SET fields_json = ${jsonValue(record.fields ?? {})},
+           order_json = ${record.order === undefined || record.order === null ? 'NULL' : jsonValue(record.order)},
+           deleted_time = NULL,
+           version = version + 1,
+           last_modified_time = ${nowExpr}
+       WHERE id = ${sqlValue(record.id)};`,
+      ...this.recordSearchStatements(tableId, record.id, record.fields ?? {}),
+    ]);
+  }
+
+  restoreViewSnapshotsStatements(views) {
+    return views.map(
+      (view) => `UPDATE mochi_view
+       SET column_meta_json = ${view.columnMeta === undefined ? 'NULL' : jsonValue(view.columnMeta)},
+           last_modified_time = ${nowExpr}
+       WHERE id = ${sqlValue(view.id)};`
+    );
   }
 
   listViews(tableId) {
@@ -2077,6 +2243,7 @@ export class MochiSqliteRepository {
           name: columnName,
           type: inferred.type,
           cellValueType: inferred.cellValueType,
+          skipHistory: true,
         });
         fields.set(columnName, field.id);
       }
@@ -2173,6 +2340,7 @@ export class MochiSqliteRepository {
             name: columnName,
             type: inferred.type,
             cellValueType: inferred.cellValueType,
+            skipHistory: true,
           });
           continue;
         }
@@ -2181,6 +2349,7 @@ export class MochiSqliteRepository {
           name: columnName,
           type: inferred.type,
           cellValueType: inferred.cellValueType,
+          skipHistory: true,
         });
         fields.set(columnName, field.id);
       }
@@ -2334,6 +2503,20 @@ export class MochiSqliteRepository {
           ...this.recordSearchStatements(op.table_id, op.record_id, before?.fields ?? {})
         );
       }
+      if (op.op_type === 'field.create') {
+        const after = parseJson(op.after_json);
+        statements.push(...this.restoreFieldSnapshotStatements(after));
+        statements.push(
+          `UPDATE mochi_field
+           SET deleted_time = ${nowExpr},
+               version = version + 1,
+               last_modified_time = ${nowExpr}
+           WHERE id = ${sqlValue(op.field_id)};`
+        );
+      }
+      if (op.op_type === 'field.update' || op.op_type === 'field.delete') {
+        statements.push(...this.restoreFieldSnapshotStatements(before));
+      }
     }
     statements.push(
       `UPDATE mochi_op_batch SET undone_time = ${nowExpr}, redone_time = NULL WHERE id = ${sqlValue(batch.id)};`
@@ -2372,6 +2555,13 @@ export class MochiSqliteRepository {
           `UPDATE mochi_record SET deleted_time = ${nowExpr}, version = version + 1 WHERE id = ${sqlValue(op.record_id)};`,
           `DELETE FROM mochi_record_fts WHERE record_id = ${sqlValue(op.record_id)};`
         );
+      }
+      if (
+        op.op_type === 'field.create' ||
+        op.op_type === 'field.update' ||
+        op.op_type === 'field.delete'
+      ) {
+        statements.push(...this.restoreFieldSnapshotStatements(after));
       }
     }
     statements.push(

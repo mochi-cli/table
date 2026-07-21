@@ -240,6 +240,10 @@ const nextConfig = {
       source: '/api/comment/:path*',
       destination: `${MOCHI_BACKEND_API_URL}/api/comment/:path*`,
     };
+    const mochiAttachmentsApiProxy = {
+      source: '/api/attachments/:path*',
+      destination: `${MOCHI_BACKEND_API_URL}/api/attachments/:path*`,
+    };
     const mochiUserApiProxy = {
       source: '/api/user/:path*',
       destination: `${MOCHI_BACKEND_API_URL}/api/user/:path*`,
@@ -268,6 +272,7 @@ const nextConfig = {
           mochiTeableApiProxy,
           mochiBaseApiProxy,
           mochiCommentApiProxy,
+          mochiAttachmentsApiProxy,
           mochiUserApiProxy,
           mochiPinApiProxy,
           mochiAdminApiProxy,

@@ -7,6 +7,7 @@ describe('getLocalDataMutationScope', () => {
   it.each([
     ['/api/table/tbl_1/record', 'post'],
     ['/api/table/tbl_1/record/rec_1', 'patch'],
+    ['/api/table/tbl_1/record/rec_1/fld_attachment/insertAttachment', 'post'],
     ['/api/table/tbl_1/selection/paste', 'patch'],
     ['/api/table/tbl_1/selection/paste-by-id-stream', 'patch'],
     ['/api/table/tbl_1/selection/delete-by-id', 'post'],
@@ -34,6 +35,10 @@ describe('getLocalDataMutationScope', () => {
     ['/api/table/tbl_1/view', 'post'],
     ['/api/table/tbl_1/view/viw_1/duplicate', 'post'],
     ['/api/table/tbl_1/view/viw_1', 'delete'],
+    ['/api/table/tbl_1/undo-redo/undo', 'post'],
+    ['/api/table/tbl_1/undo-redo/redo', 'post'],
+    ['/api/table/tbl_1/undo-redo/undo-stream', 'post'],
+    ['/api/table/tbl_1/undo-redo/redo-stream', 'post'],
   ])('classifies schema mutation %s as schema scope', (url, method) => {
     expect(getLocalDataMutationScope(responseFor(method, url))).toBe('schema');
   });

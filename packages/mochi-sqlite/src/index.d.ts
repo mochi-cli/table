@@ -77,8 +77,12 @@ export class MochiSqliteRepository {
     notNull?: boolean;
     unique?: boolean;
     order?: number;
+    batchId?: string;
+    label?: string;
+    source?: string;
+    skipHistory?: boolean;
   }): unknown;
-  getField(id: string): unknown | null;
+  getField(id: string, options?: { includeDeleted?: boolean }): unknown | null;
   updateField(id: string, patch: Record<string, unknown>): unknown | null;
   deleteField(id: string): unknown | null;
   listViews(tableId: string): unknown[];

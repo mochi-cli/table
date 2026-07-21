@@ -197,6 +197,7 @@ const removeTask = (cellKey: string, taskId: string) => {
 
 // eslint-disable-next-line @typescript-eslint/naming-convention
 const INSERT_DEBOUNCE_MS = 300;
+const localDataMutatedEvent = 'mochi-local-data-mutated';
 
 interface IInsertBuffer {
   tableId: string;
@@ -244,6 +245,9 @@ const flushInsertBuffer = async (cellKey: string) => {
       buffer.fieldId,
       pending.map((item) => item.attachment)
     );
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent(localDataMutatedEvent, { detail: { scope: 'record' } }));
+    }
     pending.forEach((item) => {
       updateTask(cellKey, item.taskId, { status: 'completed', progress: 100 });
     });

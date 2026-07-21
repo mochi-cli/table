@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { getMochiSqliteDatabasePath, MOCHI_SQLITE_REPOSITORY } from './mochi-sqlite.constants';
+import { MochiLocalAttachmentsController } from './mochi-local-attachments.controller';
 import { MochiLocalCompatController } from './mochi-local-compat.controller';
 import { MochiSqliteController } from './mochi-sqlite.controller';
 import { MochiSqliteService } from './mochi-sqlite.service';
@@ -14,7 +15,12 @@ type MochiSqliteRuntimeModule = {
 };
 
 @Module({
-  controllers: [MochiSqliteController, MochiTeableApiController, MochiLocalCompatController],
+  controllers: [
+    MochiSqliteController,
+    MochiTeableApiController,
+    MochiLocalCompatController,
+    MochiLocalAttachmentsController,
+  ],
   providers: [
     {
       provide: MOCHI_SQLITE_REPOSITORY,
