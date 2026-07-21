@@ -16,6 +16,7 @@ export const getLocalDataMutationScope = (data: unknown): LocalDataMutationScope
 
   if (
     /\/table\/[^/]+\/record(?:\/[^/]+)?$/.test(pathname) ||
+    /\/table\/[^/]+\/record\/[^/]+\/[^/]+\/insertAttachment$/.test(pathname) ||
     /\/table\/[^/]+\/selection\/(?:paste|paste-by-id|paste-by-id-stream|clear|clear-by-id|clear-by-id-stream|delete|delete-by-id|delete-by-id-stream)$/.test(
       pathname
     )
@@ -25,6 +26,10 @@ export const getLocalDataMutationScope = (data: unknown): LocalDataMutationScope
 
   if (/\/table\/[^/]+\/(?:name|icon|description)$/.test(pathname)) {
     return 'table';
+  }
+
+  if (/\/table\/[^/]+\/undo-redo\/(?:undo|redo)(?:-stream)?$/.test(pathname)) {
+    return 'schema';
   }
 
   if (

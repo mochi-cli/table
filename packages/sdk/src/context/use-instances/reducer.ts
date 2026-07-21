@@ -2,6 +2,7 @@ import type { Doc } from 'sharedb/lib/client';
 
 export type IInstanceAction<T> =
   | { type: 'update'; doc: Doc<T> }
+  | { type: 'reset'; data: T[] }
   | { type: 'ready'; results: Doc<T>[]; extra: unknown }
   | { type: 'insert'; docs: Doc<T>[]; index: number }
   | { type: 'remove'; docs: Doc<T>[]; index: number }
@@ -25,6 +26,12 @@ export function instanceReducer<T, R extends { id: string }>(
   factory: (data: T, doc?: Doc<T>) => R
 ): IInstanceState<R> {
   switch (action.type) {
+    case 'reset':
+      return {
+        ...state,
+        instances: action.data.map((data) => factory(data)),
+        extra: undefined,
+      };
     case 'update': {
       if (!hasDocData(action.doc)) {
         return state;

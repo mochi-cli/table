@@ -688,11 +688,19 @@ export class MochiSqliteService {
     return this.repository.failComputedJob(id, error);
   }
 
-  undo() {
-    return this.repository.undoLastBatch();
+  undo(tableId?: string) {
+    const batch = this.repository.undoLastBatch();
+    if (batch && tableId) {
+      this.publishProjectedRecordRefresh(tableId, 'setRecord');
+    }
+    return batch;
   }
 
-  redo() {
-    return this.repository.redoLastBatch();
+  redo(tableId?: string) {
+    const batch = this.repository.redoLastBatch();
+    if (batch && tableId) {
+      this.publishProjectedRecordRefresh(tableId, 'setRecord');
+    }
+    return batch;
   }
 }

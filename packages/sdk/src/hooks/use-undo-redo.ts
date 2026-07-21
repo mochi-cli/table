@@ -8,6 +8,14 @@ const { toast } = sonner;
 
 const toastDuration = 1500;
 const loadingToastDuration = Infinity;
+const localDataMutatedEvent = 'mochi-local-data-mutated';
+
+const dispatchLocalUndoRedoMutation = () => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  window.dispatchEvent(new CustomEvent(localDataMutatedEvent, { detail: { scope: 'schema' } }));
+};
 
 const formatProgressMessage = (label: string, processedCount: number, totalCount: number) => {
   if (totalCount <= 0) {
@@ -51,6 +59,7 @@ export const useUndoRedo = () => {
         },
       });
       if (res.data.status === 'fulfilled') {
+        dispatchLocalUndoRedoMutation();
         toast.success(t('undoRedo.undoSucceed'), { id: toastId, duration: toastDuration });
         return;
       }
@@ -87,6 +96,7 @@ export const useUndoRedo = () => {
         },
       });
       if (res.data.status === 'fulfilled') {
+        dispatchLocalUndoRedoMutation();
         toast.success(t('undoRedo.redoSucceed'), { id: toastId, duration: toastDuration });
         return;
       }

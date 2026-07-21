@@ -1,6 +1,6 @@
 import { MutationCache, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { IFieldVo, IRecord, IViewVo } from '@teable/core';
-import { CellValueType, DbFieldType, FieldType, ViewType } from '@teable/core';
+import { CellValueType, FieldType, Relationship, ViewType, getDbFieldType } from '@teable/core';
 import { axios as teableAxios } from '@teable/openapi';
 import type { ITableVo, IUserMeVo } from '@teable/openapi';
 import {
@@ -111,6 +111,7 @@ const localSpaceId = 'spc_local';
 const localDataMutatedEvent = 'mochi-local-data-mutated';
 const localDataRefreshIntervalMs = 5 * 60 * 1000;
 type LocalTableVo = ITableVo & { permission: Record<string, boolean> };
+type RouterOptions = NonNullable<Parameters<NextRouter['push']>[2]>;
 
 const localTablePermission = {
   'table|read': true,
@@ -169,18 +170,56 @@ const normalizeCellValueType = (cellValueType?: CellValueType | string): CellVal
   return CellValueType.String;
 };
 
-const dbFieldTypeFor = (cellValueType?: CellValueType) => {
-  switch (cellValueType) {
-    case CellValueType.Number:
-      return DbFieldType.Real;
-    case CellValueType.Boolean:
-      return DbFieldType.Boolean;
-    case CellValueType.DateTime:
-      return DbFieldType.DateTime;
-    case CellValueType.String:
+const normalizeFieldType = (type?: string): FieldType =>
+  Object.values(FieldType).includes(type as FieldType)
+    ? (type as FieldType)
+    : FieldType.SingleLineText;
+
+const defaultCellValueTypeFor = (type?: string): CellValueType => {
+  switch (normalizeFieldType(type)) {
+    case FieldType.Number:
+    case FieldType.Rating:
+    case FieldType.AutoNumber:
+      return CellValueType.Number;
+    case FieldType.Checkbox:
+      return CellValueType.Boolean;
+    case FieldType.Date:
+    case FieldType.CreatedTime:
+    case FieldType.LastModifiedTime:
+      return CellValueType.DateTime;
     default:
-      return DbFieldType.Text;
+      return CellValueType.String;
   }
+};
+
+const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+
+const isMultipleCellValueFor = (type: FieldType, options: unknown): boolean => {
+  if (type === FieldType.MultipleSelect || type === FieldType.Attachment) return true;
+  if (!isObjectRecord(options)) return false;
+  if (type === FieldType.User) return options.isMultiple === true;
+  if (type === FieldType.Link) {
+    return (
+      options.relationship === Relationship.ManyMany ||
+      options.relationship === Relationship.OneMany
+    );
+  }
+  return false;
+};
+
+const getFieldMetadata = (field: LocalField) => {
+  const type = normalizeFieldType(field.type);
+  const cellValueType = field.cell_value_type
+    ? normalizeCellValueType(field.cell_value_type)
+    : defaultCellValueTypeFor(type);
+  const isMultipleCellValue = isMultipleCellValueFor(type, field.options);
+  return {
+    type,
+    cellValueType,
+    isMultipleCellValue,
+    dbFieldType: getDbFieldType(type, cellValueType, isMultipleCellValue),
+  };
 };
 
 const defaultOptionsFor = (type: string) => {
@@ -253,10 +292,7 @@ const buildExtraDataFields = (records: LocalRecord[], schemaFields: LocalField[]
 };
 
 const mapField = (field: LocalField): IFieldVo => {
-  const type = Object.values(FieldType).includes(field.type as FieldType)
-    ? (field.type as FieldType)
-    : FieldType.SingleLineText;
-  const cellValueType = normalizeCellValueType(field.cell_value_type);
+  const { type, cellValueType, isMultipleCellValue, dbFieldType } = getFieldMetadata(field);
 
   return {
     id: field.id,
@@ -272,8 +308,8 @@ const mapField = (field: LocalField): IFieldVo => {
     notNull: toBool(field.not_null),
     unique: toBool(field.unique_value),
     cellValueType,
-    isMultipleCellValue: type === FieldType.MultipleSelect || type === FieldType.Attachment,
-    dbFieldType: dbFieldTypeFor(cellValueType),
+    isMultipleCellValue,
+    dbFieldType,
     dbFieldName: field.id.replace(/\W/g, '_').slice(0, 63),
     recordRead: true,
     recordCreate: true,
@@ -332,6 +368,19 @@ const normalizeGroup = (group: LocalView['group']): IViewVo['group'] =>
 
 const normalizeViewType = (type?: string): ViewType =>
   Object.values(ViewType).includes(type as ViewType) ? (type as ViewType) : ViewType.Grid;
+
+const isLocalRouterUrl = (url: Parameters<NextRouter['push']>[0]) =>
+  typeof url === 'string' && url.startsWith('/mochi/local');
+
+const localRouterOptionsFor = (
+  url: Parameters<NextRouter['push']>[0],
+  options: Parameters<NextRouter['push']>[2]
+): RouterOptions | undefined => {
+  if (!isLocalRouterUrl(url)) {
+    return options;
+  }
+  return { ...(options ?? {}), shallow: true };
+};
 
 const defaultViewOptionsFor = (
   type: ViewType,
@@ -715,15 +764,6 @@ function MochiLocalGridPageInner() {
   const tableDataKey = data.tables
     .map((table) => `${table.id}:${table.name}:${table.lastModifiedTime ?? ''}`)
     .join('|');
-  const fieldDataKey = data.fields
-    .map((field) => `${field.id}:${field.name}:${field.type}:${field.isPrimary ? '1' : '0'}`)
-    .join('|');
-  const viewDataKey = data.views
-    .map(
-      (view) =>
-        `${view.id}:${view.name}:${JSON.stringify(view.filter)}:${JSON.stringify(view.sort)}:${JSON.stringify(view.group)}:${JSON.stringify(view.columnMeta)}`
-    )
-    .join('|');
   const tableRoute = `/base/${data.baseId}/table/${data.tableId}/${data.viewId}`;
   const localRouter = {
     ...router,
@@ -735,18 +775,22 @@ function MochiLocalGridPageInner() {
       baseId: data.baseId,
       slug: ['table', data.tableId, data.viewId],
     },
-    push: (url, as, options) =>
-      router.push(
-        rewriteLocalRouterUrl(url),
+    push: (url, as, options) => {
+      const localUrl = rewriteLocalRouterUrl(url);
+      return router.push(
+        localUrl,
         as === undefined ? as : rewriteLocalRouterUrl(as),
-        options
-      ),
-    replace: (url, as, options) =>
-      router.replace(
-        rewriteLocalRouterUrl(url),
+        localRouterOptionsFor(localUrl, options)
+      );
+    },
+    replace: (url, as, options) => {
+      const localUrl = rewriteLocalRouterUrl(url);
+      return router.replace(
+        localUrl,
         as === undefined ? as : rewriteLocalRouterUrl(as),
-        options
-      ),
+        localRouterOptionsFor(localUrl, options)
+      );
+    },
   } as NextRouter;
 
   return (
@@ -774,7 +818,6 @@ function MochiLocalGridPageInner() {
                     </Sidebar>
                     <section className="min-w-80 flex-1 overflow-hidden">
                       <DynamicTable
-                        key={`${fieldDataKey}:${viewDataKey}`}
                         fieldServerData={data.fields}
                         viewServerData={data.views}
                         recordsServerData={{ records: data.records }}

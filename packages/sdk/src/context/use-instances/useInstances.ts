@@ -170,6 +170,7 @@ const hasSchemaRefreshFieldIds = (fieldIds: unknown): boolean =>
 
 const isRecordCollection = (collection: string) => collection.startsWith(`${IdPrefix.Record}_`);
 const isTableCollection = (collection: string) => collection.startsWith(`${IdPrefix.Table}_`);
+const isFieldCollection = (collection: string) => collection.startsWith(`${IdPrefix.Field}_`);
 const isViewCollection = (collection: string) => collection.startsWith(`${IdPrefix.View}_`);
 
 const notifyProjectedRecordDocUpdate = <T>(
@@ -642,7 +643,12 @@ export function useInstances<T, R extends { id: string }>({
   ]);
 
   useEffect(() => {
-    if (!isRecordCollection(collection) && !isTableCollection(collection)) {
+    if (
+      !isRecordCollection(collection) &&
+      !isTableCollection(collection) &&
+      !isFieldCollection(collection) &&
+      !isViewCollection(collection)
+    ) {
       return;
     }
 
@@ -650,6 +656,13 @@ export function useInstances<T, R extends { id: string }>({
       const scope = (event as CustomEvent<{ scope?: string }>).detail?.scope;
       if (isRecordCollection(collection)) {
         if (scope && scope !== 'record') {
+          return;
+        }
+        setSchemaRefreshToken((current) => current + 1);
+        return;
+      }
+      if (isFieldCollection(collection) || isViewCollection(collection)) {
+        if (scope !== 'schema') {
           return;
         }
         setSchemaRefreshToken((current) => current + 1);
@@ -666,6 +679,13 @@ export function useInstances<T, R extends { id: string }>({
     window.addEventListener(localDataMutatedEvent, refreshLocalQuery);
     return () => window.removeEventListener(localDataMutatedEvent, refreshLocalQuery);
   }, [collection, schemaRefreshCollectionTableId]);
+
+  useEffect(() => {
+    if (connected || connection || !initData) {
+      return;
+    }
+    dispatch({ type: 'reset', data: initData });
+  }, [connected, connection, initData]);
 
   const handleReady = useCallback((query: Query<T>) => {
     console.log(
@@ -744,20 +764,31 @@ export function useInstances<T, R extends { id: string }>({
     });
   }, []);
 
+  const resetDisconnectedQuery = useCallback(() => {
+    const previousKey = currentKeyRef.current;
+    currentKeyRef.current = undefined;
+    currentScopeKeyRef.current = undefined;
+    preQueryRef.current = undefined;
+    lastConnectionRef.current = connection;
+
+    if (collection && initData && !connected) {
+      dispatch({ type: 'reset', data: initData });
+    } else {
+      dispatch({ type: 'clear' });
+    }
+
+    setQuery(undefined);
+
+    if (previousKey) {
+      releaseQuery(previousKey, () => opListeners.current.clear());
+    }
+  }, [connected, connection, collection, initData]);
+
   useEffect(() => {
     let canceled = false;
 
     if (!collection || !connection) {
-      const previousKey = currentKeyRef.current;
-      currentKeyRef.current = undefined;
-      currentScopeKeyRef.current = undefined;
-      preQueryRef.current = undefined;
-      lastConnectionRef.current = connection;
-      dispatch({ type: 'clear' });
-      setQuery(undefined);
-      if (previousKey) {
-        releaseQuery(previousKey, () => opListeners.current.clear());
-      }
+      resetDisconnectedQuery();
       return () => {
         canceled = true;
       };
@@ -818,7 +849,7 @@ export function useInstances<T, R extends { id: string }>({
     return () => {
       canceled = true;
     };
-  }, [connection, collection, queryParams, schemaRefreshToken]);
+  }, [connection, collection, queryParams, resetDisconnectedQuery, schemaRefreshToken]);
 
   useEffect(() => {
     const listeners = opListeners.current;
