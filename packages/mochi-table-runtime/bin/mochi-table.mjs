@@ -21,10 +21,10 @@ const defaultBackendPort = Number(process.env.MOCHI_TABLE_BACKEND_PORT || 3911);
 const usage = `Mochi Table Runtime
 
 Usage:
-  mochi-table open [--db <workspace.mochi>] [--keep-existing] [--frontend-port <port>] [--backend-port <port>]
+  mochi-table open [--db <workspace.mochi>] [--keep-existing] [--frontend-port <port>] [--backend-port <port>] [--foreground]
   mochi-table list
-  mochi-table stop [--db <workspace.mochi>]
-  mochi-table stop-all
+  mochi-table stop|close [--db <workspace.mochi>]
+  mochi-table stop-all|close-all
   mochi-table doctor
 
 Environment:
@@ -43,6 +43,7 @@ const parseArgs = (argv) => {
     else if (arg === '--frontend-port') options.frontendPort = Number(rest[++index]);
     else if (arg === '--backend-port') options.backendPort = Number(rest[++index]);
     else if (arg === '--keep-existing') options.keepExisting = true;
+    else if (arg === '--foreground') options.foreground = true;
     else if (arg === '--json') options.json = true;
     else options._.push(arg);
   }
@@ -168,21 +169,53 @@ const stopRuntime = async (runtime) => {
   for (const pid of [runtime.frontendPid, runtime.backendPid]) {
     if (!isAlive(pid)) continue;
     try {
-      process.kill(pid, 'SIGTERM');
+      process.kill(-pid, 'SIGTERM');
     } catch {
-      // already gone
+      try {
+        process.kill(pid, 'SIGTERM');
+      } catch {
+        // already gone
+      }
     }
   }
   await wait(500);
   for (const pid of [runtime.frontendPid, runtime.backendPid]) {
     if (!isAlive(pid)) continue;
     try {
-      process.kill(pid, 'SIGKILL');
+      process.kill(-pid, 'SIGKILL');
     } catch {
-      // already gone
+      try {
+        process.kill(pid, 'SIGKILL');
+      } catch {
+        // already gone
+      }
     }
   }
 };
+
+const removeRuntimeFromState = (workspacePath) => {
+  const state = readState();
+  delete state.runtimes?.[workspacePath];
+  writeState(state);
+};
+
+const waitForeground = (runtime) =>
+  new Promise((resolve) => {
+    let stopping = false;
+    const stop = async (signal) => {
+      if (stopping) return;
+      stopping = true;
+      console.log(`\nStopping Mochi table runtime for ${runtime.workspacePath} (${signal})...`);
+      await stopRuntime(runtime);
+      removeRuntimeFromState(runtime.workspacePath);
+      resolve();
+    };
+
+    process.once('SIGINT', () => void stop('SIGINT'));
+    process.once('SIGTERM', () => void stop('SIGTERM'));
+    process.once('SIGHUP', () => void stop('SIGHUP'));
+    console.log('Runtime is running in foreground. Press Ctrl+C to stop frontend and backend.');
+  });
 
 const commandOpen = async (options) => {
   const workspacePath = normalizeWorkspacePath(options.db);
@@ -264,6 +297,9 @@ const commandOpen = async (options) => {
 
   await waitForHealth(`${backendUrl}/api/mochi/bases?spaceId=spc_local`, 30000);
   console.log(url);
+  if (options.foreground) {
+    await waitForeground(runtime);
+  }
 };
 
 const commandList = (options) => {
@@ -328,9 +364,9 @@ const main = async () => {
     await commandOpen(options);
   } else if (command === 'list') {
     commandList(options);
-  } else if (command === 'stop') {
+  } else if (command === 'stop' || command === 'close') {
     await commandStop(options);
-  } else if (command === 'stop-all') {
+  } else if (command === 'stop-all' || command === 'close-all') {
     await commandStopAll();
   } else if (command === 'doctor') {
     commandDoctor();
