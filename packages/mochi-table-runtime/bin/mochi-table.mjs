@@ -166,6 +166,38 @@ const assertRuntimeFiles = () => {
   return paths;
 };
 
+const frontendManifestPaths = () => [
+  path.join(runtimeRoot, 'frontend', 'apps', 'nextjs-app', '.next', 'routes-manifest.json'),
+  path.join(runtimeRoot, 'frontend', 'apps', 'nextjs-app', '.next', 'required-server-files.json'),
+];
+
+const rewriteBuiltBackendUrls = (value, backendUrl) => {
+  if (typeof value === 'string') {
+    return value
+      .replaceAll(/http:\/\/localhost:\d+\//g, `${backendUrl}/`)
+      .replaceAll(/http:\/\/127\.0\.0\.1:\d+\//g, `${backendUrl}/`);
+  }
+  if (Array.isArray(value)) return value.map((entry) => rewriteBuiltBackendUrls(entry, backendUrl));
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [key, rewriteBuiltBackendUrls(entry, backendUrl)])
+    );
+  }
+  return value;
+};
+
+const patchFrontendBackendUrl = (backendUrl) => {
+  for (const manifestPath of frontendManifestPaths()) {
+    if (!fs.existsSync(manifestPath)) continue;
+    const before = fs.readFileSync(manifestPath, 'utf8');
+    const patched =
+      JSON.stringify(rewriteBuiltBackendUrls(JSON.parse(before), backendUrl), null, 2) + '\n';
+    if (patched !== before) {
+      fs.writeFileSync(manifestPath, patched);
+    }
+  }
+};
+
 const openLog = (workspacePath, name) => {
   const safeName = workspacePath.replaceAll(/[^\w.-]+/g, '_').replace(/^_+|_+$/g, '');
   return fs.openSync(path.join(logDir, `${safeName}.${name}.log`), 'a');
@@ -275,6 +307,7 @@ const commandOpen = async (options) => {
   const backendPort = await findPort(options.backendPort || defaultBackendPort, usedPorts);
   const backendUrl = `http://${defaultHost}:${backendPort}`;
   const url = `http://${defaultHost}:${frontendPort}/mochi/local`;
+  patchFrontendBackendUrl(backendUrl);
   const backendLog = openLog(workspacePath, 'backend');
   const frontendLog = openLog(workspacePath, 'frontend');
   let backendExit;
