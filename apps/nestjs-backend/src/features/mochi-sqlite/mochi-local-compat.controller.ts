@@ -144,6 +144,9 @@ type LocalTable = {
 
 type LocalView = {
   id: string;
+  name?: string;
+  type?: string;
+  table_id?: string;
 };
 
 type LocalField = {
@@ -154,6 +157,22 @@ type DuplicateTableBody = {
   name?: string;
   includeRecords?: boolean;
 };
+
+type LocalPin = {
+  id: string;
+  type: string;
+  order: number;
+};
+
+type PinBody = {
+  id?: string;
+  type?: string;
+  anchorId?: string;
+  anchorType?: string;
+  position?: 'before' | 'after';
+};
+
+const localPins: LocalPin[] = [];
 
 const pickUniqueTablesByName = (tables: LocalTable[]) => {
   const seen = new Set<string>();
@@ -238,6 +257,21 @@ const mapBase = (base: LocalBase) => ({
     reason: 'disabled',
   },
 });
+
+const reorderPins = (pin: LocalPin, anchor: LocalPin, position?: 'before' | 'after') => {
+  const nextPins = localPins.filter((item) => !(item.id === pin.id && item.type === pin.type));
+  const anchorIndex = nextPins.findIndex(
+    (item) => item.id === anchor.id && item.type === anchor.type
+  );
+  const insertIndex =
+    anchorIndex < 0 ? nextPins.length : position === 'before' ? anchorIndex : anchorIndex + 1;
+  nextPins.splice(insertIndex, 0, pin);
+  localPins.splice(
+    0,
+    localPins.length,
+    ...nextPins.map((item, index) => ({ ...item, order: index }))
+  );
+};
 
 @Public()
 @Controller('api')
@@ -446,7 +480,92 @@ export class MochiLocalCompatController {
 
   @Get('pin/list')
   getPinList() {
-    return [];
+    return localPins
+      .map((pin) => {
+        if (pin.type === 'base') {
+          const base = this.mochiSqliteService.getBase(pin.id) as LocalBase | null;
+          return base
+            ? {
+                id: base.id,
+                type: pin.type,
+                order: pin.order,
+                name: base.name,
+                icon: base.icon ?? undefined,
+              }
+            : null;
+        }
+
+        if (pin.type === 'table') {
+          const table = this.mochiSqliteService.getTable(pin.id) as LocalTable | null;
+          return table
+            ? {
+                id: table.id,
+                type: pin.type,
+                order: pin.order,
+                name: table.name,
+                icon: table.icon ?? undefined,
+                parentBaseId: table.base_id,
+              }
+            : null;
+        }
+
+        if (pin.type === 'view') {
+          const view = this.mochiSqliteService.getView(pin.id) as LocalView | null;
+          const table = view?.table_id
+            ? (this.mochiSqliteService.getTable(view.table_id) as LocalTable | null)
+            : null;
+          return view
+            ? {
+                id: view.id,
+                type: pin.type,
+                order: pin.order,
+                name: view.name ?? 'View',
+                parentBaseId: table?.base_id,
+                viewMeta: {
+                  tableId: view.table_id,
+                  type: view.type ?? 'grid',
+                },
+              }
+            : null;
+        }
+
+        return null;
+      })
+      .filter(Boolean);
+  }
+
+  @Post('pin')
+  addPin(@Body() body: PinBody) {
+    if (!body.id || !body.type) return null;
+    const existing = localPins.find((pin) => pin.id === body.id && pin.type === body.type);
+    if (existing) return existing;
+    const pin = { id: body.id, type: body.type, order: localPins.length };
+    localPins.push(pin);
+    return pin;
+  }
+
+  @Delete('pin')
+  deletePin(@Query() query: PinBody) {
+    const index = localPins.findIndex((pin) => pin.id === query.id && pin.type === query.type);
+    if (index >= 0) {
+      localPins.splice(index, 1);
+      localPins.forEach((pin, order) => {
+        pin.order = order;
+      });
+    }
+    return null;
+  }
+
+  @Put('pin/order')
+  updatePinOrder(@Body() body: PinBody) {
+    const pin = localPins.find((item) => item.id === body.id && item.type === body.type);
+    const anchor = localPins.find(
+      (item) => item.id === body.anchorId && item.type === body.anchorType
+    );
+    if (pin && anchor) {
+      reorderPins(pin, anchor, body.position);
+    }
+    return null;
   }
 
   @Get('admin/setting/public')
