@@ -211,6 +211,14 @@ type CreateRecordsBody = {
   source?: string;
 };
 
+type FormSubmitBody = {
+  viewId?: string;
+  fields?: Record<string, unknown>;
+  typecast?: boolean;
+  actorId?: string;
+  source?: string;
+};
+
 type InsertAttachmentBody = {
   attachments?: IAttachmentItem[];
   anchorId?: string;
@@ -1004,6 +1012,29 @@ export class MochiTeableApiController {
     };
   }
 
+  private createLocalRecords(
+    tableId: string,
+    records: Array<{ fields?: Record<string, unknown> }>,
+    options: {
+      order?: unknown;
+      actorPatch?: ReturnType<typeof getActorPatch>;
+    } = {}
+  ): LocalRecord[] {
+    const fields = this.mochiSqliteService.listFields(tableId) as LocalField[];
+    const recordsWithDefaults = records.map((record) => ({
+      fields: applyRecordDefaultValues(record.fields ?? {}, fields),
+    }));
+    this.assertUniqueValues(tableId, recordsWithDefaults, fields);
+    return recordsWithDefaults.map((record) =>
+      this.mochiSqliteService.createRecord({
+        tableId,
+        fields: record.fields,
+        order: options.order,
+        ...options.actorPatch,
+      })
+    ) as LocalRecord[];
+  }
+
   private prepareSelectionStream(response: Response) {
     response.setHeader('Content-Type', 'text/event-stream');
     response.setHeader('Cache-Control', 'no-cache, no-transform');
@@ -1574,24 +1605,24 @@ export class MochiTeableApiController {
   ): { records: IRecord[] } {
     const actorPatch = getActorPatch(headers, body);
     const records = body.records?.length ? body.records : [{ fields: {} }];
-    const fields = this.mochiSqliteService.listFields(tableId) as LocalField[];
-    const recordsWithDefaults = records.map((record) => ({
-      fields: applyRecordDefaultValues(record.fields ?? {}, fields),
-    }));
-    this.assertUniqueValues(tableId, recordsWithDefaults, fields);
-    const created = recordsWithDefaults.map((record) =>
-      this.mochiSqliteService.createRecord({
-        tableId,
-        fields: record.fields,
-        order: body.order,
-        ...actorPatch,
-      })
-    ) as LocalRecord[];
+    const created = this.createLocalRecords(tableId, records, { order: body.order, actorPatch });
     return {
       records: created
         .map((record) => this.toRecordVo(tableId, record))
         .filter(Boolean) as IRecord[],
     };
+  }
+
+  @Post(':tableId/record/form-submit')
+  formSubmit(
+    @Param('tableId') tableId: string,
+    @Body() body: FormSubmitBody,
+    @Headers() headers: Record<string, string | string[] | undefined>
+  ): IRecord | null {
+    const created = this.createLocalRecords(tableId, [{ fields: body.fields ?? {} }], {
+      actorPatch: getActorPatch(headers, body),
+    })[0];
+    return this.toRecordVo(tableId, created);
   }
 
   @Patch(':tableId/record')

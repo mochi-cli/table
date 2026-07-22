@@ -326,6 +326,49 @@ describe('MochiTeableApiController', () => {
     });
   });
 
+  it('submits form views through the local record create path', () => {
+    const service = createService();
+    vi.mocked(service.listFields).mockReturnValue([
+      {
+        id: 'fld_1',
+        name: 'Name',
+        type: 'singleLineText',
+      },
+      {
+        id: 'fld_status',
+        name: 'Status',
+        type: 'singleSelect',
+        options: { defaultValue: 'Todo' },
+      },
+    ]);
+    const controller = new MochiTeableApiController(service);
+
+    expect(
+      controller.formSubmit(
+        'tbl_1',
+        {
+          viewId: 'viw_form',
+          fields: { fld_1: 'Form lead' },
+        },
+        {}
+      )
+    ).toMatchObject({
+      id: 'rec_new',
+      fields: {
+        fld_1: 'Form lead',
+        fld_status: 'Todo',
+      },
+    });
+    expect(service.createRecord).toHaveBeenCalledWith({
+      tableId: 'tbl_1',
+      fields: {
+        fld_1: 'Form lead',
+        fld_status: 'Todo',
+      },
+      order: undefined,
+    });
+  });
+
   it('rejects duplicate values for unique fields when creating records', () => {
     const service = createService();
     vi.mocked(service.listFields).mockReturnValue([
