@@ -21,6 +21,8 @@ describe('getLocalDataMutationScope', () => {
     ['/api/base/bas_1/table/tbl_1/name', 'put'],
     ['/api/base/bas_1/table/tbl_1/icon', 'put'],
     ['/api/base/bas_1/table/tbl_1/description', 'put'],
+    ['/api/base/bas_1/node/tbl_1', 'put'],
+    ['/api/base/bas_1/node/tbl_1/move', 'put'],
   ])('classifies table metadata mutation %s as table scope', (url, method) => {
     expect(getLocalDataMutationScope(responseFor(method, url))).toBe('table');
   });

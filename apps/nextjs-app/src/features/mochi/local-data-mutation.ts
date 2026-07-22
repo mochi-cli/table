@@ -10,7 +10,7 @@ export const getLocalDataMutationScope = (data: unknown): LocalDataMutationScope
     return null;
   }
   const pathname = url.split('?')[0];
-  if (!pathname.includes('/table/') || pathname.endsWith('/plan')) {
+  if (pathname.endsWith('/plan')) {
     return null;
   }
 
