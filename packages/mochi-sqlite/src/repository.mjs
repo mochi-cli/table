@@ -112,6 +112,34 @@ const mapFieldRow = (field) =>
       }
     : null;
 
+const getSelectChoiceNames = (options) =>
+  new Set(
+    (Array.isArray(options?.choices) ? options.choices : [])
+      .map((choice) => (typeof choice?.name === 'string' ? choice.name : undefined))
+      .filter((name) => name !== undefined && name !== '')
+  );
+
+const sanitizeSelectValue = (value, fieldType, choiceNames) => {
+  if (value === null || value === undefined) return value;
+  if (fieldType === 'singleSelect') {
+    return choiceNames.has(value) ? value : null;
+  }
+  if (fieldType === 'multipleSelect') {
+    if (!Array.isArray(value)) return [];
+    return value.filter((item) => choiceNames.has(item));
+  }
+  return value;
+};
+
+const shouldCleanupSelectValues = (field, patch) => {
+  const nextType = patch.type ?? field.type;
+  return (
+    patch.options !== undefined &&
+    (nextType === 'singleSelect' || nextType === 'multipleSelect') &&
+    JSON.stringify(field.options ?? null) !== JSON.stringify(patch.options ?? null)
+  );
+};
+
 const remapRecordFields = (fields, fieldIdMap, recordIdMap) =>
   Object.fromEntries(
     Object.entries(fields ?? {}).map(([fieldId, value]) => [
@@ -1232,6 +1260,29 @@ export class MochiSqliteRepository {
         const fields = {
           ...record.fields,
           [id]: convertValue(record.fields[id], nextType),
+        };
+        statements.push(
+          `UPDATE mochi_record
+           SET fields_json = ${jsonValue(fields)},
+               version = version + 1,
+               last_modified_time = ${nowExpr}
+           WHERE id = ${sqlValue(record.id)};`
+        );
+        statements.push(...this.recordSearchStatements(current.table_id, record.id, fields));
+      }
+    }
+
+    if (shouldCleanupSelectValues(current, patch)) {
+      const choiceNames = getSelectChoiceNames(patch.options);
+      const records = this.listRecords(current.table_id, { limit: 100000 });
+      for (const record of records) {
+        if (!(id in record.fields)) continue;
+        const currentValue = record.fields[id];
+        const nextValue = sanitizeSelectValue(currentValue, nextType, choiceNames);
+        if (JSON.stringify(currentValue) === JSON.stringify(nextValue)) continue;
+        const fields = {
+          ...record.fields,
+          [id]: nextValue,
         };
         statements.push(
           `UPDATE mochi_record
