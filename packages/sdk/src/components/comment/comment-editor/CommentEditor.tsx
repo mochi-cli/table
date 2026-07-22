@@ -166,6 +166,9 @@ export const CommentEditor = (props: ICommentEditorProps) => {
     }) => createComment(tableId, recordId, createCommentRo),
     onSuccess: () => {
       queryClient.invalidateQueries({
+        queryKey: ReactQueryKeys.commentList(tableId, recordId),
+      });
+      queryClient.invalidateQueries({
         queryKey: ReactQueryKeys.recordCommentCount(tableId, recordId),
       });
       editor.tf.reset();
@@ -185,6 +188,9 @@ export const CommentEditor = (props: ICommentEditorProps) => {
       updateCommentRo: IUpdateCommentRo;
     }) => updateComment(tableId, recordId, commentId, updateCommentRo),
     onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ReactQueryKeys.commentList(tableId, recordId),
+      });
       editor.tf.reset();
       setQuoteId(undefined);
       setEditingCommentId(undefined);
