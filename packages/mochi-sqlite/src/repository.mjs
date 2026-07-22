@@ -18,8 +18,24 @@ const parseJson = (value, fallback = null) => {
 };
 
 const nowExpr = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')";
+const localUserId = 'usr_mochi_local';
+const agentUserId = 'usr_mochi_agent';
 
 const normalizeText = (value) => String(value ?? '').toLocaleLowerCase();
+
+const normalizeActorId = (input = {}) => {
+  const explicit = input.actorId ?? input.createdBy ?? input.lastModifiedBy;
+  if (typeof explicit === 'string' && explicit.trim()) {
+    const normalized = explicit.trim().toLocaleLowerCase();
+    return normalized === 'agent' || normalized === 'mochi_agent' ? agentUserId : explicit.trim();
+  }
+  const source = String(input.source ?? '')
+    .trim()
+    .toLocaleLowerCase();
+  return source === 'agent' || source === 'mochi_agent' || source === 'assistant'
+    ? agentUserId
+    : localUserId;
+};
 
 const stableId = (prefix, ...parts) =>
   `${prefix}_${createHash('sha1').update(parts.map(String).join('\0')).digest('hex').slice(0, 18)}`;
@@ -725,11 +741,32 @@ export class MochiSqliteRepository {
   init() {
     fs.mkdirSync(path.dirname(this.dbPath), { recursive: true });
     this.db.run(`.read ${JSON.stringify(schemaPath)}`);
+    this.ensureRecordAuditColumns();
     this.db.run(
       `INSERT OR IGNORE INTO mochi_space (id, name) VALUES ('spc_local', 'Mochi Local');
        INSERT OR IGNORE INTO mochi_migration (version, name) VALUES ('000_schema_sql', 'schema.sql baseline');`
     );
     this.syncMochiKitWorkspace();
+  }
+
+  ensureRecordAuditColumns() {
+    const columns = new Set(
+      this.db.all(`PRAGMA table_info(mochi_record);`).map((column) => column.name)
+    );
+    const statements = [];
+    if (!columns.has('created_by')) {
+      statements.push(
+        `ALTER TABLE mochi_record ADD COLUMN created_by TEXT NOT NULL DEFAULT ${sqlValue(localUserId)};`
+      );
+    }
+    if (!columns.has('last_modified_by')) {
+      statements.push(
+        `ALTER TABLE mochi_record ADD COLUMN last_modified_by TEXT NOT NULL DEFAULT ${sqlValue(localUserId)};`
+      );
+    }
+    if (statements.length) {
+      this.db.transaction(statements);
+    }
   }
 
   tableExists(name) {
@@ -867,7 +904,7 @@ export class MochiSqliteRepository {
           );
           statements.push(
             `INSERT INTO mochi_record (
-               id, table_id, auto_number, fields_json, order_json, created_time, last_modified_time
+               id, table_id, auto_number, fields_json, order_json, created_by, last_modified_by, created_time, last_modified_time
              )
              VALUES (
                ${sqlValue(recordId)},
@@ -875,6 +912,8 @@ export class MochiSqliteRepository {
                ${sqlValue(recordIndex + 1)},
                ${jsonValue(fields)},
                NULL,
+               ${sqlValue(agentUserId)},
+               ${sqlValue(agentUserId)},
                ${sqlValue(record.created_at)},
                ${sqlValue(record.updated_at)}
              )
@@ -882,6 +921,7 @@ export class MochiSqliteRepository {
                table_id = excluded.table_id,
                auto_number = excluded.auto_number,
                fields_json = excluded.fields_json,
+               last_modified_by = excluded.last_modified_by,
                last_modified_time = excluded.last_modified_time,
                deleted_time = NULL;`
           );
@@ -1607,6 +1647,7 @@ export class MochiSqliteRepository {
 
   createRecord(input) {
     const id = input.id ?? ids.record();
+    const actorId = normalizeActorId(input);
     const auto = this.db.get(`
       SELECT COALESCE(MAX(auto_number), 0) + 1 AS next_auto
       FROM mochi_record
@@ -1614,13 +1655,17 @@ export class MochiSqliteRepository {
     `);
     const batchId = input.batchId ?? ids.opBatch();
     const statements = [
-      `INSERT INTO mochi_record (id, table_id, auto_number, fields_json, order_json)
+      `INSERT INTO mochi_record (
+         id, table_id, auto_number, fields_json, order_json, created_by, last_modified_by
+       )
        VALUES (
          ${sqlValue(id)},
          ${sqlValue(input.tableId)},
          ${sqlValue(input.autoNumber ?? auto?.next_auto ?? 1)},
          ${jsonValue(input.fields ?? {})},
-         ${input.order === undefined ? 'NULL' : jsonValue(input.order)}
+         ${input.order === undefined ? 'NULL' : jsonValue(input.order)},
+         ${sqlValue(actorId)},
+         ${sqlValue(actorId)}
        );`,
       `INSERT INTO mochi_op_batch (id, label, source)
        VALUES (${sqlValue(batchId)}, ${sqlValue(input.label ?? 'Create record')}, ${sqlValue(input.source ?? 'user')})
@@ -1654,6 +1699,7 @@ export class MochiSqliteRepository {
   updateRecord(id, patch) {
     const current = this.getRecord(id);
     if (!current) return null;
+    const actorId = normalizeActorId(patch);
     const nextFields = { ...current.fields, ...(patch.fields ?? {}) };
     const nextOrder = patch.order === undefined ? current.order : patch.order;
     const batchId = patch.batchId ?? ids.opBatch();
@@ -1661,6 +1707,7 @@ export class MochiSqliteRepository {
       `UPDATE mochi_record
        SET fields_json = ${jsonValue(nextFields)},
            order_json = ${nextOrder === undefined || nextOrder === null ? 'NULL' : jsonValue(nextOrder)},
+           last_modified_by = ${sqlValue(actorId)},
            version = version + 1,
            last_modified_time = ${nowExpr}
        WHERE id = ${sqlValue(id)};`,

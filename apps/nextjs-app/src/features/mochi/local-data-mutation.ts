@@ -10,7 +10,7 @@ export const getLocalDataMutationScope = (data: unknown): LocalDataMutationScope
     return null;
   }
   const pathname = url.split('?')[0];
-  if (!pathname.includes('/table/') || pathname.endsWith('/plan')) {
+  if (pathname.endsWith('/plan')) {
     return null;
   }
 
@@ -24,7 +24,10 @@ export const getLocalDataMutationScope = (data: unknown): LocalDataMutationScope
     return 'record';
   }
 
-  if (/\/table\/[^/]+\/(?:name|icon|description)$/.test(pathname)) {
+  if (
+    /\/table\/[^/]+\/(?:name|icon|description)$/.test(pathname) ||
+    /\/base\/[^/]+\/node\/[^/]+(?:\/move)?$/.test(pathname)
+  ) {
     return 'table';
   }
 

@@ -102,6 +102,7 @@ export class MochiSqliteRepository {
     batchId?: string;
     label?: string;
     source?: string;
+    actorId?: string;
   }): unknown;
   getRecord(id: string): unknown | null;
   updateRecord(
@@ -112,6 +113,7 @@ export class MochiSqliteRepository {
       batchId?: string;
       label?: string;
       source?: string;
+      actorId?: string;
     }
   ): unknown | null;
   deleteRecord(

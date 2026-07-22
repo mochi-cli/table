@@ -18,6 +18,14 @@ interface IPinItemProps {
 export const PinItem = (props: IPinItemProps) => {
   const { className, pin, right } = props;
   const router = useRouter();
+  const isMochiLocal = router.pathname === '/mochi/local';
+  const getLocalTableHref = (tableId: string, viewId?: string) => {
+    const params = new URLSearchParams({ tableId });
+    if (viewId) {
+      params.set('viewId', viewId);
+    }
+    return `/mochi/local?${params.toString()}`;
+  };
 
   switch (pin.type) {
     case PinType.Space: {
@@ -69,7 +77,12 @@ export const PinItem = (props: IPinItemProps) => {
     case PinType.Table: {
       return (
         <ItemButton className={className}>
-          <Link href={`/base/${pin.parentBaseId}/table/${pin.id}`} title={pin.name}>
+          <Link
+            href={
+              isMochiLocal ? getLocalTableHref(pin.id) : `/base/${pin.parentBaseId}/table/${pin.id}`
+            }
+            title={pin.name}
+          >
             {pin.icon ? (
               <div className="size-4 shrink-0 text-[3.5rem] leading-none">
                 <Emoji emoji={pin.icon} size={16} />
@@ -92,12 +105,14 @@ export const PinItem = (props: IPinItemProps) => {
         <ItemButton className={className}>
           <Link
             href={
-              getNodeUrl({
-                baseId: pin.parentBaseId!,
-                resourceType: BaseNodeResourceType.Table,
-                resourceId: pin.viewMeta.tableId,
-                viewId: pin.id,
-              }) ?? {}
+              isMochiLocal
+                ? getLocalTableHref(pin.viewMeta.tableId, pin.id)
+                : getNodeUrl({
+                    baseId: pin.parentBaseId!,
+                    resourceType: BaseNodeResourceType.Table,
+                    resourceId: pin.viewMeta.tableId,
+                    viewId: pin.id,
+                  }) ?? {}
             }
             title={pin.name}
           >

@@ -21,6 +21,8 @@ type LocalRecord = {
   id: string;
   table_id?: string;
   auto_number?: number;
+  created_by?: string;
+  last_modified_by?: string;
   fields?: Record<string, unknown>;
   created_time?: string;
   last_modified_time?: string;
@@ -219,8 +221,8 @@ const toRecordSnapshot = (tableId: string, record: LocalRecord): LocalSnapshot =
     autoNumber: record.auto_number,
     createdTime: record.created_time,
     lastModifiedTime: record.last_modified_time,
-    createdBy: 'Mochi Local',
-    lastModifiedBy: 'Mochi Local',
+    createdBy: record.created_by ?? 'usr_mochi_local',
+    lastModifiedBy: record.last_modified_by ?? record.created_by ?? 'usr_mochi_local',
   },
 });
 

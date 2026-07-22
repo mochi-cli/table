@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, Param, Patch, Post, Query } from '@nestjs/common';
 import { Public } from '../auth/decorators/public.decorator';
 import { MochiSqliteService } from './mochi-sqlite.service';
 
@@ -15,6 +15,17 @@ const parseNumberQuery = (value: unknown, fallback: number) => {
   const numberValue = Number(value);
   return Number.isFinite(numberValue) ? numberValue : fallback;
 };
+
+const getActorPatch = (
+  headers: Record<string, string | string[] | undefined>,
+  body?: { actorId?: string; source?: string }
+) => ({
+  actorId:
+    (typeof headers['x-mochi-actor-id'] === 'string' && headers['x-mochi-actor-id']) ||
+    (typeof headers['x-mochi-actor'] === 'string' && headers['x-mochi-actor']) ||
+    body?.actorId,
+  source: body?.source,
+});
 
 @Public()
 @Controller('api/mochi')
@@ -160,17 +171,26 @@ export class MochiSqliteController {
   @Post('tables/:tableId/records')
   createRecord(
     @Param('tableId') tableId: string,
-    @Body() body: { fields?: Record<string, unknown> }
+    @Body() body: { fields?: Record<string, unknown>; actorId?: string; source?: string },
+    @Headers() headers: Record<string, string | string[] | undefined>
   ) {
-    return this.mochiSqliteService.createRecord({ ...body, tableId });
+    return this.mochiSqliteService.createRecord({
+      ...body,
+      ...getActorPatch(headers, body),
+      tableId,
+    });
   }
 
   @Patch('records/:recordId')
   updateRecord(
     @Param('recordId') recordId: string,
-    @Body() body: { fields?: Record<string, unknown> }
+    @Body() body: { fields?: Record<string, unknown>; actorId?: string; source?: string },
+    @Headers() headers: Record<string, string | string[] | undefined>
   ) {
-    return this.mochiSqliteService.updateRecord(recordId, body);
+    return this.mochiSqliteService.updateRecord(recordId, {
+      ...body,
+      ...getActorPatch(headers, body),
+    });
   }
 
   @Get('records/:recordId')

@@ -98,6 +98,8 @@ type LocalRecord = {
   id: string;
   table_id?: string;
   auto_number?: number;
+  created_by?: string;
+  last_modified_by?: string;
   fields?: Record<string, unknown>;
   data?: Record<string, unknown>;
   title?: string | null;
@@ -110,6 +112,25 @@ const localUserId = 'usr_mochi_local';
 const localSpaceId = 'spc_local';
 const localDataMutatedEvent = 'mochi-local-data-mutated';
 const localDataRefreshIntervalMs = 5 * 60 * 1000;
+
+const localActorCells = {
+  [localUserId]: {
+    id: localUserId,
+    title: 'Mochi Local',
+    email: 'local@mochi.local',
+    isSystem: true,
+  },
+  usr_mochi_agent: {
+    id: 'usr_mochi_agent',
+    title: 'Mochi Agent',
+    email: 'agent@mochi.local',
+    isSystem: true,
+  },
+};
+
+const getLocalActorCell = (actorId?: string | null) =>
+  localActorCells[actorId as keyof typeof localActorCells] ?? localActorCells[localUserId];
+
 type LocalTableVo = ITableVo & { permission: Record<string, boolean> };
 type RouterOptions = NonNullable<Parameters<NextRouter['push']>[2]>;
 
@@ -459,15 +480,44 @@ const mapTable = (table: LocalTable, defaultViewId?: string): LocalTableVo => ({
   permission: localTablePermission,
 });
 
+const getLocalSystemFieldValue = (record: LocalRecord, fieldType: FieldType) => {
+  const systemValueMap = {
+    [FieldType.AutoNumber]: record.auto_number ?? null,
+    [FieldType.CreatedTime]: record.created_time ?? null,
+    [FieldType.LastModifiedTime]: record.last_modified_time ?? record.created_time ?? null,
+    [FieldType.CreatedBy]: getLocalActorCell(record.created_by),
+    [FieldType.LastModifiedBy]: getLocalActorCell(record.last_modified_by ?? record.created_by),
+  } satisfies Partial<Record<FieldType, unknown>>;
+
+  return systemValueMap[fieldType];
+};
+
+const withLocalSystemFields = (
+  fields: Record<string, unknown>,
+  record: LocalRecord,
+  schemaFields: IFieldVo[]
+) =>
+  schemaFields.reduce<Record<string, unknown>>((acc, field) => {
+    const systemValue = getLocalSystemFieldValue(record, field.type);
+    if (systemValue !== undefined) {
+      acc[field.id] = systemValue;
+    }
+    return acc;
+  }, fields);
+
 const mapRecord = (record: LocalRecord, schemaFields: IFieldVo[]): IRecord => {
   const rawFields = normalizeRecordFields(record);
   const fieldIds = new Set(schemaFields.map((field) => field.id));
   const fieldByName = new Map(schemaFields.map((field) => [field.name, field]));
-  const fields = Object.entries(rawFields).reduce<Record<string, unknown>>((acc, [key, value]) => {
-    const schemaField = fieldIds.has(key) ? undefined : fieldByName.get(key);
-    acc[schemaField?.id ?? key] = value;
-    return acc;
-  }, {});
+  const fields = withLocalSystemFields(
+    Object.entries(rawFields).reduce<Record<string, unknown>>((acc, [key, value]) => {
+      const schemaField = fieldIds.has(key) ? undefined : fieldByName.get(key);
+      acc[schemaField?.id ?? key] = value;
+      return acc;
+    }, {}),
+    record,
+    schemaFields
+  );
   const primaryFieldId = schemaFields.find((field) => field.isPrimary)?.id ?? schemaFields[0]?.id;
   if (
     primaryFieldId &&
@@ -485,8 +535,8 @@ const mapRecord = (record: LocalRecord, schemaFields: IFieldVo[]): IRecord => {
     autoNumber: record.auto_number,
     createdTime: record.created_time,
     lastModifiedTime: record.last_modified_time,
-    createdBy: 'Mochi Local',
-    lastModifiedBy: 'Mochi Local',
+    createdBy: record.created_by ?? localUserId,
+    lastModifiedBy: record.last_modified_by ?? record.created_by ?? localUserId,
   };
   return mappedRecord;
 };
@@ -761,9 +811,6 @@ function MochiLocalGridPageInner() {
     );
   }
 
-  const tableDataKey = data.tables
-    .map((table) => `${table.id}:${table.name}:${table.lastModifiedTime ?? ''}`)
-    .join('|');
   const tableRoute = `/base/${data.baseId}/table/${data.tableId}/${data.viewId}`;
   const localRouter = {
     ...router,
@@ -804,7 +851,7 @@ function MochiLocalGridPageInner() {
           >
             <BaseProvider fallback={null}>
               <BaseNodeProvider>
-                <TableProvider key={tableDataKey} serverData={data.tables}>
+                <TableProvider serverData={data.tables}>
                   <main className="flex h-screen w-full overflow-hidden bg-background">
                     <Sidebar
                       headerLeft={

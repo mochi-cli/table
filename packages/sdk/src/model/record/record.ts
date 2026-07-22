@@ -15,9 +15,30 @@ export class Record extends RecordCore {
     value?: string;
   };
 
+  private actorCellValue(actor: unknown) {
+    if (actor && typeof actor === 'object') {
+      return actor;
+    }
+    const actorId = typeof actor === 'string' && actor ? actor : 'usr_mochi_local';
+    if (actorId === 'usr_mochi_agent') {
+      return {
+        id: actorId,
+        title: 'Mochi Agent',
+        email: 'agent@mochi.local',
+        isSystem: true,
+      };
+    }
+    return {
+      id: actorId,
+      title: actorId === 'usr_mochi_local' || actorId === 'Mochi Local' ? 'Mochi Local' : actorId,
+      email: actorId === 'usr_mochi_local' ? 'local@mochi.local' : undefined,
+      isSystem: actorId === 'usr_mochi_local',
+    };
+  }
+
   private normalizeCellValue(fieldId: string) {
-    const cellValue = this.fields[fieldId];
     const field = this.fieldMap?.[fieldId];
+    const cellValue = this.fields[fieldId] ?? this.getSystemCellValue(field?.type);
 
     if (!field) {
       return cellValue;
@@ -38,6 +59,30 @@ export class Record extends RecordCore {
       return repairedValidated?.success ? repairedValidated.data : repaired;
     } catch {
       return cellValue;
+    }
+  }
+
+  private getSystemCellValue(type?: FieldType) {
+    const record = this as unknown as {
+      autoNumber?: number;
+      createdTime?: string;
+      lastModifiedTime?: string;
+      createdBy?: unknown;
+      lastModifiedBy?: unknown;
+    };
+    switch (type) {
+      case FieldType.AutoNumber:
+        return record.autoNumber ?? null;
+      case FieldType.CreatedTime:
+        return record.createdTime ?? null;
+      case FieldType.LastModifiedTime:
+        return record.lastModifiedTime ?? record.createdTime ?? null;
+      case FieldType.CreatedBy:
+        return this.actorCellValue(record.createdBy);
+      case FieldType.LastModifiedBy:
+        return this.actorCellValue(record.lastModifiedBy ?? record.createdBy);
+      default:
+        return undefined;
     }
   }
 
