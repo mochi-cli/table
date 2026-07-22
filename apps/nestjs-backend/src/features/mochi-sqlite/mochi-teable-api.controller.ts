@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -517,6 +518,12 @@ const applyRecordDefaultValues = (
   return nextFields;
 };
 
+const getUniqueValueKey = (value: unknown): string | undefined => {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (Array.isArray(value) && value.length === 0) return undefined;
+  return JSON.stringify(value);
+};
+
 const toTeableField = (field: LocalField | null | undefined): IFieldVo | null => {
   if (!field) return null;
   const { type, cellValueType, isMultipleCellValue, dbFieldType } = getFieldMetadata(field);
@@ -831,6 +838,40 @@ export class MochiTeableApiController {
     const [fieldId, recordId] = linkCellQuery;
     const record = this.mochiSqliteService.getRecord(recordId) as LocalRecord | null;
     return getLinkRecordIds(record?.fields?.[fieldId]);
+  }
+
+  private assertUniqueValues(
+    tableId: string,
+    candidates: Array<{ id?: string; fields: Record<string, unknown>; changedFieldIds?: string[] }>,
+    fields: LocalField[] = this.mochiSqliteService.listFields(tableId) as LocalField[]
+  ) {
+    const uniqueFields = fields.filter((field) => toBool(field.unique_value));
+    if (!uniqueFields.length || !candidates.length) return;
+
+    const records = this.mochiSqliteService.listRecords(tableId, {
+      limit: 100000,
+    }) as LocalRecord[];
+    for (const field of uniqueFields) {
+      const seen = new Map<string, string>();
+      for (const record of records) {
+        if (candidates.some((candidate) => candidate.id === record.id)) continue;
+        const valueKey = getUniqueValueKey(record.fields?.[field.id]);
+        if (valueKey) seen.set(valueKey, record.id);
+      }
+
+      for (const candidate of candidates) {
+        if (candidate.changedFieldIds && !candidate.changedFieldIds.includes(field.id)) continue;
+        const valueKey = getUniqueValueKey(candidate.fields[field.id]);
+        if (!valueKey) continue;
+        const duplicateRecordId = seen.get(valueKey);
+        if (duplicateRecordId) {
+          throw new BadRequestException(
+            `Unique field "${field.name}" already has this value in record ${duplicateRecordId}`
+          );
+        }
+        seen.set(valueKey, candidate.id ?? `new:${seen.size}`);
+      }
+    }
   }
 
   private prepareSelectionStream(response: Response) {
@@ -1388,10 +1429,14 @@ export class MochiTeableApiController {
     const actorPatch = getActorPatch(headers, body);
     const records = body.records?.length ? body.records : [{ fields: {} }];
     const fields = this.mochiSqliteService.listFields(tableId) as LocalField[];
-    const created = records.map((record) =>
+    const recordsWithDefaults = records.map((record) => ({
+      fields: applyRecordDefaultValues(record.fields ?? {}, fields),
+    }));
+    this.assertUniqueValues(tableId, recordsWithDefaults, fields);
+    const created = recordsWithDefaults.map((record) =>
       this.mochiSqliteService.createRecord({
         tableId,
-        fields: applyRecordDefaultValues(record.fields ?? {}, fields),
+        fields: record.fields,
         order: body.order,
         ...actorPatch,
       })
@@ -1411,6 +1456,22 @@ export class MochiTeableApiController {
   ): IRecord[] {
     const actorPatch = getActorPatch(headers, body);
     const records = body.records ?? [];
+    const candidates = records
+      .map((record) => {
+        if (!record.id) return null;
+        const current = this.mochiSqliteService.getRecord(record.id) as LocalRecord | null;
+        return {
+          id: record.id,
+          fields: { ...(current?.fields ?? {}), ...(record.fields ?? {}) },
+          changedFieldIds: Object.keys(record.fields ?? {}),
+        };
+      })
+      .filter(Boolean) as Array<{
+      id: string;
+      fields: Record<string, unknown>;
+      changedFieldIds: string[];
+    }>;
+    this.assertUniqueValues(tableId, candidates);
     const updated = records
       .map((record) => {
         if (!record.id) return null;
@@ -1438,6 +1499,7 @@ export class MochiTeableApiController {
   ): IRecord | null {
     const source = this.mochiSqliteService.getRecord(recordId) as LocalRecord | null;
     if (!source) return null;
+    this.assertUniqueValues(tableId, [{ fields: { ...(source.fields ?? {}) } }]);
     const created = this.mochiSqliteService.createRecord({
       tableId,
       fields: { ...(source.fields ?? {}) },
@@ -1455,6 +1517,14 @@ export class MochiTeableApiController {
     @Headers() headers: Record<string, string | string[] | undefined>
   ): IRecord | null {
     const fields = body.record?.fields ?? body.fields ?? {};
+    const current = this.mochiSqliteService.getRecord(recordId) as LocalRecord | null;
+    this.assertUniqueValues(tableId, [
+      {
+        id: recordId,
+        fields: { ...(current?.fields ?? {}), ...fields },
+        changedFieldIds: Object.keys(fields),
+      },
+    ]);
     const updated = this.mochiSqliteService.updateRecord(
       recordId,
       {

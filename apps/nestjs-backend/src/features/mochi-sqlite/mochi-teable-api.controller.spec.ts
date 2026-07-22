@@ -326,6 +326,51 @@ describe('MochiTeableApiController', () => {
     });
   });
 
+  it('rejects duplicate values for unique fields when creating records', () => {
+    const service = createService();
+    vi.mocked(service.listFields).mockReturnValue([
+      {
+        id: 'fld_1',
+        name: 'Name',
+        type: 'singleLineText',
+        unique_value: 1,
+      },
+    ]);
+    const controller = new MochiTeableApiController(service);
+
+    expect(() =>
+      controller.createRecords('tbl_1', {
+        records: [{ fields: { fld_1: 'Alice' } }],
+      })
+    ).toThrow('Unique field "Name" already has this value in record rec_1');
+    expect(service.createRecord).not.toHaveBeenCalled();
+  });
+
+  it('rejects updating a unique field to an existing value', () => {
+    const service = createService();
+    vi.mocked(service.listFields).mockReturnValue([
+      {
+        id: 'fld_1',
+        name: 'Name',
+        type: 'singleLineText',
+        unique_value: 1,
+      },
+    ]);
+    vi.mocked(service.getRecord).mockReturnValue({
+      id: 'rec_2',
+      auto_number: 2,
+      fields: { fld_1: 'Bob' },
+    });
+    const controller = new MochiTeableApiController(service);
+
+    expect(() =>
+      controller.updateRecord('tbl_1', 'rec_2', {
+        fields: { fld_1: 'Alice' },
+      })
+    ).toThrow('Unique field "Name" already has this value in record rec_1');
+    expect(service.updateRecord).not.toHaveBeenCalled();
+  });
+
   it('inserts uploaded attachments into an attachment cell without replacing existing files', () => {
     const service = createService();
     const oldAttachment = {
