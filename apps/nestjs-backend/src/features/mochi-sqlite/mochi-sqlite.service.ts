@@ -94,9 +94,18 @@ type MochiRepository = {
     }
   ) => unknown[];
   rebuildSearchIndex: (tableId: string) => unknown;
-  createRecord: (input: { tableId: string; fields?: JsonRecord; order?: unknown }) => unknown;
+  createRecord: (input: {
+    tableId: string;
+    fields?: JsonRecord;
+    order?: unknown;
+    actorId?: string;
+    source?: string;
+  }) => unknown;
   getRecord: (id: string) => unknown;
-  updateRecord: (id: string, patch: { fields?: JsonRecord; order?: unknown }) => unknown;
+  updateRecord: (
+    id: string,
+    patch: { fields?: JsonRecord; order?: unknown; actorId?: string; source?: string }
+  ) => unknown;
   deleteRecord: (id: string) => unknown;
   getComment: (tableId: string, recordId: string, commentId: string) => unknown;
   listComments: (tableId: string, recordId: string, options?: { limit?: number }) => unknown[];
@@ -441,7 +450,13 @@ export class MochiSqliteService {
     return this.repository.rebuildSearchIndex(tableId);
   }
 
-  createRecord(input: { tableId: string; fields?: JsonRecord; order?: unknown }) {
+  createRecord(input: {
+    tableId: string;
+    fields?: JsonRecord;
+    order?: unknown;
+    actorId?: string;
+    source?: string;
+  }) {
     const created = this.repository.createRecord(input);
     this.emitMochiRecordCreate(input.tableId, created);
     return created;
@@ -453,7 +468,7 @@ export class MochiSqliteService {
 
   updateRecord(
     id: string,
-    patch: { fields?: JsonRecord; order?: unknown },
+    patch: { fields?: JsonRecord; order?: unknown; actorId?: string; source?: string },
     tableIdOverride?: string
   ) {
     const before = this.repository.getRecord(id) as LocalRecord | null;

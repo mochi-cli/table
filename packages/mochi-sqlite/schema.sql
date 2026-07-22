@@ -101,6 +101,8 @@ CREATE TABLE IF NOT EXISTS mochi_record (
   auto_number INTEGER,
   fields_json TEXT NOT NULL DEFAULT '{}',
   order_json TEXT,
+  created_by TEXT NOT NULL DEFAULT 'usr_mochi_local',
+  last_modified_by TEXT NOT NULL DEFAULT 'usr_mochi_local',
   created_time TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   last_modified_time TEXT,
   version INTEGER NOT NULL DEFAULT 1,

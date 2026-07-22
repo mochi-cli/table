@@ -1,4 +1,16 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Res } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Headers,
+  Param,
+  Patch,
+  Post,
+  Put,
+  Query,
+  Res,
+} from '@nestjs/common';
 import {
   CellValueType,
   DbFieldType,
@@ -29,6 +41,17 @@ const parseNumberQuery = (value: unknown, fallback: number) => {
   const numberValue = Number(value);
   return Number.isFinite(numberValue) ? numberValue : fallback;
 };
+
+const getActorPatch = (
+  headers: Record<string, string | string[] | undefined>,
+  body?: { actorId?: string; source?: string }
+) => ({
+  actorId:
+    (typeof headers['x-mochi-actor-id'] === 'string' && headers['x-mochi-actor-id']) ||
+    (typeof headers['x-mochi-actor'] === 'string' && headers['x-mochi-actor']) ||
+    body?.actorId,
+  source: body?.source,
+});
 
 const parseArrayQuery = (value: unknown): string[] | undefined => {
   if (Array.isArray(value)) return value.map(String).filter(Boolean);
@@ -103,6 +126,8 @@ type UpdateRecordBody = {
     fields?: Record<string, unknown>;
   };
   order?: unknown;
+  actorId?: string;
+  source?: string;
 };
 
 type CreateRecordsBody = {
@@ -111,11 +136,15 @@ type CreateRecordsBody = {
     fields?: Record<string, unknown>;
   }>;
   order?: unknown;
+  actorId?: string;
+  source?: string;
 };
 
 type InsertAttachmentBody = {
   attachments?: IAttachmentItem[];
   anchorId?: string;
+  actorId?: string;
+  source?: string;
 };
 
 type FieldBody = {
@@ -150,6 +179,8 @@ type IdReturnType = 'recordId' | 'fieldId' | 'all';
 type TemporaryPasteBody = {
   content?: string | unknown[][];
   ranges?: [number, number][];
+  actorId?: string;
+  source?: string;
 };
 
 type SelectionIdBody = {
@@ -161,6 +192,8 @@ type SelectionIdBody = {
     excludeRecordIds?: string[];
     fieldIds?: string[];
   };
+  actorId?: string;
+  source?: string;
 };
 
 type PasteByIdBody = SelectionIdBody & {
@@ -180,6 +213,8 @@ type RangeBody = {
   content?: string | unknown[][];
   filter?: string | unknown[] | Record<string, unknown>;
   orderBy?: string | unknown[];
+  actorId?: string;
+  source?: string;
 };
 
 type FieldPlan = {
@@ -230,6 +265,8 @@ type LocalRecord = {
   id: string;
   table_id?: string;
   auto_number?: number;
+  created_by?: string;
+  last_modified_by?: string;
   fields?: Record<string, unknown>;
   created_time?: string;
   last_modified_time?: string;
@@ -443,8 +480,8 @@ const toTeableRecord = (record: LocalRecord | null | undefined): IRecord | null 
     autoNumber: record.auto_number,
     createdTime: record.created_time,
     lastModifiedTime: record.last_modified_time,
-    createdBy: 'Mochi Local',
-    lastModifiedBy: 'Mochi Local',
+    createdBy: record.created_by ?? 'usr_mochi_local',
+    lastModifiedBy: record.last_modified_by ?? record.created_by ?? 'usr_mochi_local',
   };
 };
 
@@ -668,6 +705,7 @@ export class MochiTeableApiController {
   private pasteByIds(tableId: string, body: PasteByIdBody) {
     const { fields, recordIds, fieldIds } = this.bodySelectionToIds(tableId, body);
     const pasteRows = parsePasteContent(body.content);
+    const actorPatch = getActorPatch({}, body);
     const createdRecordIds: string[] = [];
     const updatedRecordIds: string[] = [];
     const targetRecordIds = [...recordIds];
@@ -682,7 +720,7 @@ export class MochiTeableApiController {
       if (Object.keys(values).length === 0) return;
 
       if (recordId) {
-        this.mochiSqliteService.updateRecord(recordId, { fields: values }, tableId);
+        this.mochiSqliteService.updateRecord(recordId, { fields: values, ...actorPatch }, tableId);
         updatedRecordIds.push(recordId);
         return;
       }
@@ -690,6 +728,7 @@ export class MochiTeableApiController {
       const created = this.mochiSqliteService.createRecord({
         tableId,
         fields: values,
+        ...actorPatch,
       }) as LocalRecord;
       createdRecordIds.push(created.id);
       targetRecordIds.push(created.id);
@@ -1062,14 +1101,17 @@ export class MochiTeableApiController {
   @Post(':tableId/record')
   createRecords(
     @Param('tableId') tableId: string,
-    @Body() body: CreateRecordsBody
+    @Body() body: CreateRecordsBody,
+    @Headers() headers: Record<string, string | string[] | undefined>
   ): { records: IRecord[] } {
+    const actorPatch = getActorPatch(headers, body);
     const records = body.records?.length ? body.records : [{ fields: {} }];
     const created = records.map((record) =>
       this.mochiSqliteService.createRecord({
         tableId,
         fields: record.fields ?? {},
         order: body.order,
+        ...actorPatch,
       })
     ) as LocalRecord[];
     return { records: created.map(toTeableRecord).filter(Boolean) as IRecord[] };
@@ -1079,7 +1121,8 @@ export class MochiTeableApiController {
   duplicateRecord(
     @Param('tableId') tableId: string,
     @Param('recordId') recordId: string,
-    @Body() order?: unknown
+    @Body() order?: unknown,
+    @Headers() headers?: Record<string, string | string[] | undefined>
   ): IRecord | null {
     const source = this.mochiSqliteService.getRecord(recordId) as LocalRecord | null;
     if (!source) return null;
@@ -1087,6 +1130,7 @@ export class MochiTeableApiController {
       tableId,
       fields: { ...(source.fields ?? {}) },
       order,
+      ...getActorPatch(headers ?? {}),
     }) as LocalRecord;
     return toTeableRecord(created);
   }
@@ -1095,7 +1139,8 @@ export class MochiTeableApiController {
   updateRecord(
     @Param('tableId') tableId: string,
     @Param('recordId') recordId: string,
-    @Body() body: UpdateRecordBody
+    @Body() body: UpdateRecordBody,
+    @Headers() headers: Record<string, string | string[] | undefined>
   ): IRecord | null {
     const fields = body.record?.fields ?? body.fields ?? {};
     const updated = this.mochiSqliteService.updateRecord(
@@ -1103,6 +1148,7 @@ export class MochiTeableApiController {
       {
         fields,
         order: body.order,
+        ...getActorPatch(headers, body),
       },
       tableId
     ) as LocalRecord | null;
@@ -1114,7 +1160,8 @@ export class MochiTeableApiController {
     @Param('tableId') tableId: string,
     @Param('recordId') recordId: string,
     @Param('fieldId') fieldId: string,
-    @Body() body: InsertAttachmentBody = {}
+    @Body() body: InsertAttachmentBody = {},
+    @Headers() headers: Record<string, string | string[] | undefined>
   ): IRecord | null {
     const record = this.mochiSqliteService.getRecord(recordId) as LocalRecord | null;
     if (!record) return null;
@@ -1131,6 +1178,7 @@ export class MochiTeableApiController {
         fields: {
           [fieldId]: nextValue,
         },
+        ...getActorPatch(headers, body),
       },
       tableId
     ) as LocalRecord | null;
@@ -1399,12 +1447,13 @@ export class MochiTeableApiController {
   @Patch(':tableId/selection/clear-by-id')
   clearSelectionById(@Param('tableId') tableId: string, @Body() body: SelectionIdBody): null {
     const selection = this.bodySelectionToIds(tableId, body);
+    const actorPatch = getActorPatch({}, body);
     for (const recordId of selection.recordIds) {
       const fields = selection.fieldIds.reduce<Record<string, unknown>>((acc, fieldId) => {
         acc[fieldId] = null;
         return acc;
       }, {});
-      this.mochiSqliteService.updateRecord(recordId, { fields }, tableId);
+      this.mochiSqliteService.updateRecord(recordId, { fields, ...actorPatch }, tableId);
     }
     return null;
   }
@@ -1436,6 +1485,8 @@ export class MochiTeableApiController {
           recordIds: selection.recordIds,
           fieldIds: selection.fieldIds,
         },
+        actorId: body.actorId,
+        source: body.source,
       });
 
       this.sendSelectionStreamEvent(response, {
@@ -1472,6 +1523,8 @@ export class MochiTeableApiController {
         recordIds: selection.recordIds,
         fieldIds: selection.fieldIds,
       },
+      actorId: body.actorId,
+      source: body.source,
     });
   }
 
