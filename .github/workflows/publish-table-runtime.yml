@@ -9,8 +9,7 @@ on:
         type: string
 
 permissions:
-  contents: read
-  packages: write
+  contents: write
 
 jobs:
   publish:
@@ -30,8 +29,6 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-          registry-url: https://npm.pkg.github.com
-          scope: '@mochi-cli'
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -57,7 +54,29 @@ jobs:
       - name: Set package version
         run: pnpm -F @mochi-cli/table-runtime version "${{ inputs.version }}" --no-git-tag-version
 
-      - name: Publish private GitHub package
+      - name: Pack runtime tarball
+        run: pnpm -C packages/mochi-table-runtime pack --pack-destination "$GITHUB_WORKSPACE"
+
+      - name: Publish GitHub release tarball
         env:
-          NODE_AUTH_TOKEN: ${{ github.token }}
-        run: pnpm -F @mochi-cli/table-runtime publish --no-git-checks
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+
+          tag="table-runtime-v${VERSION}"
+          asset="mochi-cli-table-runtime-${VERSION}.tgz"
+
+          if [ ! -f "${asset}" ]; then
+            echo "Missing packed runtime asset: ${asset}" >&2
+            ls -la *.tgz >&2 || true
+            exit 1
+          fi
+
+          if gh release view "${tag}" >/dev/null 2>&1; then
+            gh release upload "${tag}" "${asset}" --clobber
+          else
+            gh release create "${tag}" "${asset}" \
+              --title "Mochi Table Runtime ${VERSION}" \
+              --notes "Mochi Table Runtime ${VERSION} packaged as an npm-installable tarball."
+          fi
