@@ -141,6 +141,18 @@ const normalizeSortQuery = (orderBy: unknown): unknown[] => {
   return Array.isArray(parsed) ? parsed : [];
 };
 
+const normalizeGroupByQuery = (groupBy: unknown): Array<{ fieldId?: string; order?: string }> => {
+  const parsed = typeof groupBy === 'string' ? parseJsonQuery<unknown>(groupBy, []) : groupBy;
+  if (!Array.isArray(parsed)) return [];
+  return parsed
+    .filter((item): item is Record<string, unknown> => isObjectRecord(item))
+    .map((item) => ({
+      fieldId: typeof item.fieldId === 'string' ? item.fieldId : undefined,
+      order: typeof item.order === 'string' ? item.order : undefined,
+    }))
+    .filter((item) => item.fieldId);
+};
+
 const getQueryValue = (query: Record<string, unknown> | undefined, key: string): unknown =>
   query?.[key] ?? query?.[`${key}[]`];
 
@@ -524,6 +536,36 @@ const getUniqueValueKey = (value: unknown): string | undefined => {
   return JSON.stringify(value);
 };
 
+const getGroupValueKey = (value: unknown): string => getUniqueValueKey(value) ?? '__blank__';
+
+const getCalendarDay = (value: unknown): string | undefined => {
+  if (typeof value !== 'string' && typeof value !== 'number' && !(value instanceof Date)) {
+    return undefined;
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return undefined;
+  return date.toISOString().slice(0, 10);
+};
+
+const getLocalRecordFieldValue = (record: LocalRecord, field: LocalField | undefined): unknown => {
+  if (!field) return undefined;
+  const type = normalizeFieldType(field.type);
+  switch (type) {
+    case FieldType.AutoNumber:
+      return record.auto_number;
+    case FieldType.CreatedTime:
+      return record.created_time;
+    case FieldType.LastModifiedTime:
+      return record.last_modified_time;
+    case FieldType.CreatedBy:
+      return record.created_by;
+    case FieldType.LastModifiedBy:
+      return record.last_modified_by;
+    default:
+      return record.fields?.[field.id];
+  }
+};
+
 const toTeableField = (field: LocalField | null | undefined): IFieldVo | null => {
   if (!field) return null;
   const { type, cellValueType, isMultipleCellValue, dbFieldType } = getFieldMetadata(field);
@@ -777,12 +819,14 @@ export class MochiTeableApiController {
       Boolean(selectedRecordIds?.length) ||
       Boolean(filterLinkCellSelected) ||
       Boolean(filterLinkCellCandidate);
+    const sorts = normalizeSortQuery(getQueryValue(query, 'orderBy'));
+    const groupBy = normalizeGroupByQuery(getQueryValue(query, 'groupBy'));
     const records = this.mochiSqliteService.listRecords(tableId, {
       search: normalizeSearchQuery(getQueryValue(query, 'search')),
       limit: hasLinkCellQuery ? 100000 : take,
       offset: hasLinkCellQuery ? 0 : skip,
       filters: normalizeFilterQuery(getQueryValue(query, 'filter')),
-      sorts: normalizeSortQuery(getQueryValue(query, 'orderBy')),
+      sorts: sorts.length ? sorts : groupBy,
     }) as LocalRecord[];
     const filteredRecords = this.applyLinkCellQuery(records, {
       selectedRecordIds,
@@ -872,6 +916,92 @@ export class MochiTeableApiController {
         seen.set(valueKey, candidate.id ?? `new:${seen.size}`);
       }
     }
+  }
+
+  private getGroupPoints(tableId: string, query: Record<string, unknown>) {
+    const [group] = normalizeGroupByQuery(getQueryValue(query, 'groupBy'));
+    if (!group?.fieldId) return null;
+
+    const fields = this.mochiSqliteService.listFields(tableId) as LocalField[];
+    const groupField = fields.find((field) => field.id === group.fieldId);
+    const records = this.listLocalRecordsForQuery(tableId, {
+      ...query,
+      orderBy: getQueryValue(query, 'orderBy') ?? JSON.stringify([group]),
+    });
+    const collapsedGroupIds = parseJsonArrayQuery(getQueryValue(query, 'collapsedGroupIds')) ?? [];
+    const collapsedSet = new Set(collapsedGroupIds);
+    const groups = new Map<string, { value: unknown; count: number }>();
+
+    for (const record of records) {
+      const value = getLocalRecordFieldValue(record, groupField);
+      const key = getGroupValueKey(value);
+      const current = groups.get(key);
+      groups.set(key, { value, count: (current?.count ?? 0) + 1 });
+    }
+
+    return Array.from(groups.entries()).flatMap(([key, groupValue]) => {
+      const id = `${group.fieldId}:${key}`;
+      return [
+        {
+          id,
+          type: 0,
+          depth: 0,
+          value: groupValue.value ?? null,
+          isCollapsed: collapsedSet.has(id),
+        },
+        { type: 1, count: groupValue.count },
+      ];
+    });
+  }
+
+  private getCalendarDailyCollection(tableId: string, query: Record<string, unknown>) {
+    const startDate = getCalendarDay(getQueryValue(query, 'startDate'));
+    const endDate = getCalendarDay(getQueryValue(query, 'endDate'));
+    const startDateFieldId = getQueryValue(query, 'startDateFieldId');
+    const endDateFieldId = getQueryValue(query, 'endDateFieldId');
+    if (
+      !startDate ||
+      !endDate ||
+      typeof startDateFieldId !== 'string' ||
+      typeof endDateFieldId !== 'string'
+    ) {
+      return { countMap: {}, records: [] };
+    }
+
+    const rangeStart = new Date(`${startDate}T00:00:00.000Z`).getTime();
+    const rangeEnd = new Date(`${endDate}T00:00:00.000Z`).getTime();
+    const records = this.listLocalRecordsForQuery(tableId, query);
+    const fields = this.mochiSqliteService.listFields(tableId) as LocalField[];
+    const startField = fields.find((field) => field.id === startDateFieldId);
+    const endField = fields.find((field) => field.id === endDateFieldId);
+    const countMap: Record<string, number> = {};
+    const matchedRecords: LocalRecord[] = [];
+
+    for (const record of records) {
+      const recordStartDay = getCalendarDay(getLocalRecordFieldValue(record, startField));
+      const recordEndDay =
+        getCalendarDay(getLocalRecordFieldValue(record, endField)) ?? recordStartDay;
+      if (!recordStartDay || !recordEndDay) continue;
+
+      const recordStart = new Date(`${recordStartDay}T00:00:00.000Z`).getTime();
+      const recordEnd = new Date(`${recordEndDay}T00:00:00.000Z`).getTime();
+      const from = Math.max(Math.min(recordStart, recordEnd), rangeStart);
+      const to = Math.min(Math.max(recordStart, recordEnd), rangeEnd);
+      if (from > to) continue;
+
+      matchedRecords.push(record);
+      for (let time = from; time <= to; time += 24 * 60 * 60 * 1000) {
+        const day = new Date(time).toISOString().slice(0, 10);
+        countMap[day] = (countMap[day] ?? 0) + 1;
+      }
+    }
+
+    return {
+      countMap,
+      records: matchedRecords
+        .map((record) => this.toRecordVo(tableId, record))
+        .filter(Boolean) as IRecord[],
+    };
   }
 
   private prepareSelectionStream(response: Response) {
@@ -1353,6 +1483,22 @@ export class MochiTeableApiController {
   ): { rowCount: number } {
     const records = this.listLocalRecordsForQuery(tableId, query);
     return { rowCount: records.length };
+  }
+
+  @Get(':tableId/aggregation/group-points')
+  getAggregationGroupPoints(
+    @Param('tableId') tableId: string,
+    @Query() query: Record<string, unknown>
+  ) {
+    return this.getGroupPoints(tableId, query);
+  }
+
+  @Get(':tableId/aggregation/calendar-daily-collection')
+  getAggregationCalendarDailyCollection(
+    @Param('tableId') tableId: string,
+    @Query() query: Record<string, unknown>
+  ): { countMap: Record<string, number>; records: IRecord[] } {
+    return this.getCalendarDailyCollection(tableId, query);
   }
 
   @Get(':tableId/aggregation')

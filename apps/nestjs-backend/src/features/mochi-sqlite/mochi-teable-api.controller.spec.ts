@@ -624,9 +624,80 @@ describe('MochiTeableApiController', () => {
 
   it('serves minimal aggregation endpoints required by Teable Grid providers', () => {
     const service = createService();
+    vi.mocked(service.listRecords).mockReturnValue([
+      {
+        id: 'rec_1',
+        auto_number: 1,
+        fields: {
+          fld_1: 'Alice',
+          fld_2: 'Todo',
+          fld_start: '2026-07-10T00:00:00.000Z',
+          fld_end: '2026-07-11T00:00:00.000Z',
+        },
+      },
+      {
+        id: 'rec_2',
+        auto_number: 2,
+        fields: {
+          fld_1: 'Bob',
+          fld_2: 'Done',
+          fld_start: '2026-07-11T00:00:00.000Z',
+          fld_end: '2026-07-11T00:00:00.000Z',
+        },
+      },
+    ]);
+    vi.mocked(service.listFields).mockReturnValue([
+      {
+        id: 'fld_1',
+        name: 'Name',
+        type: 'singleLineText',
+      },
+      {
+        id: 'fld_2',
+        name: 'Status',
+        type: 'singleSelect',
+      },
+      {
+        id: 'fld_start',
+        name: 'Start',
+        type: 'date',
+      },
+      {
+        id: 'fld_end',
+        name: 'End',
+        type: 'date',
+      },
+    ]);
     const controller = new MochiTeableApiController(service);
 
-    expect(controller.getRowCount('tbl_1')).toEqual({ rowCount: 2 });
+    expect(controller.getRowCount('tbl_1', {})).toEqual({ rowCount: 2 });
+    expect(
+      controller.getAggregationGroupPoints('tbl_1', {
+        groupBy: JSON.stringify([{ fieldId: 'fld_2', order: 'asc' }]),
+      })
+    ).toEqual([
+      { id: 'fld_2:"Todo"', type: 0, depth: 0, value: 'Todo', isCollapsed: false },
+      { type: 1, count: 1 },
+      { id: 'fld_2:"Done"', type: 0, depth: 0, value: 'Done', isCollapsed: false },
+      { type: 1, count: 1 },
+    ]);
+    expect(
+      controller.getAggregationCalendarDailyCollection('tbl_1', {
+        startDate: '2026-07-01',
+        endDate: '2026-07-31',
+        startDateFieldId: 'fld_start',
+        endDateFieldId: 'fld_end',
+      })
+    ).toMatchObject({
+      countMap: {
+        '2026-07-10': 1,
+        '2026-07-11': 2,
+      },
+      records: [
+        { id: 'rec_1', fields: expect.objectContaining({ fld_1: 'Alice' }) },
+        { id: 'rec_2', fields: expect.objectContaining({ fld_1: 'Bob' }) },
+      ],
+    });
     expect(controller.getAggregation()).toEqual({ aggregations: [] });
     expect(controller.getTaskStatusCollection()).toEqual({ cells: [], fieldMap: {} });
   });
