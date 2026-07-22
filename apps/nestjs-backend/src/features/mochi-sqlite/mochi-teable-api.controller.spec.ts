@@ -225,6 +225,54 @@ describe('MochiTeableApiController', () => {
     );
   });
 
+  it.each(['singleSelect', 'multipleSelect'])(
+    'normalizes %s choices when creating fields',
+    (type) => {
+      const service = createService();
+      const controller = new MochiTeableApiController(service);
+
+      const field = controller.createField('tbl_1', {
+        type,
+        name: 'Status',
+        options: { choices: [{ name: 'New' }, { name: 'Done', color: 'greenBright' }] },
+      });
+
+      const savedOptions = vi.mocked(service.createField).mock.calls[0][0].options as {
+        choices: Array<{ id?: string; name?: string; color?: string }>;
+      };
+      expect(savedOptions.choices).toHaveLength(2);
+      expect(savedOptions.choices[0]).toMatchObject({ name: 'New' });
+      expect(savedOptions.choices[0].id).toMatch(/^cho/);
+      expect(savedOptions.choices[0].color).toBeTruthy();
+      expect(savedOptions.choices[1]).toMatchObject({ name: 'Done', color: 'greenBright' });
+      expect(savedOptions.choices[1].id).toMatch(/^cho/);
+      expect(field?.options).toMatchObject(savedOptions);
+    }
+  );
+
+  it('normalizes select choices when updating fields', () => {
+    const service = createService();
+    vi.mocked(service.getField).mockReturnValue({
+      id: 'fld_status',
+      name: 'Status',
+      type: 'singleSelect',
+      cell_value_type: 'string',
+    });
+    const controller = new MochiTeableApiController(service);
+
+    const field = controller.updateField('fld_status', {
+      options: { choices: [{ name: 'Todo' }] },
+    });
+
+    const savedOptions = vi.mocked(service.updateField).mock.calls[0][1].options as {
+      choices: Array<{ id?: string; name?: string; color?: string }>;
+    };
+    expect(savedOptions.choices[0]).toMatchObject({ name: 'Todo' });
+    expect(savedOptions.choices[0].id).toMatch(/^cho/);
+    expect(savedOptions.choices[0].color).toBeTruthy();
+    expect(field?.options).toMatchObject(savedOptions);
+  });
+
   it('routes write operations to SQLite service with Teable request shapes', () => {
     const service = createService();
     const controller = new MochiTeableApiController(service);

@@ -15,10 +15,12 @@ import {
 } from '@nestjs/common';
 import {
   CellValueType,
+  ColorUtils,
   DbFieldType,
   FieldType,
   Relationship,
   ViewType,
+  generateChoiceId,
   getDbFieldType,
   type IAttachmentItem,
   type IFieldVo,
@@ -240,6 +242,11 @@ type FieldBody = {
   notNull?: boolean;
   unique?: boolean;
   viewId?: string;
+};
+
+type NormalizedFieldBody = FieldBody & {
+  type: FieldType;
+  cellValueType: CellValueType;
 };
 
 type ViewBody = {
@@ -478,6 +485,10 @@ const normalizeFieldOptions = (type: string, options: unknown): IFieldVo['option
     options && typeof options === 'object' && !Array.isArray(options)
       ? (options as Record<string, unknown>)
       : {};
+  const optionsWithSelectChoices =
+    type === FieldType.SingleSelect || type === FieldType.MultipleSelect
+      ? normalizeSelectFieldOptions(currentOptions)
+      : currentOptions;
   const defaultFormatting =
     defaultOptions.formatting &&
     typeof defaultOptions.formatting === 'object' &&
@@ -493,11 +504,57 @@ const normalizeFieldOptions = (type: string, options: unknown): IFieldVo['option
 
   return {
     ...defaultOptions,
-    ...currentOptions,
+    ...optionsWithSelectChoices,
     ...(defaultFormatting || currentFormatting
       ? { formatting: { ...(defaultFormatting ?? {}), ...(currentFormatting ?? {}) } }
       : {}),
   } as IFieldVo['options'];
+};
+
+const normalizeSelectFieldOptions = (
+  options: Record<string, unknown> = {}
+): Record<string, unknown> => {
+  const rawChoices = Array.isArray(options.choices) ? options.choices : [];
+  const usedColors = rawChoices
+    .map((choice) =>
+      isObjectRecord(choice) && typeof choice.color === 'string' ? choice.color : undefined
+    )
+    .filter((color): color is string => Boolean(color));
+  const choices = rawChoices.filter(isObjectRecord).map((choice) => {
+    const color =
+      typeof choice.color === 'string' && choice.color
+        ? choice.color
+        : ColorUtils.randomColor(usedColors)[0];
+    usedColors.push(color);
+    return {
+      ...choice,
+      id: typeof choice.id === 'string' && choice.id ? choice.id : generateChoiceId(),
+      name: typeof choice.name === 'string' ? choice.name : '',
+      color,
+    };
+  });
+
+  return {
+    ...options,
+    choices,
+  };
+};
+
+const shouldNormalizeFieldOptions = (type: FieldType, options: unknown): boolean =>
+  options !== undefined || type === FieldType.SingleSelect || type === FieldType.MultipleSelect;
+
+const normalizeFieldBody = (body: FieldBody): NormalizedFieldBody => {
+  const type = normalizeFieldType(body.type);
+  return {
+    ...body,
+    type,
+    cellValueType: body.cellValueType
+      ? normalizeCellValueType(body.cellValueType)
+      : defaultCellValueTypeFor(type),
+    options: shouldNormalizeFieldOptions(type, body.options)
+      ? normalizeFieldOptions(type, body.options)
+      : undefined,
+  };
 };
 
 const cloneDefaultValue = (value: unknown): unknown => {
@@ -1401,21 +1458,21 @@ export class MochiTeableApiController {
 
   @Post(':tableId/field')
   createField(@Param('tableId') tableId: string, @Body() body: FieldBody): IFieldVo | null {
-    const type = normalizeFieldType(body.type);
+    const normalizedBody = normalizeFieldBody(body);
     const created = this.mochiSqliteService.createField({
       tableId,
-      name: body.name ?? 'New field',
-      description: body.description,
-      type,
-      cellValueType: body.cellValueType ?? defaultCellValueTypeFor(type),
-      options: body.options,
-      meta: body.meta,
-      aiConfig: body.aiConfig,
-      isPrimary: body.isPrimary,
-      isComputed: body.isComputed,
-      isLookup: body.isLookup,
-      notNull: body.notNull,
-      unique: body.unique,
+      name: normalizedBody.name ?? 'New field',
+      description: normalizedBody.description,
+      type: normalizedBody.type,
+      cellValueType: normalizedBody.cellValueType,
+      options: normalizedBody.options,
+      meta: normalizedBody.meta,
+      aiConfig: normalizedBody.aiConfig,
+      isPrimary: normalizedBody.isPrimary,
+      isComputed: normalizedBody.isComputed,
+      isLookup: normalizedBody.isLookup,
+      notNull: normalizedBody.notNull,
+      unique: normalizedBody.unique,
     }) as LocalField | null;
     return toTeableField(created);
   }
@@ -1435,7 +1492,9 @@ export class MochiTeableApiController {
       description: source.description ?? undefined,
       type: source.type,
       cellValueType: source.cell_value_type,
-      options: source.options,
+      options: shouldNormalizeFieldOptions(normalizeFieldType(source.type), source.options)
+        ? normalizeFieldOptions(normalizeFieldType(source.type), source.options)
+        : undefined,
       meta: source.meta,
       aiConfig: source.aiConfig,
       isComputed: toBool(source.is_computed),
@@ -1464,7 +1523,20 @@ export class MochiTeableApiController {
 
   @Patch(':tableId/field/:fieldId')
   updateField(@Param('fieldId') fieldId: string, @Body() body: FieldBody): IFieldVo | null {
-    const updated = this.mochiSqliteService.updateField(fieldId, body) as LocalField | null;
+    const current = this.mochiSqliteService.getField(fieldId) as LocalField | null;
+    const type = normalizeFieldType(body.type ?? current?.type);
+    const updated = this.mochiSqliteService.updateField(fieldId, {
+      ...body,
+      ...(body.type !== undefined ? { type } : {}),
+      ...(body.cellValueType !== undefined || body.type !== undefined
+        ? {
+            cellValueType: body.cellValueType
+              ? normalizeCellValueType(body.cellValueType)
+              : defaultCellValueTypeFor(type),
+          }
+        : {}),
+      ...(body.options !== undefined ? { options: normalizeFieldOptions(type, body.options) } : {}),
+    }) as LocalField | null;
     return toTeableField(updated);
   }
 
@@ -1480,11 +1552,9 @@ export class MochiTeableApiController {
 
   @Put(':tableId/field/:fieldId/convert')
   convertField(@Param('fieldId') fieldId: string, @Body() body: FieldBody): IFieldVo | null {
-    const type = normalizeFieldType(body.type);
+    const normalizedBody = normalizeFieldBody(body);
     const updated = this.mochiSqliteService.updateField(fieldId, {
-      ...body,
-      type,
-      cellValueType: body.cellValueType ?? defaultCellValueTypeFor(type),
+      ...normalizedBody,
     }) as LocalField | null;
     return toTeableField(updated);
   }
