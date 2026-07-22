@@ -50,7 +50,17 @@ const createService = () =>
         id: 'com_1',
         tableId: 'tbl_1',
         recordId: 'rec_1',
-        content: [{ type: 'paragraph', children: [{ text: 'Local comment' }] }],
+        content: [
+          { type: 'paragraph', children: [{ text: 'Local comment' }] },
+          { type: 'img', path: 'data/attachments/mochi_img' },
+        ],
+      },
+    ]),
+    listAttachments: vi.fn(() => [
+      {
+        token: 'mochi_img',
+        name: 'local image.jpg',
+        path: 'data/attachments/mochi_img',
       },
     ]),
     getComment: vi.fn(() => ({ id: 'com_1', tableId: 'tbl_1', recordId: 'rec_1' })),
@@ -87,7 +97,18 @@ describe('MochiLocalCompatController', () => {
     expect(controller.getTableAbnormalIndex()).toEqual([]);
     expect(controller.getCommentCountsByQuery('tbl_1')).toEqual([{ recordId: 'rec_1', count: 1 }]);
     expect(controller.getRecordCommentCount('tbl_1', 'rec_1')).toEqual({ count: 1 });
-    expect(controller.getCommentList('tbl_1', 'rec_1').comments).toHaveLength(1);
+    expect(controller.getCommentList('tbl_1', 'rec_1').comments).toMatchObject([
+      {
+        content: [
+          {},
+          {
+            type: 'img',
+            path: 'data/attachments/mochi_img',
+            url: '/api/attachments/read/mochi_img?filename=local%20image.jpg',
+          },
+        ],
+      },
+    ]);
     expect(
       controller.createComment('tbl_1', 'rec_1', {
         content: [{ type: 'paragraph', children: [{ text: 'Local comment' }] }],
