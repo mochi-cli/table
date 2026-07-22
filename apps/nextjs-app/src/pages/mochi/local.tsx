@@ -481,13 +481,13 @@ const mapTable = (table: LocalTable, defaultViewId?: string): LocalTableVo => ({
 });
 
 const getLocalSystemFieldValue = (record: LocalRecord, fieldType: FieldType) => {
-  const systemValueMap = {
+  const systemValueMap: Partial<Record<FieldType, unknown>> = {
     [FieldType.AutoNumber]: record.auto_number ?? null,
     [FieldType.CreatedTime]: record.created_time ?? null,
     [FieldType.LastModifiedTime]: record.last_modified_time ?? record.created_time ?? null,
     [FieldType.CreatedBy]: getLocalActorCell(record.created_by),
     [FieldType.LastModifiedBy]: getLocalActorCell(record.last_modified_by ?? record.created_by),
-  } satisfies Partial<Record<FieldType, unknown>>;
+  };
 
   return systemValueMap[fieldType];
 };

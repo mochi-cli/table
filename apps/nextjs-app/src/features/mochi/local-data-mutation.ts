@@ -35,6 +35,10 @@ export const getLocalDataMutationScope = (data: unknown): LocalDataMutationScope
     return 'schema';
   }
 
+  if (/\/table\/[^/]+\/view\/[^/]+\/column-meta$/.test(pathname)) {
+    return 'schema';
+  }
+
   if (
     /\/table\/[^/]+\/field(?:\/[^/]+)?(?:\/(?:convert|duplicate))?$/.test(pathname) ||
     /\/table\/[^/]+\/view(?:\/[^/]+)?(?:\/duplicate)?$/.test(pathname)
