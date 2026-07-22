@@ -5,7 +5,7 @@ Runtime package for opening Mochi Table against local MochiKit workspaces.
 Install from a GitHub Release tarball:
 
 ```bash
-npm install https://github.com/mochi-cli/table/releases/download/table-runtime-v0.1.11/mochi-cli-table-runtime-0.1.11.tgz
+npm install https://github.com/mochi-cli/table/releases/download/table-runtime-v0.1.12/mochi-cli-table-runtime-0.1.12.tgz
 ```
 
 Use the same URL as a dependency specifier from the Mochi CLI package:
@@ -13,7 +13,7 @@ Use the same URL as a dependency specifier from the Mochi CLI package:
 ```json
 {
   "optionalDependencies": {
-    "@mochi-cli/table-runtime": "https://github.com/mochi-cli/table/releases/download/table-runtime-v0.1.11/mochi-cli-table-runtime-0.1.11.tgz"
+    "@mochi-cli/table-runtime": "https://github.com/mochi-cli/table/releases/download/table-runtime-v0.1.12/mochi-cli-table-runtime-0.1.12.tgz"
   }
 }
 ```
