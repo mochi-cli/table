@@ -76,7 +76,13 @@ const parseLinkCellQuery = (value: unknown): string | [string, string] | undefin
 
 const normalizeSearchQuery = (value: unknown): string | undefined => {
   if (Array.isArray(value)) return value.filter(Boolean).join(' ');
-  if (typeof value === 'string') return value;
+  if (typeof value === 'string') {
+    const parsed = parseJsonQuery<unknown>(value, undefined);
+    if (Array.isArray(parsed)) {
+      return typeof parsed[0] === 'string' && parsed[0].length > 0 ? parsed[0] : undefined;
+    }
+    return value;
+  }
   return undefined;
 };
 
