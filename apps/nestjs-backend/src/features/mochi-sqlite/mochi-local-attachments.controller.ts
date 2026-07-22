@@ -16,6 +16,11 @@ type LocalSignature = {
   token: string;
 };
 
+type LocalAttachment = {
+  token?: string;
+  mimetype?: string;
+};
+
 const localUploadRoot = () => join(dirname(getMochiSqliteDatabasePath()), 'attachments');
 
 const safeFileName = (value?: string) => {
@@ -114,7 +119,14 @@ export class MochiLocalAttachmentsController {
       response.status(404).send('Not found');
       return;
     }
+    const signature = this.signatures.get(token);
+    const attachment = (this.mochiSqliteService.listAttachments() as LocalAttachment[]).find(
+      (item) => item.token === token
+    );
+    const contentType =
+      signature?.contentType ?? attachment?.mimetype ?? 'application/octet-stream';
     response.setHeader('Cross-Origin-Resource-Policy', 'unsafe-none');
+    response.setHeader('Content-Type', contentType);
     response.setHeader('Content-Disposition', `inline; filename="${safeFileName(filename)}"`);
     createReadStream(uploadPath).pipe(response);
   }
