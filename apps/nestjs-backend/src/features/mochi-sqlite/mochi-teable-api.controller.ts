@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Headers,
+  NotFoundException,
   Param,
   Patch,
   Post,
@@ -57,6 +58,20 @@ const parseArrayQuery = (value: unknown): string[] | undefined => {
   if (Array.isArray(value)) return value.map(String).filter(Boolean);
   if (typeof value === 'string' && value.length > 0) return [value];
   return undefined;
+};
+
+const parseJsonArrayQuery = (value: unknown): string[] | undefined => {
+  if (Array.isArray(value)) return value.map(String).filter(Boolean);
+  if (typeof value !== 'string' || value.length === 0) return undefined;
+  const parsed = parseJsonQuery<unknown>(value, undefined);
+  if (Array.isArray(parsed)) return parsed.map(String).filter(Boolean);
+  return [value];
+};
+
+const parseLinkCellQuery = (value: unknown): string | [string, string] | undefined => {
+  const parsed = parseJsonArrayQuery(value);
+  if (!parsed?.length) return undefined;
+  return parsed.length >= 2 ? [parsed[0], parsed[1]] : parsed[0];
 };
 
 const normalizeSearchQuery = (value: unknown): string | undefined => {
@@ -119,6 +134,32 @@ const normalizeSortQuery = (orderBy: unknown): unknown[] => {
   return Array.isArray(parsed) ? parsed : [];
 };
 
+const getQueryValue = (query: Record<string, unknown>, key: string): unknown =>
+  query[key] ?? query[`${key}[]`];
+
+const getLinkRecordIds = (cellValue: unknown): string[] => {
+  const values = Array.isArray(cellValue) ? cellValue : [cellValue];
+  return values
+    .map((value) => {
+      if (typeof value === 'string') return value;
+      if (value && typeof value === 'object') {
+        const id = (value as { id?: unknown }).id;
+        return typeof id === 'string' ? id : undefined;
+      }
+      return undefined;
+    })
+    .filter((id): id is string => Boolean(id));
+};
+
+const uniqueRecords = (records: LocalRecord[]): LocalRecord[] => {
+  const seen = new Set<string>();
+  return records.filter((record) => {
+    if (seen.has(record.id)) return false;
+    seen.add(record.id);
+    return true;
+  });
+};
+
 type UpdateRecordBody = {
   fieldKeyType?: FieldKeyType;
   fields?: Record<string, unknown>;
@@ -172,6 +213,15 @@ type ViewBody = {
   sort?: unknown;
   group?: unknown;
 };
+
+type ColumnMetaBody =
+  | ViewBody
+  | Array<{
+      fieldId?: string;
+      columnMeta?: unknown;
+    }>;
+
+type ColumnMetaPatchEntry = Extract<ColumnMetaBody, unknown[]>[number];
 
 type RangeType = 'rows' | 'columns';
 type IdReturnType = 'recordId' | 'fieldId' | 'all';
@@ -231,6 +281,7 @@ type FieldPlan = {
 
 type LocalField = {
   id: string;
+  table_id?: string;
   name: string;
   description?: string | null;
   type: string;
@@ -441,6 +492,42 @@ const normalizeColumnMeta = (columnMeta: unknown): IViewVo['columnMeta'] => {
   }, {});
 };
 
+const normalizeColumnMetaPatch = (
+  currentColumnMeta: unknown,
+  patch: ColumnMetaBody
+): IViewVo['columnMeta'] => {
+  const current = normalizeColumnMeta(currentColumnMeta) ?? {};
+  const patchEntries: ColumnMetaPatchEntry[] | undefined = Array.isArray(patch)
+    ? patch
+    : Array.isArray((patch as ViewBody).columnMeta)
+      ? ((patch as ViewBody).columnMeta as ColumnMetaPatchEntry[])
+      : undefined;
+
+  if (patchEntries) {
+    return patchEntries.reduce<IViewVo['columnMeta']>(
+      (acc, item) => {
+        if (!item.fieldId) return acc;
+        const patchMeta =
+          item.columnMeta && typeof item.columnMeta === 'object' && !Array.isArray(item.columnMeta)
+            ? item.columnMeta
+            : {};
+        acc[item.fieldId] = {
+          ...(acc[item.fieldId] ?? {}),
+          ...patchMeta,
+        } as IViewVo['columnMeta'][string];
+        return acc;
+      },
+      { ...current }
+    );
+  }
+
+  const nextColumnMeta = (patch as ViewBody).columnMeta ?? patch;
+  return {
+    ...current,
+    ...normalizeColumnMeta(nextColumnMeta),
+  };
+};
+
 const normalizeSort = (sort: unknown): IViewVo['sort'] => {
   if (!sort) return undefined;
   if (Array.isArray(sort)) return { sortObjs: sort } as IViewVo['sort'];
@@ -539,6 +626,87 @@ const toRecordHistoryVo = (history: {
 @Controller('api/table')
 export class MochiTeableApiController {
   constructor(private readonly mochiSqliteService: MochiSqliteService) {}
+
+  private listLocalRecordsForQuery(
+    tableId: string,
+    query: Record<string, unknown>,
+    options: { paginate?: boolean } = {}
+  ): LocalRecord[] {
+    const take = options.paginate ? parseNumberQuery(getQueryValue(query, 'take'), 100) : 100000;
+    const skip = options.paginate ? parseNumberQuery(getQueryValue(query, 'skip'), 0) : 0;
+    const selectedRecordIds = parseJsonArrayQuery(getQueryValue(query, 'selectedRecordIds'));
+    const filterLinkCellSelected = parseLinkCellQuery(
+      getQueryValue(query, 'filterLinkCellSelected')
+    );
+    const filterLinkCellCandidate = parseLinkCellQuery(
+      getQueryValue(query, 'filterLinkCellCandidate')
+    );
+    const hasLinkCellQuery =
+      Boolean(selectedRecordIds?.length) ||
+      Boolean(filterLinkCellSelected) ||
+      Boolean(filterLinkCellCandidate);
+    const records = this.mochiSqliteService.listRecords(tableId, {
+      search: normalizeSearchQuery(getQueryValue(query, 'search')),
+      limit: hasLinkCellQuery ? 100000 : take,
+      offset: hasLinkCellQuery ? 0 : skip,
+      filters: normalizeFilterQuery(getQueryValue(query, 'filter')),
+      sorts: normalizeSortQuery(getQueryValue(query, 'orderBy')),
+    }) as LocalRecord[];
+    const filteredRecords = this.applyLinkCellQuery(records, {
+      selectedRecordIds,
+      filterLinkCellSelected,
+      filterLinkCellCandidate,
+    });
+
+    return hasLinkCellQuery && options.paginate
+      ? filteredRecords.slice(skip, skip + take)
+      : filteredRecords;
+  }
+
+  private applyLinkCellQuery(
+    records: LocalRecord[],
+    query: {
+      selectedRecordIds?: string[];
+      filterLinkCellSelected?: string | [string, string];
+      filterLinkCellCandidate?: string | [string, string];
+    }
+  ): LocalRecord[] {
+    const selectedRecordIds = query.selectedRecordIds ?? [];
+    const selectedSet = new Set(selectedRecordIds);
+
+    if (query.filterLinkCellSelected) {
+      const linkedRecordIds = this.getLinkedRecordIds(query.filterLinkCellSelected);
+      const ids = linkedRecordIds.length ? linkedRecordIds : selectedRecordIds;
+      const idOrder = new Map(ids.map((id, index) => [id, index]));
+      return uniqueRecords(records)
+        .filter((record) => idOrder.has(record.id))
+        .sort((left, right) => (idOrder.get(left.id) ?? 0) - (idOrder.get(right.id) ?? 0));
+    }
+
+    if (query.filterLinkCellCandidate) {
+      const excludedIds = new Set([
+        ...selectedRecordIds,
+        ...this.getLinkedRecordIds(query.filterLinkCellCandidate),
+      ]);
+      return uniqueRecords(records).filter((record) => !excludedIds.has(record.id));
+    }
+
+    if (selectedSet.size) {
+      const idOrder = new Map(selectedRecordIds.map((id, index) => [id, index]));
+      return uniqueRecords(records)
+        .filter((record) => selectedSet.has(record.id))
+        .sort((left, right) => (idOrder.get(left.id) ?? 0) - (idOrder.get(right.id) ?? 0));
+    }
+
+    return records;
+  }
+
+  private getLinkedRecordIds(linkCellQuery: string | [string, string]): string[] {
+    if (!Array.isArray(linkCellQuery)) return [];
+    const [fieldId, recordId] = linkCellQuery;
+    const record = this.mochiSqliteService.getRecord(recordId) as LocalRecord | null;
+    return getLinkRecordIds(record?.fields?.[fieldId]);
+  }
 
   private prepareSelectionStream(response: Response) {
     response.setHeader('Content-Type', 'text/event-stream');
@@ -864,12 +1032,13 @@ export class MochiTeableApiController {
   updateViewColumnMeta(
     @Param('tableId') tableId: string,
     @Param('viewId') viewId: string,
-    @Body() body: ViewBody
+    @Body() body: ColumnMetaBody
   ): IViewVo | null {
+    const current = this.mochiSqliteService.getView(viewId) as LocalView | null;
     const updated = this.mochiSqliteService.updateView(
       viewId,
       {
-        columnMeta: body.columnMeta ?? body,
+        columnMeta: normalizeColumnMetaPatch(current?.columnMeta, body),
       },
       tableId
     ) as LocalView | null;
@@ -1014,16 +1183,9 @@ export class MochiTeableApiController {
   @Get(':tableId/aggregation/row-count')
   getRowCount(
     @Param('tableId') tableId: string,
-    @Query('search') search?: unknown,
-    @Query('filter') filter?: string,
-    @Query('orderBy') orderBy?: string
+    @Query() query: Record<string, unknown>
   ): { rowCount: number } {
-    const records = this.mochiSqliteService.listRecords(tableId, {
-      search: normalizeSearchQuery(search),
-      limit: 100000,
-      filters: normalizeFilterQuery(filter),
-      sorts: normalizeSortQuery(orderBy),
-    }) as LocalRecord[];
+    const records = this.listLocalRecordsForQuery(tableId, query);
     return { rowCount: records.length };
   }
 
@@ -1040,19 +1202,9 @@ export class MochiTeableApiController {
   @Get(':tableId/record')
   listRecords(
     @Param('tableId') tableId: string,
-    @Query('search') search?: unknown,
-    @Query('take') take?: string,
-    @Query('skip') skip?: string,
-    @Query('filter') filter?: string,
-    @Query('orderBy') orderBy?: string
+    @Query() query: Record<string, unknown>
   ): { records: IRecord[] } {
-    const records = this.mochiSqliteService.listRecords(tableId, {
-      search: normalizeSearchQuery(search),
-      limit: parseNumberQuery(take, 100),
-      offset: parseNumberQuery(skip, 0),
-      filters: normalizeFilterQuery(filter),
-      sorts: normalizeSortQuery(orderBy),
-    }) as LocalRecord[];
+    const records = this.listLocalRecordsForQuery(tableId, query, { paginate: true });
     return { records: records.map(toTeableRecord).filter(Boolean) as IRecord[] };
   }
 
@@ -1600,5 +1752,153 @@ export class MochiTeableApiController {
       this.mochiSqliteService.deleteRecord(recordId, tableId)
     );
     return { ids: selection.recordIds };
+  }
+}
+
+@Public()
+@Controller('api/share')
+export class MochiLocalShareViewController {
+  constructor(private readonly mochiSqliteService: MochiSqliteService) {}
+
+  private getShareViewContext(linkFieldId: string) {
+    const linkField = this.mochiSqliteService.getField(linkFieldId) as LocalField | null;
+    const options =
+      linkField?.options &&
+      typeof linkField.options === 'object' &&
+      !Array.isArray(linkField.options)
+        ? (linkField.options as Record<string, unknown>)
+        : {};
+    const tableId =
+      typeof options.foreignTableId === 'string'
+        ? options.foreignTableId
+        : typeof linkField?.table_id === 'string'
+          ? linkField.table_id
+          : undefined;
+    if (!linkField || !tableId) {
+      throw new NotFoundException('Local link view not found');
+    }
+
+    const fields = this.mochiSqliteService
+      .listFields(tableId)
+      .map((field) => toTeableField(field as LocalField))
+      .filter(Boolean) as IFieldVo[];
+    const view = (this.mochiSqliteService.listViews(tableId) as LocalView[])[0];
+    const records = this.listRecords(tableId, { take: '50' }, { paginate: true })
+      .map(toTeableRecord)
+      .filter(Boolean) as IRecord[];
+
+    return {
+      shareId: linkFieldId,
+      tableId,
+      viewId: view?.id,
+      view: toTeableView(view) ?? undefined,
+      fields,
+      records,
+    };
+  }
+
+  private listRecords(
+    tableId: string,
+    query: Record<string, unknown>,
+    options: { paginate?: boolean } = {}
+  ): LocalRecord[] {
+    const take = options.paginate ? parseNumberQuery(getQueryValue(query, 'take'), 100) : 100000;
+    const skip = options.paginate ? parseNumberQuery(getQueryValue(query, 'skip'), 0) : 0;
+    const selectedRecordIds = parseJsonArrayQuery(getQueryValue(query, 'selectedRecordIds'));
+    const filterLinkCellSelected = parseLinkCellQuery(
+      getQueryValue(query, 'filterLinkCellSelected')
+    );
+    const filterLinkCellCandidate = parseLinkCellQuery(
+      getQueryValue(query, 'filterLinkCellCandidate')
+    );
+    const hasLinkCellQuery =
+      Boolean(selectedRecordIds?.length) ||
+      Boolean(filterLinkCellSelected) ||
+      Boolean(filterLinkCellCandidate);
+    const records = this.mochiSqliteService.listRecords(tableId, {
+      search: normalizeSearchQuery(getQueryValue(query, 'search')),
+      limit: hasLinkCellQuery ? 100000 : take,
+      offset: hasLinkCellQuery ? 0 : skip,
+      filters: normalizeFilterQuery(getQueryValue(query, 'filter')),
+      sorts: normalizeSortQuery(getQueryValue(query, 'orderBy')),
+    }) as LocalRecord[];
+    const filteredRecords = this.applyLinkCellQuery(records, {
+      selectedRecordIds,
+      filterLinkCellSelected,
+      filterLinkCellCandidate,
+    });
+
+    return hasLinkCellQuery && options.paginate
+      ? filteredRecords.slice(skip, skip + take)
+      : filteredRecords;
+  }
+
+  private applyLinkCellQuery(
+    records: LocalRecord[],
+    query: {
+      selectedRecordIds?: string[];
+      filterLinkCellSelected?: string | [string, string];
+      filterLinkCellCandidate?: string | [string, string];
+    }
+  ): LocalRecord[] {
+    const selectedRecordIds = query.selectedRecordIds ?? [];
+
+    if (query.filterLinkCellSelected) {
+      const linkedRecordIds = this.getLinkedRecordIds(query.filterLinkCellSelected);
+      const ids = linkedRecordIds.length ? linkedRecordIds : selectedRecordIds;
+      const idOrder = new Map(ids.map((id, index) => [id, index]));
+      return uniqueRecords(records)
+        .filter((record) => idOrder.has(record.id))
+        .sort((left, right) => (idOrder.get(left.id) ?? 0) - (idOrder.get(right.id) ?? 0));
+    }
+
+    if (query.filterLinkCellCandidate) {
+      const excludedIds = new Set([
+        ...selectedRecordIds,
+        ...this.getLinkedRecordIds(query.filterLinkCellCandidate),
+      ]);
+      return uniqueRecords(records).filter((record) => !excludedIds.has(record.id));
+    }
+
+    if (selectedRecordIds.length) {
+      const selectedSet = new Set(selectedRecordIds);
+      const idOrder = new Map(selectedRecordIds.map((id, index) => [id, index]));
+      return uniqueRecords(records)
+        .filter((record) => selectedSet.has(record.id))
+        .sort((left, right) => (idOrder.get(left.id) ?? 0) - (idOrder.get(right.id) ?? 0));
+    }
+
+    return records;
+  }
+
+  private getLinkedRecordIds(linkCellQuery: string | [string, string]): string[] {
+    if (!Array.isArray(linkCellQuery)) return [];
+    const [fieldId, recordId] = linkCellQuery;
+    const record = this.mochiSqliteService.getRecord(recordId) as LocalRecord | null;
+    return getLinkRecordIds(record?.fields?.[fieldId]);
+  }
+
+  @Get(':shareId/view')
+  getShareView(@Param('shareId') shareId: string) {
+    return this.getShareViewContext(shareId);
+  }
+
+  @Get(':shareId/view/row-count')
+  getShareViewRowCount(
+    @Param('shareId') shareId: string,
+    @Query() query: Record<string, unknown>
+  ): { rowCount: number } {
+    const { tableId } = this.getShareViewContext(shareId);
+    return { rowCount: this.listRecords(tableId, query).length };
+  }
+
+  @Get(':shareId/view/records')
+  getShareViewRecords(
+    @Param('shareId') shareId: string,
+    @Query() query: Record<string, unknown>
+  ): { records: IRecord[] } {
+    const { tableId } = this.getShareViewContext(shareId);
+    const records = this.listRecords(tableId, query, { paginate: true });
+    return { records: records.map(toTeableRecord).filter(Boolean) as IRecord[] };
   }
 }

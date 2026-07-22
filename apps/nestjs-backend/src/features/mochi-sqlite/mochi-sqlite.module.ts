@@ -6,7 +6,10 @@ import { MochiLocalAttachmentsController } from './mochi-local-attachments.contr
 import { MochiLocalCompatController } from './mochi-local-compat.controller';
 import { MochiSqliteController } from './mochi-sqlite.controller';
 import { MochiSqliteService } from './mochi-sqlite.service';
-import { MochiTeableApiController } from './mochi-teable-api.controller';
+import {
+  MochiLocalShareViewController,
+  MochiTeableApiController,
+} from './mochi-teable-api.controller';
 
 type MochiSqliteRuntimeModule = {
   MochiSqliteRepository: new (dbPath: string) => {
@@ -18,6 +21,7 @@ type MochiSqliteRuntimeModule = {
   controllers: [
     MochiSqliteController,
     MochiTeableApiController,
+    MochiLocalShareViewController,
     MochiLocalCompatController,
     MochiLocalAttachmentsController,
   ],
