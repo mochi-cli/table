@@ -479,6 +479,44 @@ const normalizeFieldOptions = (type: string, options: unknown): IFieldVo['option
   } as IFieldVo['options'];
 };
 
+const cloneDefaultValue = (value: unknown): unknown => {
+  if (Array.isArray(value)) return [...value];
+  if (isObjectRecord(value)) return { ...value };
+  return value;
+};
+
+const getRecordDefaultValue = (field: LocalField): unknown => {
+  const type = normalizeFieldType(field.type);
+  if (isReadonlySystemField(type) || toBool(field.is_computed) || toBool(field.is_lookup)) {
+    return undefined;
+  }
+  if (type === FieldType.Attachment || type === FieldType.Link || type === FieldType.Button) {
+    return undefined;
+  }
+  if (!isObjectRecord(field.options) || !('defaultValue' in field.options)) {
+    return undefined;
+  }
+  const defaultValue = field.options.defaultValue;
+  if (defaultValue === undefined || defaultValue === null) return undefined;
+  if (type === FieldType.Date && defaultValue === 'now') return new Date().toISOString();
+  return cloneDefaultValue(defaultValue);
+};
+
+const applyRecordDefaultValues = (
+  fields: Record<string, unknown>,
+  tableFields: LocalField[]
+): Record<string, unknown> => {
+  const nextFields = { ...fields };
+  for (const field of tableFields) {
+    if (Object.prototype.hasOwnProperty.call(nextFields, field.id)) continue;
+    const defaultValue = getRecordDefaultValue(field);
+    if (defaultValue !== undefined) {
+      nextFields[field.id] = defaultValue;
+    }
+  }
+  return nextFields;
+};
+
 const toTeableField = (field: LocalField | null | undefined): IFieldVo | null => {
   if (!field) return null;
   const { type, cellValueType, isMultipleCellValue, dbFieldType } = getFieldMetadata(field);
@@ -1349,10 +1387,11 @@ export class MochiTeableApiController {
   ): { records: IRecord[] } {
     const actorPatch = getActorPatch(headers, body);
     const records = body.records?.length ? body.records : [{ fields: {} }];
+    const fields = this.mochiSqliteService.listFields(tableId) as LocalField[];
     const created = records.map((record) =>
       this.mochiSqliteService.createRecord({
         tableId,
-        fields: record.fields ?? {},
+        fields: applyRecordDefaultValues(record.fields ?? {}, fields),
         order: body.order,
         ...actorPatch,
       })

@@ -267,6 +267,65 @@ describe('MochiTeableApiController', () => {
     expect(service.deleteField).toHaveBeenCalledTimes(2);
   });
 
+  it('applies editable field default values when creating records', () => {
+    const service = createService();
+    vi.mocked(service.listFields).mockReturnValue([
+      {
+        id: 'fld_name',
+        name: 'Name',
+        type: 'singleLineText',
+        options: { defaultValue: 'Untitled' },
+      },
+      {
+        id: 'fld_status',
+        name: 'Status',
+        type: 'singleSelect',
+        options: { defaultValue: 'Todo' },
+      },
+      {
+        id: 'fld_done',
+        name: 'Done',
+        type: 'checkbox',
+        options: { defaultValue: false },
+      },
+      {
+        id: 'fld_tags',
+        name: 'Tags',
+        type: 'multipleSelect',
+        options: { defaultValue: ['New'] },
+      },
+      {
+        id: 'fld_due',
+        name: 'Due',
+        type: 'date',
+        options: { defaultValue: 'now' },
+      },
+      {
+        id: 'fld_created',
+        name: 'Created',
+        type: 'createdTime',
+        options: { defaultValue: 'now' },
+      },
+    ]);
+    const controller = new MochiTeableApiController(service);
+
+    controller.createRecords('tbl_1', {
+      records: [{ fields: { fld_name: null } }],
+    });
+
+    expect(service.createRecord).toHaveBeenCalledWith({
+      tableId: 'tbl_1',
+      fields: {
+        fld_name: null,
+        fld_status: 'Todo',
+        fld_done: false,
+        fld_tags: ['New'],
+        fld_due: expect.any(String),
+      },
+      order: undefined,
+    });
+  });
+
   it('inserts uploaded attachments into an attachment cell without replacing existing files', () => {
     const service = createService();
     const oldAttachment = {
