@@ -644,6 +644,65 @@ const toRecordHistoryVo = (history: {
 export class MochiTeableApiController {
   constructor(private readonly mochiSqliteService: MochiSqliteService) {}
 
+  private getPrimaryFieldId(tableId: string): string | undefined {
+    const fields = this.mochiSqliteService.listFields(tableId) as LocalField[];
+    return fields.find((field) => Boolean(field.is_primary))?.id ?? fields[0]?.id;
+  }
+
+  private getRecordTitle(record: LocalRecord | null | undefined): string | undefined {
+    if (!record) return undefined;
+    const tableId = record.table_id;
+    const primaryFieldId = tableId ? this.getPrimaryFieldId(tableId) : undefined;
+    const title = primaryFieldId ? record.fields?.[primaryFieldId] : undefined;
+    return typeof title === 'string' ? title : undefined;
+  }
+
+  private hydrateLinkCellValue(value: unknown) {
+    const hydrate = (item: unknown) => {
+      const id =
+        typeof item === 'string'
+          ? item
+          : item && typeof item === 'object'
+            ? (item as { id?: unknown }).id
+            : undefined;
+      if (typeof id !== 'string') return item;
+
+      const linkedRecord = this.mochiSqliteService.getRecord(id) as LocalRecord | null;
+      return {
+        ...(item && typeof item === 'object' && !Array.isArray(item)
+          ? (item as Record<string, unknown>)
+          : {}),
+        id,
+        title: this.getRecordTitle(linkedRecord),
+      };
+    };
+
+    return Array.isArray(value) ? value.map(hydrate) : hydrate(value);
+  }
+
+  private hydrateLinkFields(tableId: string, fields: Record<string, unknown> = {}) {
+    const linkFields = (this.mochiSqliteService.listFields(tableId) as LocalField[]).filter(
+      (field) => field.type === FieldType.Link
+    );
+    if (!linkFields.length) return fields;
+
+    return linkFields.reduce(
+      (acc, field) => {
+        if (field.id in acc) {
+          acc[field.id] = this.hydrateLinkCellValue(acc[field.id]);
+        }
+        return acc;
+      },
+      { ...fields }
+    );
+  }
+
+  private toRecordVo(tableId: string, record: LocalRecord | null | undefined): IRecord | null {
+    const vo = toTeableRecord(record);
+    if (!vo) return null;
+    return { ...vo, fields: this.hydrateLinkFields(tableId, vo.fields) };
+  }
+
   private listLocalRecordsForQuery(
     tableId: string,
     query: Record<string, unknown>,
@@ -1222,7 +1281,11 @@ export class MochiTeableApiController {
     @Query() query: Record<string, unknown>
   ): { records: IRecord[] } {
     const records = this.listLocalRecordsForQuery(tableId, query, { paginate: true });
-    return { records: records.map(toTeableRecord).filter(Boolean) as IRecord[] };
+    return {
+      records: records
+        .map((record) => this.toRecordVo(tableId, record))
+        .filter(Boolean) as IRecord[],
+    };
   }
 
   @Get(':tableId/record/history')
@@ -1283,7 +1346,11 @@ export class MochiTeableApiController {
         ...actorPatch,
       })
     ) as LocalRecord[];
-    return { records: created.map(toTeableRecord).filter(Boolean) as IRecord[] };
+    return {
+      records: created
+        .map((record) => this.toRecordVo(tableId, record))
+        .filter(Boolean) as IRecord[],
+    };
   }
 
   @Post(':tableId/record/:recordId/duplicate')
@@ -1301,7 +1368,7 @@ export class MochiTeableApiController {
       order,
       ...getActorPatch(headers ?? {}),
     }) as LocalRecord;
-    return toTeableRecord(created);
+    return this.toRecordVo(tableId, created);
   }
 
   @Patch(':tableId/record/:recordId')
@@ -1321,7 +1388,7 @@ export class MochiTeableApiController {
       },
       tableId
     ) as LocalRecord | null;
-    return toTeableRecord(updated);
+    return this.toRecordVo(tableId, updated);
   }
 
   @Post(':tableId/record/:recordId/:fieldId/insertAttachment')
@@ -1351,7 +1418,7 @@ export class MochiTeableApiController {
       },
       tableId
     ) as LocalRecord | null;
-    return toTeableRecord(updated);
+    return this.toRecordVo(tableId, updated);
   }
 
   @Delete(':tableId/record/:recordId')
@@ -1360,7 +1427,7 @@ export class MochiTeableApiController {
     @Param('recordId') recordId: string
   ): IRecord | null {
     const deleted = this.mochiSqliteService.deleteRecord(recordId, tableId) as LocalRecord | null;
-    return toTeableRecord(deleted);
+    return this.toRecordVo(tableId, deleted);
   }
 
   @Post(':tableId/undo-redo/undo')
@@ -1777,6 +1844,65 @@ export class MochiTeableApiController {
 export class MochiLocalShareViewController {
   constructor(private readonly mochiSqliteService: MochiSqliteService) {}
 
+  private getPrimaryFieldId(tableId: string): string | undefined {
+    const fields = this.mochiSqliteService.listFields(tableId) as LocalField[];
+    return fields.find((field) => Boolean(field.is_primary))?.id ?? fields[0]?.id;
+  }
+
+  private getRecordTitle(record: LocalRecord | null | undefined): string | undefined {
+    if (!record) return undefined;
+    const tableId = record.table_id;
+    const primaryFieldId = tableId ? this.getPrimaryFieldId(tableId) : undefined;
+    const title = primaryFieldId ? record.fields?.[primaryFieldId] : undefined;
+    return typeof title === 'string' ? title : undefined;
+  }
+
+  private hydrateLinkCellValue(value: unknown) {
+    const hydrate = (item: unknown) => {
+      const id =
+        typeof item === 'string'
+          ? item
+          : item && typeof item === 'object'
+            ? (item as { id?: unknown }).id
+            : undefined;
+      if (typeof id !== 'string') return item;
+
+      const linkedRecord = this.mochiSqliteService.getRecord(id) as LocalRecord | null;
+      return {
+        ...(item && typeof item === 'object' && !Array.isArray(item)
+          ? (item as Record<string, unknown>)
+          : {}),
+        id,
+        title: this.getRecordTitle(linkedRecord),
+      };
+    };
+
+    return Array.isArray(value) ? value.map(hydrate) : hydrate(value);
+  }
+
+  private hydrateLinkFields(tableId: string, fields: Record<string, unknown> = {}) {
+    const linkFields = (this.mochiSqliteService.listFields(tableId) as LocalField[]).filter(
+      (field) => field.type === FieldType.Link
+    );
+    if (!linkFields.length) return fields;
+
+    return linkFields.reduce(
+      (acc, field) => {
+        if (field.id in acc) {
+          acc[field.id] = this.hydrateLinkCellValue(acc[field.id]);
+        }
+        return acc;
+      },
+      { ...fields }
+    );
+  }
+
+  private toRecordVo(tableId: string, record: LocalRecord | null | undefined): IRecord | null {
+    const vo = toTeableRecord(record);
+    if (!vo) return null;
+    return { ...vo, fields: this.hydrateLinkFields(tableId, vo.fields) };
+  }
+
   private getShareViewContext(linkFieldId: string) {
     const linkField = this.mochiSqliteService.getField(linkFieldId) as LocalField | null;
     const options =
@@ -1801,7 +1927,7 @@ export class MochiLocalShareViewController {
       .filter(Boolean) as IFieldVo[];
     const view = (this.mochiSqliteService.listViews(tableId) as LocalView[])[0];
     const records = this.listRecords(tableId, { take: '50' }, { paginate: true })
-      .map(toTeableRecord)
+      .map((record) => this.toRecordVo(tableId, record))
       .filter(Boolean) as IRecord[];
 
     return {
@@ -1916,6 +2042,10 @@ export class MochiLocalShareViewController {
   ): { records: IRecord[] } {
     const { tableId } = this.getShareViewContext(shareId);
     const records = this.listRecords(tableId, query, { paginate: true });
-    return { records: records.map(toTeableRecord).filter(Boolean) as IRecord[] };
+    return {
+      records: records
+        .map((record) => this.toRecordVo(tableId, record))
+        .filter(Boolean) as IRecord[],
+    };
   }
 }

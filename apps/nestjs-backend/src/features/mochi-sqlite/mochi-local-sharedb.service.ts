@@ -245,6 +245,65 @@ class MochiLocalShareDbAdapter extends ShareDBClass.DB {
     super();
   }
 
+  private getPrimaryFieldId(tableId: string): string | undefined {
+    const fields = this.mochiSqliteService.listFields(tableId) as LocalField[];
+    return fields.find((field) => Boolean(field.is_primary))?.id ?? fields[0]?.id;
+  }
+
+  private getRecordTitle(record: LocalRecord | null | undefined): string | undefined {
+    if (!record?.table_id) return undefined;
+    const primaryFieldId = this.getPrimaryFieldId(record.table_id);
+    const title = primaryFieldId ? record.fields?.[primaryFieldId] : undefined;
+    return typeof title === 'string' ? title : undefined;
+  }
+
+  private hydrateLinkCellValue(value: unknown) {
+    const hydrate = (item: unknown) => {
+      const id =
+        typeof item === 'string'
+          ? item
+          : item && typeof item === 'object'
+            ? (item as { id?: unknown }).id
+            : undefined;
+      if (typeof id !== 'string') return item;
+
+      const linkedRecord = this.mochiSqliteService.getRecord(id) as LocalRecord | null;
+      return {
+        ...(item && typeof item === 'object' && !Array.isArray(item)
+          ? (item as Record<string, unknown>)
+          : {}),
+        id,
+        title: this.getRecordTitle(linkedRecord),
+      };
+    };
+
+    return Array.isArray(value) ? value.map(hydrate) : hydrate(value);
+  }
+
+  private hydrateLinkFields(tableId: string, fields: Record<string, unknown> = {}) {
+    const linkFields = (this.mochiSqliteService.listFields(tableId) as LocalField[]).filter(
+      (field) => field.type === 'link'
+    );
+    if (!linkFields.length) return fields;
+
+    return linkFields.reduce(
+      (acc, field) => {
+        if (field.id in acc) {
+          acc[field.id] = this.hydrateLinkCellValue(acc[field.id]);
+        }
+        return acc;
+      },
+      { ...fields }
+    );
+  }
+
+  private toRecordSnapshot(tableId: string, record: LocalRecord): LocalSnapshot {
+    return toRecordSnapshot(tableId, {
+      ...record,
+      fields: this.hydrateLinkFields(tableId, record.fields),
+    });
+  }
+
   private parseCollection(collection: string) {
     const separator = collection.indexOf('_');
     if (separator < 0) {
@@ -305,7 +364,10 @@ class MochiLocalShareDbAdapter extends ShareDBClass.DB {
     }
 
     const record = this.mochiSqliteService.getRecord(id) as LocalRecord | null;
-    callback(null, record ? toRecordSnapshot(collectionId, record) : ({ id, v: 0 } as Snapshot));
+    callback(
+      null,
+      record ? this.toRecordSnapshot(collectionId, record) : ({ id, v: 0 } as Snapshot)
+    );
   }
 
   query = (
@@ -366,7 +428,7 @@ class MochiLocalShareDbAdapter extends ShareDBClass.DB {
 
     callback(
       null,
-      records.map((record) => toRecordSnapshot(collectionId, record))
+      records.map((record) => this.toRecordSnapshot(collectionId, record))
     );
   };
 
