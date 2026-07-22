@@ -24,6 +24,16 @@ export const SelectTable = ({ baseId, tableId, onChange }: ISelectTableProps) =>
   const selfTableId = useTableId();
   const selfBaseId = useBaseId();
   const selectedBaseId = baseId || selfBaseId!;
+  const tables = useTables();
+  const selectedTable = tables.find((table) => table.id === tableId);
+  const tableHref =
+    tableId && typeof window !== 'undefined' && window.location.pathname.startsWith('/mochi/local')
+      ? `/mochi/local?tableId=${tableId}${
+          selectedTable?.defaultViewId ? `&viewId=${selectedTable.defaultViewId}` : ''
+        }`
+      : tableId
+        ? `/base/${selectedBaseId}/${tableId}`
+        : undefined;
 
   return (
     <div className="flex flex-col gap-4">
@@ -63,8 +73,8 @@ export const SelectTable = ({ baseId, tableId, onChange }: ISelectTableProps) =>
             <span className="flex items-center gap-1 ">
               {t('table:field.editor.linkTable')}
               <RequireCom />
-              {tableId && (
-                <Link href={`/base/${selectedBaseId}/${tableId}`} target="_blank">
+              {tableHref && (
+                <Link href={tableHref} target="_blank">
                   <ArrowUpRight className="size-4 shrink-0 text-muted-foreground" />
                 </Link>
               )}

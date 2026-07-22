@@ -24,7 +24,10 @@ export const getLocalDataMutationScope = (data: unknown): LocalDataMutationScope
     return 'record';
   }
 
-  if (/\/table\/[^/]+\/(?:name|icon|description)$/.test(pathname)) {
+  if (
+    /\/table\/[^/]+\/(?:name|icon|description)$/.test(pathname) ||
+    /\/base\/[^/]+\/node\/[^/]+(?:\/move)?$/.test(pathname)
+  ) {
     return 'table';
   }
 

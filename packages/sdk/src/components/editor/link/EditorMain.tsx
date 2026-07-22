@@ -78,9 +78,10 @@ const LinkEditorInnerBase: ForwardRefRenderFunction<ILinkEditorMainRef, ILinkEdi
   const { foreignTableId, filterByViewId } = options;
 
   const tables = useTables();
-  const foreignTableName = useMemo(() => {
-    return tables.find((t) => t.id === foreignTableId)?.name;
+  const foreignTable = useMemo(() => {
+    return tables.find((t) => t.id === foreignTableId);
   }, [tables, foreignTableId]);
+  const foreignTableName = foreignTable?.name;
 
   const {
     listType,
@@ -205,6 +206,17 @@ const LinkEditorInnerBase: ForwardRefRenderFunction<ILinkEditorMainRef, ILinkEdi
 
   const onNavigate = () => {
     if (!baseId) return;
+
+    if (window.location.pathname.startsWith('/mochi/local')) {
+      const url = new URL('/mochi/local', window.location.origin);
+      url.searchParams.set('tableId', foreignTableId);
+      const targetViewId = filterByViewId || foreignTable?.defaultViewId;
+      if (targetViewId) {
+        url.searchParams.set('viewId', targetViewId);
+      }
+      window.open(url.toString(), '_blank');
+      return;
+    }
 
     let path = `/base/${baseId}/${foreignTableId}`;
 
