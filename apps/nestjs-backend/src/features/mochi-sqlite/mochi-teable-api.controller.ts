@@ -177,6 +177,17 @@ type UpdateRecordBody = {
   source?: string;
 };
 
+type UpdateRecordsBody = {
+  fieldKeyType?: FieldKeyType;
+  records?: Array<{
+    id?: string;
+    fields?: Record<string, unknown>;
+  }>;
+  order?: unknown;
+  actorId?: string;
+  source?: string;
+};
+
 type CreateRecordsBody = {
   fieldKeyType?: FieldKeyType;
   records?: Array<{
@@ -1351,6 +1362,32 @@ export class MochiTeableApiController {
         .map((record) => this.toRecordVo(tableId, record))
         .filter(Boolean) as IRecord[],
     };
+  }
+
+  @Patch(':tableId/record')
+  updateRecords(
+    @Param('tableId') tableId: string,
+    @Body() body: UpdateRecordsBody,
+    @Headers() headers: Record<string, string | string[] | undefined>
+  ): IRecord[] {
+    const actorPatch = getActorPatch(headers, body);
+    const records = body.records ?? [];
+    const updated = records
+      .map((record) => {
+        if (!record.id) return null;
+        return this.mochiSqliteService.updateRecord(
+          record.id,
+          {
+            fields: record.fields ?? {},
+            order: body.order,
+            ...actorPatch,
+          },
+          tableId
+        ) as LocalRecord | null;
+      })
+      .filter(Boolean) as LocalRecord[];
+
+    return updated.map((record) => this.toRecordVo(tableId, record)).filter(Boolean) as IRecord[];
   }
 
   @Post(':tableId/record/:recordId/duplicate')
