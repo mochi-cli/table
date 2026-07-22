@@ -10,6 +10,7 @@ import {
   Put,
   Query,
 } from '@nestjs/common';
+import { basename } from 'node:path';
 import { Public } from '../auth/decorators/public.decorator';
 import { MochiSqliteService } from './mochi-sqlite.service';
 
@@ -17,6 +18,58 @@ const localUser = {
   id: 'usr_mochi_local',
   name: 'Mochi Local',
   avatar: null,
+};
+
+type LocalAttachment = {
+  token?: string;
+  name?: string;
+  path?: string;
+};
+
+type LocalComment = {
+  content?: unknown;
+};
+
+const safeFileName = (value?: string) => {
+  const fileName = String(value ?? 'attachment')
+    .replace(/[\\/]/g, '_')
+    .trim();
+  return fileName || 'attachment';
+};
+
+const attachmentUrlFor = (token: string, filename?: string) =>
+  `/api/attachments/read/${encodeURIComponent(token)}?filename=${encodeURIComponent(
+    safeFileName(filename)
+  )}`;
+
+const enrichCommentAttachmentUrls = (comment: unknown, attachments: LocalAttachment[]): unknown => {
+  if (!comment || typeof comment !== 'object') return comment;
+  const commentValue = comment as LocalComment;
+  if (!Array.isArray(commentValue.content)) return comment;
+
+  const attachmentByPath = new Map(
+    attachments
+      .filter((attachment) => attachment.path)
+      .map((attachment) => [attachment.path as string, attachment])
+  );
+
+  return {
+    ...commentValue,
+    content: commentValue.content.map((item) => {
+      if (!item || typeof item !== 'object') return item;
+      const node = item as { type?: unknown; path?: unknown; url?: unknown };
+      if (node.type !== 'img' || typeof node.path !== 'string' || typeof node.url === 'string') {
+        return item;
+      }
+
+      const attachment = attachmentByPath.get(node.path);
+      const token = attachment?.token ?? basename(node.path);
+      return {
+        ...node,
+        url: attachmentUrlFor(token, attachment?.name),
+      };
+    }),
+  };
 };
 
 const localBasePermission = {
@@ -628,10 +681,13 @@ export class MochiLocalCompatController {
     @Param('recordId') recordId: string,
     @Query('take') take?: string
   ) {
+    const attachments = this.mochiSqliteService.listAttachments() as LocalAttachment[];
     return {
-      comments: this.mochiSqliteService.listComments(tableId, recordId, {
-        limit: take ? Number(take) : undefined,
-      }),
+      comments: this.mochiSqliteService
+        .listComments(tableId, recordId, {
+          limit: take ? Number(take) : undefined,
+        })
+        .map((comment) => enrichCommentAttachmentUrls(comment, attachments)),
       nextCursor: null,
     };
   }
@@ -642,13 +698,16 @@ export class MochiLocalCompatController {
     @Param('recordId') recordId: string,
     @Body() body: { content?: unknown; quoteId?: string }
   ) {
-    return this.mochiSqliteService.createComment({
-      tableId,
-      recordId,
-      content: body?.content ?? [],
-      quoteId: body?.quoteId,
-      createdBy: localUser.id,
-    });
+    return enrichCommentAttachmentUrls(
+      this.mochiSqliteService.createComment({
+        tableId,
+        recordId,
+        content: body?.content ?? [],
+        quoteId: body?.quoteId,
+        createdBy: localUser.id,
+      }),
+      this.mochiSqliteService.listAttachments() as LocalAttachment[]
+    );
   }
 
   @Get('comment/:tableId/:recordId/:commentId')
@@ -657,7 +716,10 @@ export class MochiLocalCompatController {
     @Param('recordId') recordId: string,
     @Param('commentId') commentId: string
   ) {
-    return this.mochiSqliteService.getComment(tableId, recordId, commentId);
+    return enrichCommentAttachmentUrls(
+      this.mochiSqliteService.getComment(tableId, recordId, commentId),
+      this.mochiSqliteService.listAttachments() as LocalAttachment[]
+    );
   }
 
   @Patch('comment/:tableId/:recordId/:commentId')
@@ -671,7 +733,10 @@ export class MochiLocalCompatController {
       content: body?.content ?? [],
     });
     if (!updated) throw new NotFoundException('Comment not found');
-    return updated;
+    return enrichCommentAttachmentUrls(
+      updated,
+      this.mochiSqliteService.listAttachments() as LocalAttachment[]
+    );
   }
 
   @Delete('comment/:tableId/:recordId/:commentId')

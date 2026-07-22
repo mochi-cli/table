@@ -53,6 +53,9 @@ export const CommentItem = (props: ICommentItemProps) => {
       queryClient.invalidateQueries({
         queryKey: ReactQueryKeys.recordCommentCount(tableId, recordId),
       });
+      queryClient.invalidateQueries({
+        queryKey: ReactQueryKeys.commentList(tableId, recordId),
+      });
     },
   });
   const modalRef = useModalRefElement();

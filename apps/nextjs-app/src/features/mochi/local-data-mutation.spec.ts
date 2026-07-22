@@ -37,6 +37,7 @@ describe('getLocalDataMutationScope', () => {
     ['/api/table/tbl_1/view', 'post'],
     ['/api/table/tbl_1/view/viw_1/duplicate', 'post'],
     ['/api/table/tbl_1/view/viw_1', 'delete'],
+    ['/api/table/tbl_1/view/viw_1/column-meta', 'put'],
     ['/api/table/tbl_1/undo-redo/undo', 'post'],
     ['/api/table/tbl_1/undo-redo/redo', 'post'],
     ['/api/table/tbl_1/undo-redo/undo-stream', 'post'],
@@ -50,7 +51,6 @@ describe('getLocalDataMutationScope', () => {
     '/api/table/tbl_1/view/viw_1/filter',
     '/api/table/tbl_1/view/viw_1/sort',
     '/api/table/tbl_1/view/viw_1/group',
-    '/api/table/tbl_1/view/viw_1/column-meta',
     '/api/table/tbl_1/view/viw_1/options',
   ])('does not emit browser mutation events for view header update %s', (url) => {
     expect(getLocalDataMutationScope(responseFor('put', url))).toBeNull();

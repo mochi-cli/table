@@ -7,7 +7,6 @@ import { usePlateEditor, Plate, ParagraphPlugin } from '@udecode/plate/react';
 import { AlignPlugin } from '@udecode/plate-alignment/react';
 import { LinkPlugin } from '@udecode/plate-link/react';
 import { ImagePlugin, PlaceholderPlugin } from '@udecode/plate-media/react';
-import { MentionInputPlugin, MentionPlugin } from '@udecode/plate-mention/react';
 import { SelectOnBackspacePlugin, DeletePlugin } from '@udecode/plate-select';
 import { TrailingBlockPlugin } from '@udecode/plate-trailing-block';
 import { noop } from 'lodash';
@@ -23,12 +22,8 @@ import { LinkFloatingToolbar } from '../../plate/ui/link-floating-toolbar';
 import { MediaPlaceholderElement } from '../../plate/ui/media-placeholder-element';
 import { MediaToolbarButton } from '../../plate/ui/media-toolbar-button';
 import { MediaUploadToast } from '../../plate/ui/media-upload-toast';
-import { MentionElement } from '../../plate/ui/mention-element';
-import { MentionInputElement } from '../../plate/ui/mention-input-element';
-import { MentionToolbarButton } from '../../plate/ui/mention-toolbar-button';
 import { ParagraphElement } from '../../plate/ui/paragraph-element';
 import { Toolbar } from '../../plate/ui/toolbar';
-import { MentionUser } from '../comment-list/node';
 import { useCommentStore } from '../useCommentStore';
 import { CommentQuote } from './CommentQuote';
 import { Editor } from './Editor';
@@ -56,11 +51,6 @@ export const CommentEditor = (props: ICommentEditorProps) => {
   const { quoteId, setQuoteId, setEditorRef, editingCommentId, setEditingCommentId } =
     useCommentStore();
   const [composition, setComposition] = useState(false);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const mentionUserRender = (element: any) => {
-    const value = element.value;
-    return <MentionUser id={value.id} name={value.name} avatar={value.avatar} />;
-  };
   const [value, setValue] = useState(defaultEditorValue);
   const permission = useTablePermission();
   const queryClient = useQueryClient();
@@ -90,7 +80,7 @@ export const CommentEditor = (props: ICommentEditorProps) => {
       ParagraphPlugin,
       AlignPlugin.configure({
         options: {
-          targetPlugins: [ParagraphPlugin.key, ImagePlugin.key, MentionPlugin.key],
+          targetPlugins: [ParagraphPlugin.key, ImagePlugin.key],
         },
       }),
       TrailingBlockPlugin,
@@ -108,11 +98,6 @@ export const CommentEditor = (props: ICommentEditorProps) => {
         },
         render: { afterEditable: MediaUploadToast },
       }),
-      MentionPlugin.configure({
-        options: {
-          triggerPreviousCharPattern: /^$|^[\s"']$/,
-        },
-      }),
     ],
     override: {
       components: {
@@ -120,10 +105,6 @@ export const CommentEditor = (props: ICommentEditorProps) => {
         [ImagePlugin.key]: ImageElement,
         [PlaceholderPlugin.key]: MediaPlaceholderElement,
         [ParagraphPlugin.key]: ParagraphElement,
-        [MentionPlugin.key]: (props: React.ComponentProps<typeof MentionElement>) => (
-          <MentionElement {...props} render={mentionUserRender} />
-        ),
-        [MentionInputPlugin.key]: MentionInputElement,
       },
     },
     shouldNormalizeEditor: true,
@@ -166,6 +147,9 @@ export const CommentEditor = (props: ICommentEditorProps) => {
     }) => createComment(tableId, recordId, createCommentRo),
     onSuccess: () => {
       queryClient.invalidateQueries({
+        queryKey: ReactQueryKeys.commentList(tableId, recordId),
+      });
+      queryClient.invalidateQueries({
         queryKey: ReactQueryKeys.recordCommentCount(tableId, recordId),
       });
       editor.tf.reset();
@@ -185,6 +169,9 @@ export const CommentEditor = (props: ICommentEditorProps) => {
       updateCommentRo: IUpdateCommentRo;
     }) => updateComment(tableId, recordId, commentId, updateCommentRo),
     onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ReactQueryKeys.commentList(tableId, recordId),
+      });
       editor.tf.reset();
       setQuoteId(undefined);
       setEditingCommentId(undefined);
@@ -249,7 +236,6 @@ export const CommentEditor = (props: ICommentEditorProps) => {
           />
           <Toolbar className="no-scrollbar gap-x-1 border-y p-1">
             <MediaToolbarButton nodeType={ImagePlugin.key} />
-            <MentionToolbarButton />
           </Toolbar>
           <Editor
             placeholder={t('comment.placeholder')}

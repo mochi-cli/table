@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -44,7 +45,7 @@ const parseNumberQuery = (value: unknown, fallback: number) => {
 };
 
 const getActorPatch = (
-  headers: Record<string, string | string[] | undefined>,
+  headers: Record<string, string | string[] | undefined> = {},
   body?: { actorId?: string; source?: string }
 ) => ({
   actorId:
@@ -140,8 +141,20 @@ const normalizeSortQuery = (orderBy: unknown): unknown[] => {
   return Array.isArray(parsed) ? parsed : [];
 };
 
-const getQueryValue = (query: Record<string, unknown>, key: string): unknown =>
-  query[key] ?? query[`${key}[]`];
+const normalizeGroupByQuery = (groupBy: unknown): Array<{ fieldId?: string; order?: string }> => {
+  const parsed = typeof groupBy === 'string' ? parseJsonQuery<unknown>(groupBy, []) : groupBy;
+  if (!Array.isArray(parsed)) return [];
+  return parsed
+    .filter((item): item is Record<string, unknown> => isObjectRecord(item))
+    .map((item) => ({
+      fieldId: typeof item.fieldId === 'string' ? item.fieldId : undefined,
+      order: typeof item.order === 'string' ? item.order : undefined,
+    }))
+    .filter((item) => item.fieldId);
+};
+
+const getQueryValue = (query: Record<string, unknown> | undefined, key: string): unknown =>
+  query?.[key] ?? query?.[`${key}[]`];
 
 const getLinkRecordIds = (cellValue: unknown): string[] => {
   const values = Array.isArray(cellValue) ? cellValue : [cellValue];
@@ -177,12 +190,31 @@ type UpdateRecordBody = {
   source?: string;
 };
 
+type UpdateRecordsBody = {
+  fieldKeyType?: FieldKeyType;
+  records?: Array<{
+    id?: string;
+    fields?: Record<string, unknown>;
+  }>;
+  order?: unknown;
+  actorId?: string;
+  source?: string;
+};
+
 type CreateRecordsBody = {
   fieldKeyType?: FieldKeyType;
   records?: Array<{
     fields?: Record<string, unknown>;
   }>;
   order?: unknown;
+  actorId?: string;
+  source?: string;
+};
+
+type FormSubmitBody = {
+  viewId?: string;
+  fields?: Record<string, unknown>;
+  typecast?: boolean;
   actorId?: string;
   source?: string;
 };
@@ -386,6 +418,16 @@ const defaultCellValueTypeFor = (type?: string): CellValueType => {
   }
 };
 
+const READONLY_SYSTEM_FIELD_TYPES = new Set<FieldType>([
+  FieldType.AutoNumber,
+  FieldType.CreatedTime,
+  FieldType.LastModifiedTime,
+  FieldType.CreatedBy,
+  FieldType.LastModifiedBy,
+]);
+
+const isReadonlySystemField = (type: FieldType): boolean => READONLY_SYSTEM_FIELD_TYPES.has(type);
+
 const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 
@@ -458,9 +500,84 @@ const normalizeFieldOptions = (type: string, options: unknown): IFieldVo['option
   } as IFieldVo['options'];
 };
 
+const cloneDefaultValue = (value: unknown): unknown => {
+  if (Array.isArray(value)) return [...value];
+  if (isObjectRecord(value)) return { ...value };
+  return value;
+};
+
+const getRecordDefaultValue = (field: LocalField): unknown => {
+  const type = normalizeFieldType(field.type);
+  if (isReadonlySystemField(type) || toBool(field.is_computed) || toBool(field.is_lookup)) {
+    return undefined;
+  }
+  if (type === FieldType.Attachment || type === FieldType.Link || type === FieldType.Button) {
+    return undefined;
+  }
+  if (!isObjectRecord(field.options) || !('defaultValue' in field.options)) {
+    return undefined;
+  }
+  const defaultValue = field.options.defaultValue;
+  if (defaultValue === undefined || defaultValue === null) return undefined;
+  if (type === FieldType.Date && defaultValue === 'now') return new Date().toISOString();
+  return cloneDefaultValue(defaultValue);
+};
+
+const applyRecordDefaultValues = (
+  fields: Record<string, unknown>,
+  tableFields: LocalField[]
+): Record<string, unknown> => {
+  const nextFields = { ...fields };
+  for (const field of tableFields) {
+    if (Object.prototype.hasOwnProperty.call(nextFields, field.id)) continue;
+    const defaultValue = getRecordDefaultValue(field);
+    if (defaultValue !== undefined) {
+      nextFields[field.id] = defaultValue;
+    }
+  }
+  return nextFields;
+};
+
+const getUniqueValueKey = (value: unknown): string | undefined => {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (Array.isArray(value) && value.length === 0) return undefined;
+  return JSON.stringify(value);
+};
+
+const getGroupValueKey = (value: unknown): string => getUniqueValueKey(value) ?? '__blank__';
+
+const getCalendarDay = (value: unknown): string | undefined => {
+  if (typeof value !== 'string' && typeof value !== 'number' && !(value instanceof Date)) {
+    return undefined;
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return undefined;
+  return date.toISOString().slice(0, 10);
+};
+
+const getLocalRecordFieldValue = (record: LocalRecord, field: LocalField | undefined): unknown => {
+  if (!field) return undefined;
+  const type = normalizeFieldType(field.type);
+  switch (type) {
+    case FieldType.AutoNumber:
+      return record.auto_number;
+    case FieldType.CreatedTime:
+      return record.created_time;
+    case FieldType.LastModifiedTime:
+      return record.last_modified_time;
+    case FieldType.CreatedBy:
+      return record.created_by;
+    case FieldType.LastModifiedBy:
+      return record.last_modified_by;
+    default:
+      return record.fields?.[field.id];
+  }
+};
+
 const toTeableField = (field: LocalField | null | undefined): IFieldVo | null => {
   if (!field) return null;
   const { type, cellValueType, isMultipleCellValue, dbFieldType } = getFieldMetadata(field);
+  const isComputed = toBool(field.is_computed) || isReadonlySystemField(type);
 
   return {
     id: field.id,
@@ -471,7 +588,7 @@ const toTeableField = (field: LocalField | null | undefined): IFieldVo | null =>
     meta: field.meta as IFieldVo['meta'],
     aiConfig: field.aiConfig as IFieldVo['aiConfig'],
     isPrimary: toBool(field.is_primary),
-    isComputed: toBool(field.is_computed),
+    isComputed,
     isLookup: toBool(field.is_lookup),
     notNull: toBool(field.not_null),
     unique: toBool(field.unique_value),
@@ -480,7 +597,7 @@ const toTeableField = (field: LocalField | null | undefined): IFieldVo | null =>
     dbFieldType,
     dbFieldName: field.id.replace(/\W/g, '_').slice(0, 63),
     recordRead: true,
-    recordCreate: true,
+    recordCreate: !isComputed,
   };
 };
 
@@ -633,6 +750,65 @@ const toRecordHistoryVo = (history: {
 export class MochiTeableApiController {
   constructor(private readonly mochiSqliteService: MochiSqliteService) {}
 
+  private getPrimaryFieldId(tableId: string): string | undefined {
+    const fields = this.mochiSqliteService.listFields(tableId) as LocalField[];
+    return fields.find((field) => Boolean(field.is_primary))?.id ?? fields[0]?.id;
+  }
+
+  private getRecordTitle(record: LocalRecord | null | undefined): string | undefined {
+    if (!record) return undefined;
+    const tableId = record.table_id;
+    const primaryFieldId = tableId ? this.getPrimaryFieldId(tableId) : undefined;
+    const title = primaryFieldId ? record.fields?.[primaryFieldId] : undefined;
+    return typeof title === 'string' ? title : undefined;
+  }
+
+  private hydrateLinkCellValue(value: unknown) {
+    const hydrate = (item: unknown) => {
+      const id =
+        typeof item === 'string'
+          ? item
+          : item && typeof item === 'object'
+            ? (item as { id?: unknown }).id
+            : undefined;
+      if (typeof id !== 'string') return item;
+
+      const linkedRecord = this.mochiSqliteService.getRecord(id) as LocalRecord | null;
+      return {
+        ...(item && typeof item === 'object' && !Array.isArray(item)
+          ? (item as Record<string, unknown>)
+          : {}),
+        id,
+        title: this.getRecordTitle(linkedRecord),
+      };
+    };
+
+    return Array.isArray(value) ? value.map(hydrate) : hydrate(value);
+  }
+
+  private hydrateLinkFields(tableId: string, fields: Record<string, unknown> = {}) {
+    const linkFields = (this.mochiSqliteService.listFields(tableId) as LocalField[]).filter(
+      (field) => field.type === FieldType.Link
+    );
+    if (!linkFields.length) return fields;
+
+    return linkFields.reduce(
+      (acc, field) => {
+        if (field.id in acc) {
+          acc[field.id] = this.hydrateLinkCellValue(acc[field.id]);
+        }
+        return acc;
+      },
+      { ...fields }
+    );
+  }
+
+  private toRecordVo(tableId: string, record: LocalRecord | null | undefined): IRecord | null {
+    const vo = toTeableRecord(record);
+    if (!vo) return null;
+    return { ...vo, fields: this.hydrateLinkFields(tableId, vo.fields) };
+  }
+
   private listLocalRecordsForQuery(
     tableId: string,
     query: Record<string, unknown>,
@@ -651,12 +827,14 @@ export class MochiTeableApiController {
       Boolean(selectedRecordIds?.length) ||
       Boolean(filterLinkCellSelected) ||
       Boolean(filterLinkCellCandidate);
+    const sorts = normalizeSortQuery(getQueryValue(query, 'orderBy'));
+    const groupBy = normalizeGroupByQuery(getQueryValue(query, 'groupBy'));
     const records = this.mochiSqliteService.listRecords(tableId, {
       search: normalizeSearchQuery(getQueryValue(query, 'search')),
       limit: hasLinkCellQuery ? 100000 : take,
       offset: hasLinkCellQuery ? 0 : skip,
       filters: normalizeFilterQuery(getQueryValue(query, 'filter')),
-      sorts: normalizeSortQuery(getQueryValue(query, 'orderBy')),
+      sorts: sorts.length ? sorts : groupBy,
     }) as LocalRecord[];
     const filteredRecords = this.applyLinkCellQuery(records, {
       selectedRecordIds,
@@ -712,6 +890,149 @@ export class MochiTeableApiController {
     const [fieldId, recordId] = linkCellQuery;
     const record = this.mochiSqliteService.getRecord(recordId) as LocalRecord | null;
     return getLinkRecordIds(record?.fields?.[fieldId]);
+  }
+
+  private assertUniqueValues(
+    tableId: string,
+    candidates: Array<{ id?: string; fields: Record<string, unknown>; changedFieldIds?: string[] }>,
+    fields: LocalField[] = this.mochiSqliteService.listFields(tableId) as LocalField[]
+  ) {
+    const uniqueFields = fields.filter((field) => toBool(field.unique_value));
+    if (!uniqueFields.length || !candidates.length) return;
+
+    const records = this.mochiSqliteService.listRecords(tableId, {
+      limit: 100000,
+    }) as LocalRecord[];
+    for (const field of uniqueFields) {
+      const seen = new Map<string, string>();
+      for (const record of records) {
+        if (candidates.some((candidate) => candidate.id === record.id)) continue;
+        const valueKey = getUniqueValueKey(record.fields?.[field.id]);
+        if (valueKey) seen.set(valueKey, record.id);
+      }
+
+      for (const candidate of candidates) {
+        if (candidate.changedFieldIds && !candidate.changedFieldIds.includes(field.id)) continue;
+        const valueKey = getUniqueValueKey(candidate.fields[field.id]);
+        if (!valueKey) continue;
+        const duplicateRecordId = seen.get(valueKey);
+        if (duplicateRecordId) {
+          throw new BadRequestException(
+            `Unique field "${field.name}" already has this value in record ${duplicateRecordId}`
+          );
+        }
+        seen.set(valueKey, candidate.id ?? `new:${seen.size}`);
+      }
+    }
+  }
+
+  private getGroupPoints(tableId: string, query: Record<string, unknown>) {
+    const [group] = normalizeGroupByQuery(getQueryValue(query, 'groupBy'));
+    if (!group?.fieldId) return null;
+
+    const fields = this.mochiSqliteService.listFields(tableId) as LocalField[];
+    const groupField = fields.find((field) => field.id === group.fieldId);
+    const records = this.listLocalRecordsForQuery(tableId, {
+      ...query,
+      orderBy: getQueryValue(query, 'orderBy') ?? JSON.stringify([group]),
+    });
+    const collapsedGroupIds = parseJsonArrayQuery(getQueryValue(query, 'collapsedGroupIds')) ?? [];
+    const collapsedSet = new Set(collapsedGroupIds);
+    const groups = new Map<string, { value: unknown; count: number }>();
+
+    for (const record of records) {
+      const value = getLocalRecordFieldValue(record, groupField);
+      const key = getGroupValueKey(value);
+      const current = groups.get(key);
+      groups.set(key, { value, count: (current?.count ?? 0) + 1 });
+    }
+
+    return Array.from(groups.entries()).flatMap(([key, groupValue]) => {
+      const id = `${group.fieldId}:${key}`;
+      return [
+        {
+          id,
+          type: 0,
+          depth: 0,
+          value: groupValue.value ?? null,
+          isCollapsed: collapsedSet.has(id),
+        },
+        { type: 1, count: groupValue.count },
+      ];
+    });
+  }
+
+  private getCalendarDailyCollection(tableId: string, query: Record<string, unknown>) {
+    const startDate = getCalendarDay(getQueryValue(query, 'startDate'));
+    const endDate = getCalendarDay(getQueryValue(query, 'endDate'));
+    const startDateFieldId = getQueryValue(query, 'startDateFieldId');
+    const endDateFieldId = getQueryValue(query, 'endDateFieldId');
+    if (
+      !startDate ||
+      !endDate ||
+      typeof startDateFieldId !== 'string' ||
+      typeof endDateFieldId !== 'string'
+    ) {
+      return { countMap: {}, records: [] };
+    }
+
+    const rangeStart = new Date(`${startDate}T00:00:00.000Z`).getTime();
+    const rangeEnd = new Date(`${endDate}T00:00:00.000Z`).getTime();
+    const records = this.listLocalRecordsForQuery(tableId, query);
+    const fields = this.mochiSqliteService.listFields(tableId) as LocalField[];
+    const startField = fields.find((field) => field.id === startDateFieldId);
+    const endField = fields.find((field) => field.id === endDateFieldId);
+    const countMap: Record<string, number> = {};
+    const matchedRecords: LocalRecord[] = [];
+
+    for (const record of records) {
+      const recordStartDay = getCalendarDay(getLocalRecordFieldValue(record, startField));
+      const recordEndDay =
+        getCalendarDay(getLocalRecordFieldValue(record, endField)) ?? recordStartDay;
+      if (!recordStartDay || !recordEndDay) continue;
+
+      const recordStart = new Date(`${recordStartDay}T00:00:00.000Z`).getTime();
+      const recordEnd = new Date(`${recordEndDay}T00:00:00.000Z`).getTime();
+      const from = Math.max(Math.min(recordStart, recordEnd), rangeStart);
+      const to = Math.min(Math.max(recordStart, recordEnd), rangeEnd);
+      if (from > to) continue;
+
+      matchedRecords.push(record);
+      for (let time = from; time <= to; time += 24 * 60 * 60 * 1000) {
+        const day = new Date(time).toISOString().slice(0, 10);
+        countMap[day] = (countMap[day] ?? 0) + 1;
+      }
+    }
+
+    return {
+      countMap,
+      records: matchedRecords
+        .map((record) => this.toRecordVo(tableId, record))
+        .filter(Boolean) as IRecord[],
+    };
+  }
+
+  private createLocalRecords(
+    tableId: string,
+    records: Array<{ fields?: Record<string, unknown> }>,
+    options: {
+      order?: unknown;
+      actorPatch?: ReturnType<typeof getActorPatch>;
+    } = {}
+  ): LocalRecord[] {
+    const fields = this.mochiSqliteService.listFields(tableId) as LocalField[];
+    const recordsWithDefaults = records.map((record) => ({
+      fields: applyRecordDefaultValues(record.fields ?? {}, fields),
+    }));
+    this.assertUniqueValues(tableId, recordsWithDefaults, fields);
+    return recordsWithDefaults.map((record) =>
+      this.mochiSqliteService.createRecord({
+        tableId,
+        fields: record.fields,
+        order: options.order,
+        ...options.actorPatch,
+      })
+    ) as LocalRecord[];
   }
 
   private prepareSelectionStream(response: Response) {
@@ -1195,6 +1516,22 @@ export class MochiTeableApiController {
     return { rowCount: records.length };
   }
 
+  @Get(':tableId/aggregation/group-points')
+  getAggregationGroupPoints(
+    @Param('tableId') tableId: string,
+    @Query() query: Record<string, unknown>
+  ) {
+    return this.getGroupPoints(tableId, query);
+  }
+
+  @Get(':tableId/aggregation/calendar-daily-collection')
+  getAggregationCalendarDailyCollection(
+    @Param('tableId') tableId: string,
+    @Query() query: Record<string, unknown>
+  ): { countMap: Record<string, number>; records: IRecord[] } {
+    return this.getCalendarDailyCollection(tableId, query);
+  }
+
   @Get(':tableId/aggregation')
   getAggregation(): { aggregations: [] } {
     return { aggregations: [] };
@@ -1211,7 +1548,11 @@ export class MochiTeableApiController {
     @Query() query: Record<string, unknown>
   ): { records: IRecord[] } {
     const records = this.listLocalRecordsForQuery(tableId, query, { paginate: true });
-    return { records: records.map(toTeableRecord).filter(Boolean) as IRecord[] };
+    return {
+      records: records
+        .map((record) => this.toRecordVo(tableId, record))
+        .filter(Boolean) as IRecord[],
+    };
   }
 
   @Get(':tableId/record/history')
@@ -1264,15 +1605,66 @@ export class MochiTeableApiController {
   ): { records: IRecord[] } {
     const actorPatch = getActorPatch(headers, body);
     const records = body.records?.length ? body.records : [{ fields: {} }];
-    const created = records.map((record) =>
-      this.mochiSqliteService.createRecord({
-        tableId,
-        fields: record.fields ?? {},
-        order: body.order,
-        ...actorPatch,
+    const created = this.createLocalRecords(tableId, records, { order: body.order, actorPatch });
+    return {
+      records: created
+        .map((record) => this.toRecordVo(tableId, record))
+        .filter(Boolean) as IRecord[],
+    };
+  }
+
+  @Post(':tableId/record/form-submit')
+  formSubmit(
+    @Param('tableId') tableId: string,
+    @Body() body: FormSubmitBody,
+    @Headers() headers: Record<string, string | string[] | undefined>
+  ): IRecord | null {
+    const created = this.createLocalRecords(tableId, [{ fields: body.fields ?? {} }], {
+      actorPatch: getActorPatch(headers, body),
+    })[0];
+    return this.toRecordVo(tableId, created);
+  }
+
+  @Patch(':tableId/record')
+  updateRecords(
+    @Param('tableId') tableId: string,
+    @Body() body: UpdateRecordsBody,
+    @Headers() headers: Record<string, string | string[] | undefined>
+  ): IRecord[] {
+    const actorPatch = getActorPatch(headers, body);
+    const records = body.records ?? [];
+    const candidates = records
+      .map((record) => {
+        if (!record.id) return null;
+        const current = this.mochiSqliteService.getRecord(record.id) as LocalRecord | null;
+        return {
+          id: record.id,
+          fields: { ...(current?.fields ?? {}), ...(record.fields ?? {}) },
+          changedFieldIds: Object.keys(record.fields ?? {}),
+        };
       })
-    ) as LocalRecord[];
-    return { records: created.map(toTeableRecord).filter(Boolean) as IRecord[] };
+      .filter(Boolean) as Array<{
+      id: string;
+      fields: Record<string, unknown>;
+      changedFieldIds: string[];
+    }>;
+    this.assertUniqueValues(tableId, candidates);
+    const updated = records
+      .map((record) => {
+        if (!record.id) return null;
+        return this.mochiSqliteService.updateRecord(
+          record.id,
+          {
+            fields: record.fields ?? {},
+            order: body.order,
+            ...actorPatch,
+          },
+          tableId
+        ) as LocalRecord | null;
+      })
+      .filter(Boolean) as LocalRecord[];
+
+    return updated.map((record) => this.toRecordVo(tableId, record)).filter(Boolean) as IRecord[];
   }
 
   @Post(':tableId/record/:recordId/duplicate')
@@ -1284,13 +1676,14 @@ export class MochiTeableApiController {
   ): IRecord | null {
     const source = this.mochiSqliteService.getRecord(recordId) as LocalRecord | null;
     if (!source) return null;
+    this.assertUniqueValues(tableId, [{ fields: { ...(source.fields ?? {}) } }]);
     const created = this.mochiSqliteService.createRecord({
       tableId,
       fields: { ...(source.fields ?? {}) },
       order,
       ...getActorPatch(headers ?? {}),
     }) as LocalRecord;
-    return toTeableRecord(created);
+    return this.toRecordVo(tableId, created);
   }
 
   @Patch(':tableId/record/:recordId')
@@ -1301,6 +1694,14 @@ export class MochiTeableApiController {
     @Headers() headers: Record<string, string | string[] | undefined>
   ): IRecord | null {
     const fields = body.record?.fields ?? body.fields ?? {};
+    const current = this.mochiSqliteService.getRecord(recordId) as LocalRecord | null;
+    this.assertUniqueValues(tableId, [
+      {
+        id: recordId,
+        fields: { ...(current?.fields ?? {}), ...fields },
+        changedFieldIds: Object.keys(fields),
+      },
+    ]);
     const updated = this.mochiSqliteService.updateRecord(
       recordId,
       {
@@ -1310,7 +1711,7 @@ export class MochiTeableApiController {
       },
       tableId
     ) as LocalRecord | null;
-    return toTeableRecord(updated);
+    return this.toRecordVo(tableId, updated);
   }
 
   @Post(':tableId/record/:recordId/:fieldId/insertAttachment')
@@ -1340,7 +1741,7 @@ export class MochiTeableApiController {
       },
       tableId
     ) as LocalRecord | null;
-    return toTeableRecord(updated);
+    return this.toRecordVo(tableId, updated);
   }
 
   @Delete(':tableId/record/:recordId')
@@ -1349,7 +1750,7 @@ export class MochiTeableApiController {
     @Param('recordId') recordId: string
   ): IRecord | null {
     const deleted = this.mochiSqliteService.deleteRecord(recordId, tableId) as LocalRecord | null;
-    return toTeableRecord(deleted);
+    return this.toRecordVo(tableId, deleted);
   }
 
   @Post(':tableId/undo-redo/undo')
@@ -1766,6 +2167,65 @@ export class MochiTeableApiController {
 export class MochiLocalShareViewController {
   constructor(private readonly mochiSqliteService: MochiSqliteService) {}
 
+  private getPrimaryFieldId(tableId: string): string | undefined {
+    const fields = this.mochiSqliteService.listFields(tableId) as LocalField[];
+    return fields.find((field) => Boolean(field.is_primary))?.id ?? fields[0]?.id;
+  }
+
+  private getRecordTitle(record: LocalRecord | null | undefined): string | undefined {
+    if (!record) return undefined;
+    const tableId = record.table_id;
+    const primaryFieldId = tableId ? this.getPrimaryFieldId(tableId) : undefined;
+    const title = primaryFieldId ? record.fields?.[primaryFieldId] : undefined;
+    return typeof title === 'string' ? title : undefined;
+  }
+
+  private hydrateLinkCellValue(value: unknown) {
+    const hydrate = (item: unknown) => {
+      const id =
+        typeof item === 'string'
+          ? item
+          : item && typeof item === 'object'
+            ? (item as { id?: unknown }).id
+            : undefined;
+      if (typeof id !== 'string') return item;
+
+      const linkedRecord = this.mochiSqliteService.getRecord(id) as LocalRecord | null;
+      return {
+        ...(item && typeof item === 'object' && !Array.isArray(item)
+          ? (item as Record<string, unknown>)
+          : {}),
+        id,
+        title: this.getRecordTitle(linkedRecord),
+      };
+    };
+
+    return Array.isArray(value) ? value.map(hydrate) : hydrate(value);
+  }
+
+  private hydrateLinkFields(tableId: string, fields: Record<string, unknown> = {}) {
+    const linkFields = (this.mochiSqliteService.listFields(tableId) as LocalField[]).filter(
+      (field) => field.type === FieldType.Link
+    );
+    if (!linkFields.length) return fields;
+
+    return linkFields.reduce(
+      (acc, field) => {
+        if (field.id in acc) {
+          acc[field.id] = this.hydrateLinkCellValue(acc[field.id]);
+        }
+        return acc;
+      },
+      { ...fields }
+    );
+  }
+
+  private toRecordVo(tableId: string, record: LocalRecord | null | undefined): IRecord | null {
+    const vo = toTeableRecord(record);
+    if (!vo) return null;
+    return { ...vo, fields: this.hydrateLinkFields(tableId, vo.fields) };
+  }
+
   private getShareViewContext(linkFieldId: string) {
     const linkField = this.mochiSqliteService.getField(linkFieldId) as LocalField | null;
     const options =
@@ -1790,7 +2250,7 @@ export class MochiLocalShareViewController {
       .filter(Boolean) as IFieldVo[];
     const view = (this.mochiSqliteService.listViews(tableId) as LocalView[])[0];
     const records = this.listRecords(tableId, { take: '50' }, { paginate: true })
-      .map(toTeableRecord)
+      .map((record) => this.toRecordVo(tableId, record))
       .filter(Boolean) as IRecord[];
 
     return {
@@ -1905,6 +2365,10 @@ export class MochiLocalShareViewController {
   ): { records: IRecord[] } {
     const { tableId } = this.getShareViewContext(shareId);
     const records = this.listRecords(tableId, query, { paginate: true });
-    return { records: records.map(toTeableRecord).filter(Boolean) as IRecord[] };
+    return {
+      records: records
+        .map((record) => this.toRecordVo(tableId, record))
+        .filter(Boolean) as IRecord[],
+    };
   }
 }

@@ -111,7 +111,7 @@ describe('MochiTeableApiController', () => {
       type: 'grid',
       columnMeta: { fld_1: { width: 220 } },
     });
-    expect(controller.listRecords('tbl_1').records).toContainEqual(
+    expect(controller.listRecords('tbl_1', {}).records).toContainEqual(
       expect.objectContaining({
         id: 'rec_1',
         fields: { fld_1: 'Alice' },
@@ -163,6 +163,29 @@ describe('MochiTeableApiController', () => {
         cellValueType,
         dbFieldType,
         isMultipleCellValue,
+      });
+    }
+  );
+
+  it.each(['createdTime', 'lastModifiedTime', 'createdBy', 'lastModifiedBy', 'autoNumber'])(
+    'marks %s fields as readonly computed fields',
+    (type) => {
+      const service = createService();
+      vi.mocked(service.listFields).mockReturnValue([
+        {
+          id: 'fld_system',
+          name: String(type),
+          type,
+          is_computed: 0,
+        },
+      ]);
+      const controller = new MochiTeableApiController(service);
+
+      expect(controller.listFields('tbl_1')[0]).toMatchObject({
+        type,
+        isComputed: true,
+        recordRead: true,
+        recordCreate: false,
       });
     }
   );
@@ -242,6 +265,153 @@ describe('MochiTeableApiController', () => {
 
     controller.deleteFields(['fld_2', 'fld_3']);
     expect(service.deleteField).toHaveBeenCalledTimes(2);
+  });
+
+  it('applies editable field default values when creating records', () => {
+    const service = createService();
+    vi.mocked(service.listFields).mockReturnValue([
+      {
+        id: 'fld_name',
+        name: 'Name',
+        type: 'singleLineText',
+        options: { defaultValue: 'Untitled' },
+      },
+      {
+        id: 'fld_status',
+        name: 'Status',
+        type: 'singleSelect',
+        options: { defaultValue: 'Todo' },
+      },
+      {
+        id: 'fld_done',
+        name: 'Done',
+        type: 'checkbox',
+        options: { defaultValue: false },
+      },
+      {
+        id: 'fld_tags',
+        name: 'Tags',
+        type: 'multipleSelect',
+        options: { defaultValue: ['New'] },
+      },
+      {
+        id: 'fld_due',
+        name: 'Due',
+        type: 'date',
+        options: { defaultValue: 'now' },
+      },
+      {
+        id: 'fld_created',
+        name: 'Created',
+        type: 'createdTime',
+        options: { defaultValue: 'now' },
+      },
+    ]);
+    const controller = new MochiTeableApiController(service);
+
+    controller.createRecords('tbl_1', {
+      records: [{ fields: { fld_name: null } }],
+    });
+
+    expect(service.createRecord).toHaveBeenCalledWith({
+      tableId: 'tbl_1',
+      fields: {
+        fld_name: null,
+        fld_status: 'Todo',
+        fld_done: false,
+        fld_tags: ['New'],
+        fld_due: expect.any(String),
+      },
+      order: undefined,
+    });
+  });
+
+  it('submits form views through the local record create path', () => {
+    const service = createService();
+    vi.mocked(service.listFields).mockReturnValue([
+      {
+        id: 'fld_1',
+        name: 'Name',
+        type: 'singleLineText',
+      },
+      {
+        id: 'fld_status',
+        name: 'Status',
+        type: 'singleSelect',
+        options: { defaultValue: 'Todo' },
+      },
+    ]);
+    const controller = new MochiTeableApiController(service);
+
+    expect(
+      controller.formSubmit(
+        'tbl_1',
+        {
+          viewId: 'viw_form',
+          fields: { fld_1: 'Form lead' },
+        },
+        {}
+      )
+    ).toMatchObject({
+      id: 'rec_new',
+      fields: {
+        fld_1: 'Form lead',
+        fld_status: 'Todo',
+      },
+    });
+    expect(service.createRecord).toHaveBeenCalledWith({
+      tableId: 'tbl_1',
+      fields: {
+        fld_1: 'Form lead',
+        fld_status: 'Todo',
+      },
+      order: undefined,
+    });
+  });
+
+  it('rejects duplicate values for unique fields when creating records', () => {
+    const service = createService();
+    vi.mocked(service.listFields).mockReturnValue([
+      {
+        id: 'fld_1',
+        name: 'Name',
+        type: 'singleLineText',
+        unique_value: 1,
+      },
+    ]);
+    const controller = new MochiTeableApiController(service);
+
+    expect(() =>
+      controller.createRecords('tbl_1', {
+        records: [{ fields: { fld_1: 'Alice' } }],
+      })
+    ).toThrow('Unique field "Name" already has this value in record rec_1');
+    expect(service.createRecord).not.toHaveBeenCalled();
+  });
+
+  it('rejects updating a unique field to an existing value', () => {
+    const service = createService();
+    vi.mocked(service.listFields).mockReturnValue([
+      {
+        id: 'fld_1',
+        name: 'Name',
+        type: 'singleLineText',
+        unique_value: 1,
+      },
+    ]);
+    vi.mocked(service.getRecord).mockReturnValue({
+      id: 'rec_2',
+      auto_number: 2,
+      fields: { fld_1: 'Bob' },
+    });
+    const controller = new MochiTeableApiController(service);
+
+    expect(() =>
+      controller.updateRecord('tbl_1', 'rec_2', {
+        fields: { fld_1: 'Alice' },
+      })
+    ).toThrow('Unique field "Name" already has this value in record rec_1');
+    expect(service.updateRecord).not.toHaveBeenCalled();
   });
 
   it('inserts uploaded attachments into an attachment cell without replacing existing files', () => {
@@ -476,17 +646,15 @@ describe('MochiTeableApiController', () => {
     const service = createService();
     const controller = new MochiTeableApiController(service);
 
-    controller.listRecords(
-      'tbl_1',
-      undefined,
-      '20',
-      '3',
-      JSON.stringify({
+    controller.listRecords('tbl_1', {
+      take: '20',
+      skip: '3',
+      filter: JSON.stringify({
         conjunction: 'and',
         filterSet: [{ fieldId: 'fld_1', operator: 'is', value: 'Alice' }],
       }),
-      JSON.stringify([{ fieldId: 'fld_1', direction: 'desc' }])
-    );
+      orderBy: JSON.stringify([{ fieldId: 'fld_1', direction: 'desc' }]),
+    });
 
     expect(service.listRecords).toHaveBeenLastCalledWith('tbl_1', {
       search: undefined,
@@ -499,9 +667,80 @@ describe('MochiTeableApiController', () => {
 
   it('serves minimal aggregation endpoints required by Teable Grid providers', () => {
     const service = createService();
+    vi.mocked(service.listRecords).mockReturnValue([
+      {
+        id: 'rec_1',
+        auto_number: 1,
+        fields: {
+          fld_1: 'Alice',
+          fld_2: 'Todo',
+          fld_start: '2026-07-10T00:00:00.000Z',
+          fld_end: '2026-07-11T00:00:00.000Z',
+        },
+      },
+      {
+        id: 'rec_2',
+        auto_number: 2,
+        fields: {
+          fld_1: 'Bob',
+          fld_2: 'Done',
+          fld_start: '2026-07-11T00:00:00.000Z',
+          fld_end: '2026-07-11T00:00:00.000Z',
+        },
+      },
+    ]);
+    vi.mocked(service.listFields).mockReturnValue([
+      {
+        id: 'fld_1',
+        name: 'Name',
+        type: 'singleLineText',
+      },
+      {
+        id: 'fld_2',
+        name: 'Status',
+        type: 'singleSelect',
+      },
+      {
+        id: 'fld_start',
+        name: 'Start',
+        type: 'date',
+      },
+      {
+        id: 'fld_end',
+        name: 'End',
+        type: 'date',
+      },
+    ]);
     const controller = new MochiTeableApiController(service);
 
-    expect(controller.getRowCount('tbl_1')).toEqual({ rowCount: 2 });
+    expect(controller.getRowCount('tbl_1', {})).toEqual({ rowCount: 2 });
+    expect(
+      controller.getAggregationGroupPoints('tbl_1', {
+        groupBy: JSON.stringify([{ fieldId: 'fld_2', order: 'asc' }]),
+      })
+    ).toEqual([
+      { id: 'fld_2:"Todo"', type: 0, depth: 0, value: 'Todo', isCollapsed: false },
+      { type: 1, count: 1 },
+      { id: 'fld_2:"Done"', type: 0, depth: 0, value: 'Done', isCollapsed: false },
+      { type: 1, count: 1 },
+    ]);
+    expect(
+      controller.getAggregationCalendarDailyCollection('tbl_1', {
+        startDate: '2026-07-01',
+        endDate: '2026-07-31',
+        startDateFieldId: 'fld_start',
+        endDateFieldId: 'fld_end',
+      })
+    ).toMatchObject({
+      countMap: {
+        '2026-07-10': 1,
+        '2026-07-11': 2,
+      },
+      records: [
+        { id: 'rec_1', fields: expect.objectContaining({ fld_1: 'Alice' }) },
+        { id: 'rec_2', fields: expect.objectContaining({ fld_1: 'Bob' }) },
+      ],
+    });
     expect(controller.getAggregation()).toEqual({ aggregations: [] });
     expect(controller.getTaskStatusCollection()).toEqual({ cells: [], fieldMap: {} });
   });
