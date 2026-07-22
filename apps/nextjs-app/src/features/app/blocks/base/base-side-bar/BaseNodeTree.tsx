@@ -33,6 +33,7 @@ import {
 } from '@teable/ui-lib/shadcn/ui/tooltip';
 import { Tree, TreeDragLine, TreeItem, TreeItemLabel } from '@teable/ui-lib/shadcn/ui/tree';
 import { ChevronDownIcon, ShieldCheck } from 'lucide-react';
+import type { NextRouter } from 'next/router';
 import { useRouter } from 'next/router';
 import { useTranslation } from 'next-i18next';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -73,7 +74,11 @@ const GROUP_ACTIVE_HIDDEN_CLS =
 const SCROLL_EDGE_THRESHOLD = 60; // pixels from edge to trigger scroll
 const SCROLL_MAX_SPEED = 15; // max pixels per frame
 
-const getMochiLocalNodeUrl = (resourceType: BaseNodeResourceType, resourceId: string, viewId?: string) => {
+const getMochiLocalNodeUrl = (
+  resourceType: BaseNodeResourceType,
+  resourceId: string,
+  viewId?: string
+) => {
   if (typeof window === 'undefined' || window.location.pathname !== '/mochi/local') {
     return null;
   }
@@ -85,6 +90,39 @@ const getMochiLocalNodeUrl = (resourceType: BaseNodeResourceType, resourceId: st
     params.set('viewId', viewId);
   }
   return `/mochi/local?${params.toString()}`;
+};
+
+const navigateToCreatedNode = (props: {
+  router: NextRouter;
+  baseId: string;
+  resourceType: BaseNodeResourceType;
+  resourceId: string;
+  viewId?: string;
+  shareUrlPrefix?: string;
+  localDefaultUrl: string | null;
+}) => {
+  const { router, baseId, resourceType, resourceId, viewId, shareUrlPrefix, localDefaultUrl } =
+    props;
+  const url =
+    localDefaultUrl ??
+    getNodeUrl({
+      baseId,
+      resourceType,
+      resourceId,
+      viewId,
+      urlPrefix: shareUrlPrefix,
+    });
+
+  if (!url) {
+    return;
+  }
+
+  if (resourceType === BaseNodeResourceType.Table) {
+    router.push(url, undefined, { shallow: Boolean(viewId) });
+    return;
+  }
+
+  router.push(url, undefined, { shallow: true });
 };
 
 // Custom hook for auto-scroll during drag
@@ -187,7 +225,8 @@ export const BaseNodeTree = (props: IBaseNodeTreeProps) => {
   const canMoveNode = isEditMode && Boolean(permission?.['base|update']);
   const { sharedNodeIds } = useSharedNodeIds();
 
-  const { isLoading, maxFolderDepth, treeItems, setTreeItems } = useBaseNodeContext();
+  const { isLoading, maxFolderDepth, treeItems, setTreeItems, preserveCreatedFolder } =
+    useBaseNodeContext();
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -427,21 +466,18 @@ export const BaseNodeTree = (props: IBaseNodeTreeProps) => {
         };
       });
 
-      const url =
-        localDefaultUrl ??
-        getNodeUrl({
+      if (resourceType === BaseNodeResourceType.Folder) {
+        preserveCreatedFolder(node.id);
+      } else {
+        navigateToCreatedNode({
+          router,
           baseId,
           resourceType,
           resourceId,
-          viewId,
-          urlPrefix: shareUrlPrefix,
+          viewId: viewId ?? undefined,
+          shareUrlPrefix: shareUrlPrefix ?? undefined,
+          localDefaultUrl,
         });
-      if (url) {
-        if (resourceType === BaseNodeResourceType.Table) {
-          router.push(url, undefined, { shallow: Boolean(viewId) });
-        } else {
-          router.push(url, undefined, { shallow: true });
-        }
       }
 
       if (parentItem && parentItem.resourceType === BaseNodeResourceType.Folder) {
@@ -449,7 +485,15 @@ export const BaseNodeTree = (props: IBaseNodeTreeProps) => {
       }
       setSelectedItems([node.id]);
     },
-    [baseId, router, setExpandedItems, setSelectedItems, setTreeItems, shareUrlPrefix]
+    [
+      baseId,
+      preserveCreatedFolder,
+      router,
+      setExpandedItems,
+      setSelectedItems,
+      setTreeItems,
+      shareUrlPrefix,
+    ]
   );
 
   const updateSuccefulyCallback = useCallback(

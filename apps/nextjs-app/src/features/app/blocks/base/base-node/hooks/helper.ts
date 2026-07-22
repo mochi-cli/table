@@ -361,6 +361,18 @@ export const hasChildrenNode = (parentId: string, nodes: IBaseNodeVo[]): boolean
   return false;
 };
 
+export const filterRestrictedBaseNodes = (
+  nodes: IBaseNodeVo[],
+  preservedEmptyFolderIds: ReadonlySet<string> = new Set()
+): IBaseNodeVo[] => {
+  return nodes.filter((node) => {
+    if (node.resourceType !== BaseNodeResourceType.Folder) {
+      return true;
+    }
+    return preservedEmptyFolderIds.has(node.id) || hasChildrenNode(node.id, nodes);
+  });
+};
+
 export const getChildrenNodes = (parentId: string, nodes: IBaseNodeVo[]): IBaseNodeVo[] => {
   const parentNode = nodes.find((node) => node.id === parentId);
   if (!parentNode) return [];

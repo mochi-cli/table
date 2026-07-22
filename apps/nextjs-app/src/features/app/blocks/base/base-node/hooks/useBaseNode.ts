@@ -1,12 +1,12 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getBaseNodeChannel } from '@teable/core';
 import type { IBaseNodeTreeVo, IBaseNodeVo } from '@teable/openapi';
-import { BaseNodeResourceType, getBaseNodeTree } from '@teable/openapi';
+import { getBaseNodeTree } from '@teable/openapi';
 import { ReactQueryKeys } from '@teable/sdk/config';
 import { useConnection } from '@teable/sdk/hooks';
 import { isEmpty, get } from 'lodash';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { buildTreeItems, hasChildrenNode } from './helper';
+import { buildTreeItems, filterRestrictedBaseNodes } from './helper';
 
 export type TreeItemData = Omit<IBaseNodeVo, 'children'> & { children: string[] };
 const localDataMutatedEvent = 'mochi-local-data-mutated';
@@ -16,6 +16,9 @@ export const useBaseNode = (baseId: string, isRestrictedAuthority?: boolean) => 
   const channel = getBaseNodeChannel(baseId);
   const presence = connection?.getPresence(channel);
   const [nodes, setNodes] = useState<IBaseNodeVo[]>([]);
+  const [preservedEmptyFolderIds, setPreservedEmptyFolderIds] = useState<ReadonlySet<string>>(
+    () => new Set()
+  );
   const queryClient = useQueryClient();
 
   // Initialize treeItems from cache to avoid flash of empty state on remount
@@ -41,6 +44,15 @@ export const useBaseNode = (baseId: string, isRestrictedAuthority?: boolean) => 
     }
   }, [baseId, queryClient]);
 
+  const preserveCreatedFolder = useCallback((folderId: string) => {
+    setPreservedEmptyFolderIds((prev) => {
+      if (prev.has(folderId)) {
+        return prev;
+      }
+      return new Set(prev).add(folderId);
+    });
+  }, []);
+
   const maxFolderDepth = useMemo(() => {
     return queryData?.maxFolderDepth ?? 2;
   }, [queryData?.maxFolderDepth]);
@@ -55,20 +67,13 @@ export const useBaseNode = (baseId: string, isRestrictedAuthority?: boolean) => 
     if (nodes.length > 0) {
       setTreeItems(
         buildTreeItems(
-          isRestrictedAuthority
-            ? nodes.filter((node) => {
-                if (node.resourceType === BaseNodeResourceType.Folder) {
-                  return hasChildrenNode(node.id, nodes);
-                }
-                return true;
-              })
-            : nodes
+          isRestrictedAuthority ? filterRestrictedBaseNodes(nodes, preservedEmptyFolderIds) : nodes
         )
       );
     } else {
       setTreeItems({});
     }
-  }, [nodes, setTreeItems, isRestrictedAuthority]);
+  }, [nodes, setTreeItems, isRestrictedAuthority, preservedEmptyFolderIds]);
 
   useEffect(() => {
     if (!presence || !channel) {
@@ -117,7 +122,8 @@ export const useBaseNode = (baseId: string, isRestrictedAuthority?: boolean) => 
       maxFolderDepth,
       treeItems,
       setTreeItems,
+      preserveCreatedFolder,
       invalidateMenu,
     };
-  }, [isLoading, maxFolderDepth, treeItems, setTreeItems, invalidateMenu]);
+  }, [isLoading, maxFolderDepth, treeItems, setTreeItems, preserveCreatedFolder, invalidateMenu]);
 };

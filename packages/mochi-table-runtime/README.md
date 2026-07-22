@@ -1,6 +1,22 @@
 # Mochi Table Runtime
 
-Private runtime package for opening Mochi Table against local MochiKit workspaces.
+Runtime package for opening Mochi Table against local MochiKit workspaces.
+
+Install from a GitHub Release tarball:
+
+```bash
+npm install https://github.com/mochi-cli/table/releases/download/table-runtime-v0.1.11/mochi-cli-table-runtime-0.1.11.tgz
+```
+
+Use the same URL as a dependency specifier from the Mochi CLI package:
+
+```json
+{
+  "optionalDependencies": {
+    "@mochi-cli/table-runtime": "https://github.com/mochi-cli/table/releases/download/table-runtime-v0.1.11/mochi-cli-table-runtime-0.1.11.tgz"
+  }
+}
+```
 
 ```bash
 MOCHI_PROFILE_DB=/path/to/workspace.mochi mochi-table open

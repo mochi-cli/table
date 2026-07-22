@@ -1,6 +1,12 @@
 import { BaseNodeResourceType } from '@teable/openapi';
+import type { IBaseNodeVo } from '@teable/openapi';
 import { vi } from 'vitest';
-import { findAdjacentNonFolderNode, ROOT_ID } from './helper';
+import {
+  filterRestrictedBaseNodes,
+  findAdjacentNonFolderNode,
+  getNodeUrl,
+  ROOT_ID,
+} from './helper';
 import type { TreeItemData } from './useBaseNode';
 
 /**
@@ -32,6 +38,70 @@ const createRootNode = (children: string[]): TreeItemData => ({
   order: 0,
   parentId: null,
   children,
+});
+
+const createBaseNode = (
+  id: string,
+  resourceType: BaseNodeResourceType,
+  children: Array<{ id: string; order: number }> | null = null
+): IBaseNodeVo =>
+  ({
+    id,
+    resourceType,
+    resourceId: id,
+    resourceMeta: { name: `Node ${id}` },
+    order: 0,
+    parentId: null,
+    children,
+  }) as IBaseNodeVo;
+
+describe('getNodeUrl', () => {
+  it('should not return a navigable URL for folders', () => {
+    expect(
+      getNodeUrl({
+        baseId: 'base1',
+        resourceType: BaseNodeResourceType.Folder,
+        resourceId: 'folder1',
+      })
+    ).toBeNull();
+  });
+});
+
+describe('filterRestrictedBaseNodes', () => {
+  it('should hide empty folders in restricted mode', () => {
+    const nodes = [
+      createBaseNode('folder1', BaseNodeResourceType.Folder, []),
+      createBaseNode('table1', BaseNodeResourceType.Table),
+    ];
+
+    expect(filterRestrictedBaseNodes(nodes).map((node) => node.id)).toEqual(['table1']);
+  });
+
+  it('should keep a preserved empty folder created in the current session', () => {
+    const nodes = [
+      createBaseNode('folder1', BaseNodeResourceType.Folder, []),
+      createBaseNode('table1', BaseNodeResourceType.Table),
+    ];
+
+    expect(filterRestrictedBaseNodes(nodes, new Set(['folder1'])).map((node) => node.id)).toEqual([
+      'folder1',
+      'table1',
+    ]);
+  });
+
+  it('should keep folders with visible descendants', () => {
+    const nodes = [
+      createBaseNode('folder1', BaseNodeResourceType.Folder, [{ id: 'folder2', order: 0 }]),
+      createBaseNode('folder2', BaseNodeResourceType.Folder, [{ id: 'table1', order: 0 }]),
+      createBaseNode('table1', BaseNodeResourceType.Table),
+    ];
+
+    expect(filterRestrictedBaseNodes(nodes).map((node) => node.id)).toEqual([
+      'folder1',
+      'folder2',
+      'table1',
+    ]);
+  });
 });
 
 describe('findAdjacentNonFolderNode', () => {
