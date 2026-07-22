@@ -9,11 +9,13 @@ export const BaseNodeContext = createContext<{
   setTreeItems: (
     updater: (prev: Record<string, TreeItemData>) => Record<string, TreeItemData>
   ) => void;
+  preserveCreatedFolder: (folderId: string) => void;
   invalidateMenu: () => void;
 }>({
   isLoading: false,
   maxFolderDepth: 2,
   treeItems: {},
   setTreeItems: noop,
+  preserveCreatedFolder: noop,
   invalidateMenu: noop,
 });
