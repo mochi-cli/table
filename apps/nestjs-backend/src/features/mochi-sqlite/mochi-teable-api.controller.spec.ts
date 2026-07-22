@@ -111,7 +111,7 @@ describe('MochiTeableApiController', () => {
       type: 'grid',
       columnMeta: { fld_1: { width: 220 } },
     });
-    expect(controller.listRecords('tbl_1').records).toContainEqual(
+    expect(controller.listRecords('tbl_1', {}).records).toContainEqual(
       expect.objectContaining({
         id: 'rec_1',
         fields: { fld_1: 'Alice' },
@@ -163,6 +163,29 @@ describe('MochiTeableApiController', () => {
         cellValueType,
         dbFieldType,
         isMultipleCellValue,
+      });
+    }
+  );
+
+  it.each(['createdTime', 'lastModifiedTime', 'createdBy', 'lastModifiedBy', 'autoNumber'])(
+    'marks %s fields as readonly computed fields',
+    (type) => {
+      const service = createService();
+      vi.mocked(service.listFields).mockReturnValue([
+        {
+          id: 'fld_system',
+          name: String(type),
+          type,
+          is_computed: 0,
+        },
+      ]);
+      const controller = new MochiTeableApiController(service);
+
+      expect(controller.listFields('tbl_1')[0]).toMatchObject({
+        type,
+        isComputed: true,
+        recordRead: true,
+        recordCreate: false,
       });
     }
   );
@@ -476,17 +499,15 @@ describe('MochiTeableApiController', () => {
     const service = createService();
     const controller = new MochiTeableApiController(service);
 
-    controller.listRecords(
-      'tbl_1',
-      undefined,
-      '20',
-      '3',
-      JSON.stringify({
+    controller.listRecords('tbl_1', {
+      take: '20',
+      skip: '3',
+      filter: JSON.stringify({
         conjunction: 'and',
         filterSet: [{ fieldId: 'fld_1', operator: 'is', value: 'Alice' }],
       }),
-      JSON.stringify([{ fieldId: 'fld_1', direction: 'desc' }])
-    );
+      orderBy: JSON.stringify([{ fieldId: 'fld_1', direction: 'desc' }]),
+    });
 
     expect(service.listRecords).toHaveBeenLastCalledWith('tbl_1', {
       search: undefined,

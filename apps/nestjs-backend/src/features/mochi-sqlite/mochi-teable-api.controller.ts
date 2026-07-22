@@ -44,7 +44,7 @@ const parseNumberQuery = (value: unknown, fallback: number) => {
 };
 
 const getActorPatch = (
-  headers: Record<string, string | string[] | undefined>,
+  headers: Record<string, string | string[] | undefined> = {},
   body?: { actorId?: string; source?: string }
 ) => ({
   actorId:
@@ -140,8 +140,8 @@ const normalizeSortQuery = (orderBy: unknown): unknown[] => {
   return Array.isArray(parsed) ? parsed : [];
 };
 
-const getQueryValue = (query: Record<string, unknown>, key: string): unknown =>
-  query[key] ?? query[`${key}[]`];
+const getQueryValue = (query: Record<string, unknown> | undefined, key: string): unknown =>
+  query?.[key] ?? query?.[`${key}[]`];
 
 const getLinkRecordIds = (cellValue: unknown): string[] => {
   const values = Array.isArray(cellValue) ? cellValue : [cellValue];
@@ -386,6 +386,16 @@ const defaultCellValueTypeFor = (type?: string): CellValueType => {
   }
 };
 
+const READONLY_SYSTEM_FIELD_TYPES = new Set<FieldType>([
+  FieldType.AutoNumber,
+  FieldType.CreatedTime,
+  FieldType.LastModifiedTime,
+  FieldType.CreatedBy,
+  FieldType.LastModifiedBy,
+]);
+
+const isReadonlySystemField = (type: FieldType): boolean => READONLY_SYSTEM_FIELD_TYPES.has(type);
+
 const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 
@@ -461,6 +471,7 @@ const normalizeFieldOptions = (type: string, options: unknown): IFieldVo['option
 const toTeableField = (field: LocalField | null | undefined): IFieldVo | null => {
   if (!field) return null;
   const { type, cellValueType, isMultipleCellValue, dbFieldType } = getFieldMetadata(field);
+  const isComputed = toBool(field.is_computed) || isReadonlySystemField(type);
 
   return {
     id: field.id,
@@ -471,7 +482,7 @@ const toTeableField = (field: LocalField | null | undefined): IFieldVo | null =>
     meta: field.meta as IFieldVo['meta'],
     aiConfig: field.aiConfig as IFieldVo['aiConfig'],
     isPrimary: toBool(field.is_primary),
-    isComputed: toBool(field.is_computed),
+    isComputed,
     isLookup: toBool(field.is_lookup),
     notNull: toBool(field.not_null),
     unique: toBool(field.unique_value),
@@ -480,7 +491,7 @@ const toTeableField = (field: LocalField | null | undefined): IFieldVo | null =>
     dbFieldType,
     dbFieldName: field.id.replace(/\W/g, '_').slice(0, 63),
     recordRead: true,
-    recordCreate: true,
+    recordCreate: !isComputed,
   };
 };
 

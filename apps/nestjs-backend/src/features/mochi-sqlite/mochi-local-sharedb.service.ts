@@ -92,6 +92,16 @@ const defaultOptionsFor = (type: string) => {
   return {};
 };
 
+const READONLY_SYSTEM_FIELD_TYPES = new Set([
+  'autoNumber',
+  'createdTime',
+  'lastModifiedTime',
+  'createdBy',
+  'lastModifiedBy',
+]);
+
+const isReadonlySystemField = (type: string): boolean => READONLY_SYSTEM_FIELD_TYPES.has(type);
+
 const normalizeFieldOptions = (type: string, options: unknown) => {
   const defaultOptions = defaultOptionsFor(type);
   const currentOptions =
@@ -147,6 +157,7 @@ const toTableData = (table: LocalTable, defaultViewId?: string) => ({
 const toFieldData = (field: LocalField) => {
   const cellValueType = field.cell_value_type ?? 'string';
   const type = field.type ?? 'singleLineText';
+  const isComputed = toBool(field.is_computed) || isReadonlySystemField(type);
   return {
     id: field.id,
     name: field.name,
@@ -156,7 +167,7 @@ const toFieldData = (field: LocalField) => {
     meta: field.meta ?? undefined,
     aiConfig: field.aiConfig ?? undefined,
     isPrimary: toBool(field.is_primary),
-    isComputed: toBool(field.is_computed),
+    isComputed,
     isLookup: toBool(field.is_lookup),
     notNull: toBool(field.not_null),
     unique: toBool(field.unique_value),
@@ -165,7 +176,7 @@ const toFieldData = (field: LocalField) => {
     dbFieldType: dbFieldTypeFor(cellValueType),
     dbFieldName: field.id.replace(/\W/g, '_').slice(0, 63),
     recordRead: true,
-    recordCreate: true,
+    recordCreate: !isComputed,
   };
 };
 
